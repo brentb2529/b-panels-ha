@@ -29,7 +29,7 @@ const ShieldHalo = ({ color, glow, children }: { color: string; glow: boolean; c
 );
 
 const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, sthmState: globalSthmState } = useDashboard();
+    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, haAlarmoSensors, sthmState: globalSthmState } = useDashboard();
     const isLocked = !!tile.isLocked;
 
     // A real alarm_control_panel device has a plain arm-state string for
@@ -57,16 +57,31 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
         );
     }
 
-    // Open sensor labels — HA uses haOpenSensors dict; ST uses notifyingSensorIds filter
+    // Names of the sensors keeping the system from being ready / triggering it.
+    const labelFor = (entityId: string) => {
+        const d = devices.find(dev => dev.id === entityId);
+        return (sensorAliases?.[entityId] || d?.name || entityId).trim();
+    };
+    const isOpenState = (s: Device['state']) =>
+        s === true || (typeof s === 'string' && ['on', 'open', 'unlocked', 'detected', 'wet'].includes(s.toLowerCase()));
+
     const openSensorLabels = React.useMemo(() => {
-        if (sthmState.haOpenSensors !== undefined) {
-            const openSensors = sthmState.haOpenSensors;
-            if (!openSensors || Object.keys(openSensors).length === 0) return [];
-            return Object.keys(openSensors).map(entityId => {
-                const d = devices.find(dev => dev.id === entityId);
-                return (sensorAliases?.[entityId] || d?.name || entityId).trim();
-            }).filter(Boolean).sort((a, b) => a.localeCompare(b));
+        // Armed / pending: Alarmo reports the actual open sensors directly.
+        const openSensors = sthmState.haOpenSensors;
+        if (openSensors && Object.keys(openSensors).length > 0) {
+            return Object.keys(openSensors).map(labelFor).filter(Boolean).sort((a, b) => a.localeCompare(b));
         }
+        // Disarmed: Alarmo's open_sensors attribute is empty even when doors are
+        // open, so derive the open set from Alarmo's monitored sensor list
+        // (the same source the Ready/Not-Ready readiness uses).
+        if (haAlarmoSensors && haAlarmoSensors.length > 0) {
+            return haAlarmoSensors
+                .filter(id => { const d = devices.find(dev => dev.id === id); return d ? isOpenState(d.state) : false; })
+                .map(labelFor)
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+        }
+        // Legacy SmartThings fallback.
         if (!notifyingSensorIds || notifyingSensorIds.length === 0) return [];
         const triggering = new Set(notifyingSensorIds);
         return devices
@@ -74,7 +89,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
             .map(d => (sensorAliases?.[d.id] || d.name || '').trim())
             .filter(Boolean)
             .sort((a, b) => a.localeCompare(b));
-    }, [sthmState.haOpenSensors, devices, sensorAliases, notifyingSensorIds]);
+    }, [sthmState.haOpenSensors, haAlarmoSensors, devices, sensorAliases, notifyingSensorIds]);
 
     const isViolation = sthmState.securityState === 'VIOLATION';
     const isReady = armingState === 'ready';
