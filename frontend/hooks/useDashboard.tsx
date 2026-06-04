@@ -899,8 +899,6 @@ interface DashboardContextType {
   updateDeviceState: (deviceId: string, newState: Device['state']) => void;
   triggerScene: (deviceId: string) => void;
   updateConnectionConfig: (serviceId: DeviceService, field: keyof Omit<ServiceConnection, 'id'>, value: any) => void;
-  toggleDemoMode: () => void;
-  toggleServiceConnection: (serviceId: DeviceService) => void;
   fetchDevicesFromServices: () => Promise<void>;
   refreshDeviceStatus: (device: Device) => Promise<void>;
   addUser: (name: string, pin: string) => void;
@@ -921,7 +919,6 @@ interface DashboardContextType {
   addAllowedIP: (name: string, ip: string) => void;
   removeAllowedIP: (id: string) => void;
   updatePanelLayoutConfig: (panelId: string, updates: { columns?: number; rowHeight?: number }) => void;
-  setSTHMStatus: (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY') => Promise<void>;
   setHAAlarmStatus: (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY', options?: { skipDelay?: boolean; force?: boolean; pin?: string }) => Promise<void>;
   setAlarmStatus: (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY', pin?: string) => Promise<void>;
   primaryAlarmProvider: 'st' | 'ha';
@@ -956,16 +953,7 @@ interface DashboardContextType {
   customBatteryTypes: string[];
   addCustomBatteryType: (batteryType: string) => void;
   removeCustomBatteryType: (batteryType: string) => void;
-  controlSonosPlayer: (deviceId: string, command: SonosCommand, value?: number | string) => Promise<void>;
-  getSonosSources: () => Promise<SonosSources>;
-  playSonosSource: (deviceId: string, type: 'favorite' | 'playlist', name: string) => Promise<void>;
-  getSonosPlayerState: (deviceId: string) => Promise<any>;
   triggerPanicAlarm: (deviceId: string) => void;
-  sendLitterRobotCommand: (deviceId: string, command: string) => Promise<void>;
-  sendHaywardPoolCommand: (deviceId: string, equipmentId: string, command: string, value?: number | string) => Promise<void>;
-  sendFlairCommand: (deviceId: string, command: string, params?: Record<string, any>) => Promise<void>;
-  sendCoolMasterCommand: (deviceId: string, command: string, params?: Record<string, any>) => Promise<void>;
-  sendPoolFloorCommand: (deviceId: string, command: string, configNumber?: number) => Promise<void>;
   activeDevicePanel: { deviceId: string; device: Device } | null;
   openDevicePanel: (deviceId: string) => void;
   closeDevicePanel: () => void;
@@ -3067,95 +3055,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     }
   }, [useDemoMode, connections]);
 
-  const controlSonosPlayer = useCallback(async (deviceId: string, command: SonosCommand, value?: number | string) => {
-    const device = deviceMap.get(deviceId);
-    if (!device) return;
-
-    if (device.service === DeviceService.HomeAssistant) {
-        const haConnection = connections.find(c => c.id === DeviceService.HomeAssistant && c.enabled);
-        if (haConnection) {
-            try {
-                await homeAssistantService.controlMediaPlayer(deviceId, command, value, haConnection);
-            } catch (error) {
-                const errorMessage = (error as Error).message;
-                console.error(`[Home Assistant] Failed to control media player ${device.name}:`, errorMessage);
-                setServiceError(`[Home Assistant] ${errorMessage}`);
-            }
-        }
-        return;
-    }
-
-    const sonosConn = connections.find(c => c.id === DeviceService.Sonos && c.enabled);
-    if (device.type !== DeviceType.SonosPlayer || !sonosConn) {
-        console.warn(`Sonos player or connection not found for device ${deviceId}`);
-        return;
-    }
-
-    const roomName = (device.state as any).roomName;
-    if (!roomName) {
-        setServiceError(`[Sonos] Room name not found for player ${device.name}`);
-        return;
-    }
-
-    try {
-        await sonosService.sendCommand(sonosConn, roomName, command, value);
-    } catch (error) {
-        const errorMessage = (error as Error).message;
-        console.error(`[Sonos] Failed to execute command '${command}' on ${device.name}:`, errorMessage);
-        addNotification(`[Sonos] Command failed: ${errorMessage}`, 'error');
-    }
-
-  }, [connections, deviceMap, addNotification]);
-
-  const getSonosSources = useCallback(async (): Promise<SonosSources> => {
-    const sonosConn = connections.find(c => c.id === DeviceService.Sonos && c.enabled);
-    if (!sonosConn) throw new Error("Sonos service not enabled.");
-    
-    try {
-        const [favorites, playlists] = await Promise.all([
-            sonosService.getFavorites(sonosConn),
-            sonosService.getPlaylists(sonosConn)
-        ]);
-        return { favorites, playlists: playlists.map(p => p.title) };
-    } catch (error) {
-        const errorMessage = (error as Error).message;
-        addNotification(`[Sonos] Failed to load sources: ${errorMessage}`, 'error');
-        throw error;
-    }
-  }, [connections, addNotification]);
-
-  const playSonosSource = useCallback(async (deviceId: string, type: 'favorite' | 'playlist', name: string) => {
-    const device = deviceMap.get(deviceId);
-    const sonosConn = connections.find(c => c.id === DeviceService.Sonos && c.enabled);
-    if (!device || !sonosConn) return;
-    const roomName = (device.state as any).roomName;
-    if (!roomName) return;
-
-    try {
-        await sonosService.sendCommand(sonosConn, roomName, type, name);
-    } catch (error) {
-        const errorMessage = (error as Error).message;
-        addNotification(`[Sonos] Failed to play ${type}: ${errorMessage}`, 'error');
-    }
-  }, [connections, deviceMap, addNotification]);
-
-  const getSonosPlayerState = useCallback(async (deviceId: string): Promise<any> => {
-     const device = deviceMap.get(deviceId);
-     const sonosConn = connections.find(c => c.id === DeviceService.Sonos && c.enabled);
-     if (!device || !sonosConn) return null;
-     const roomName = (device.state as any).roomName;
-     if (!roomName) return null;
-
-     try {
-        const zoneState = await sonosService.getZoneState(sonosConn, roomName);
-        return zoneState;
-     } catch (error) {
-         console.error(`[Sonos] Failed to poll state for ${roomName}`, error);
-         return null;
-     }
-  }, [connections, deviceMap]);
-
-
   const triggerScene = useCallback((deviceId: string) => {
       console.log(`Triggering scene: ${deviceId}`);
       
@@ -3212,121 +3111,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     }
   }, [connections, addNotification, requestInput]);
 
-  const sendLitterRobotCommand = useCallback(async (deviceId: string, command: string) => {
-    const whiskerConn = connections.find(c => c.id === DeviceService.Whisker && c.enabled);
-    if (!whiskerConn) {
-        throw new Error('Litter Robot service is not configured');
-    }
-    await litterRobotService.setDeviceState(whiskerConn, deviceId, command);
-    // Refresh device data after command
-    setTimeout(async () => {
-        try {
-            const robots = await litterRobotService.getDevices(whiskerConn);
-            setServiceDevices(current => produce(current, draft => {
-                robots.forEach(robot => {
-                    const index = draft.findIndex(d => d.id === robot.id);
-                    if (index !== -1) {
-                        draft[index] = robot;
-                    }
-                });
-            }));
-        } catch (e) {
-            console.warn('[LitterRobot] Failed to refresh after command:', e);
-        }
-    }, 2000);
-  }, [connections]);
-
-  const sendHaywardPoolCommand = useCallback(async (deviceId: string, equipmentId: string, command: string, value?: number | string) => {
-    const haywardConn = connections.find(c => c.id === DeviceService.HaywardPool && c.enabled);
-    if (!haywardConn) {
-        throw new Error('Hayward Pool service is not configured');
-    }
-    await haywardPoolService.sendCommand(haywardConn, equipmentId, command, value);
-    // Refresh device data after command
-    setTimeout(async () => {
-        try {
-            const poolDevices = await haywardPoolService.getDevices(haywardConn);
-            setServiceDevices(current => produce(current, draft => {
-                poolDevices.forEach(dev => {
-                    const index = draft.findIndex(d => d.id === dev.id);
-                    if (index !== -1) {
-                        draft[index] = dev;
-                    }
-                });
-            }));
-        } catch (e) {
-            console.warn('[HaywardPool] Failed to refresh after command:', e);
-        }
-    }, 2500);
-  }, [connections]);
-
-  const sendFlairCommand = useCallback(async (deviceId: string, command: string, params: Record<string, any> = {}) => {
-    const flairConn = connections.find(c => c.id === DeviceService.Flair && c.enabled);
-    if (!flairConn) {
-        throw new Error('Flair service is not configured');
-    }
-    await flairService.sendCommand(flairConn, command, params);
-    // Refresh device data after command (Flair takes ~2s to reflect)
-    setTimeout(async () => {
-        try {
-            const flairDevices = await flairService.getDevices(flairConn);
-            setServiceDevices(current => produce(current, draft => {
-                flairDevices.forEach(dev => {
-                    const index = draft.findIndex(d => d.id === dev.id);
-                    if (index !== -1) {
-                        draft[index] = dev;
-                    }
-                });
-            }));
-        } catch (e) {
-            console.warn('[Flair] Failed to refresh after command:', e);
-        }
-    }, 2500);
-  }, [connections]);
-
-  const sendCoolMasterCommand = useCallback(async (deviceId: string, command: string, params: Record<string, any> = {}) => {
-    const coolmasterConn = connections.find(c => c.id === DeviceService.CoolMaster && c.enabled);
-    if (!coolmasterConn) {
-        throw new Error('CoolMaster service is not configured');
-    }
-    await coolMasterService.sendCommand(coolmasterConn, command, params);
-    setTimeout(async () => {
-        try {
-            const coolmasterDevices = await coolMasterService.getDevices(coolmasterConn);
-            setServiceDevices(current => produce(current, draft => {
-                coolmasterDevices.forEach(dev => {
-                    const index = draft.findIndex(d => d.id === dev.id);
-                    if (index !== -1) {
-                        draft[index] = dev;
-                    }
-                });
-            }));
-        } catch (e) {
-            console.warn('[CoolMaster] Failed to refresh after command:', e);
-        }
-    }, 2500);
-  }, [connections]);
-
-  const sendPoolFloorCommand = useCallback(async (_deviceId: string, command: string, configNumber?: number) => {
-    const conn = connections.find(c => c.id === DeviceService.PoolFloor && c.enabled);
-    if (!conn) throw new Error('Pool Floor service is not configured');
-    await poolFloorService.sendCommand(conn, command, configNumber);
-    // State will update via the 2 s poll; force a quick refresh
-    setTimeout(async () => {
-        try {
-            const devices = await poolFloorService.getDevices(conn);
-            setServiceDevices(current => produce(current, draft => {
-                devices.forEach(dev => {
-                    const index = draft.findIndex(d => d.id === dev.id);
-                    if (index !== -1) draft[index] = dev;
-                });
-            }));
-        } catch (e) {
-            console.warn('[PoolFloor] Failed to refresh after command:', e);
-        }
-    }, 1500);
-  }, [connections]);
-
   const openDevicePanel = useCallback((deviceId: string) => {
     setActiveDevicePanelId(deviceId);
   }, []);
@@ -3347,19 +3131,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         (conn as any)[field] = value;
       }
     }));
-  }, []);
-
-  const toggleDemoMode = useCallback(() => {
-    setConfig(produce(draft => {
-        draft.useDemoMode = !draft.useDemoMode;
-    }));
-  }, []);
-
-  const toggleServiceConnection = useCallback((serviceId: DeviceService) => {
-      setConfig(produce(draft => {
-          const conn = draft.connections.find(c => c.id === serviceId);
-          if (conn) conn.enabled = !conn.enabled;
-      }));
   }, []);
 
   const addUser = useCallback((name: string, pin: string) => {
@@ -3595,101 +3366,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         }
     }));
   }, []);
-
-  const setSTHMStatus = useCallback(async (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY') => {
-    const stConnection = connections.find(c => c.id === DeviceService.SmartThings && c.enabled);
-    if (!stConnection) {
-        setServiceError("[SmartThings] Connection not enabled.");
-        return;
-    }
-    
-    const mapStatus = (s: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY'): STHMState['armState'] => {
-        switch (s) {
-            case 'ARMED_STAY': return 'armedStay';
-            case 'ARMED_AWAY': return 'armedAway';
-            case 'DISARMED': return 'disarmed';
-        }
-    };
-
-    const newEvent: ArmingEvent = {
-        timestamp: new Date().toISOString(),
-        status: mapStatus(status)
-    };
-    
-    setConfig(produce(draft => {
-        if (!draft.sthmHistory) {
-            draft.sthmHistory = [];
-        }
-        draft.sthmHistory.unshift(newEvent); // Add to the beginning
-        if (draft.sthmHistory.length > 10) {
-            draft.sthmHistory = draft.sthmHistory.slice(0, 10);
-        }
-    }));
-    
-    const mappings = stConnection.sthmMappings;
-    let targetDeviceId: string | null = null;
-
-    switch (status) {
-        case 'ARMED_STAY':
-            targetDeviceId = mappings?.armedStay ?? null;
-            break;
-        case 'ARMED_AWAY':
-            targetDeviceId = mappings?.armedAway ?? null;
-            break;
-        case 'DISARMED':
-            targetDeviceId = mappings?.disarmed ?? null;
-            break;
-    }
-
-    if (targetDeviceId) {
-        const targetDevice = devices.find(d => d.id === targetDeviceId);
-        if (targetDevice) {
-            if (targetDevice.type === DeviceType.Scene) {
-                triggerScene(targetDeviceId);
-            } else {
-                await updateDeviceState(targetDeviceId, true);
-            }
-        } else {
-            setServiceError(`[STHM] Mapped device for '${status}' not found. Please check Admin settings.`);
-            console.warn(`STHM Mapped device with ID ${targetDeviceId} not found.`);
-        }
-    } else {
-        setServiceError(`[STHM] No device mapped for '${status}'. Please configure it in Admin > Connections.`);
-    }
-
-    // Update local STHM state and report to api-server for alarm detection
-    const newArmState = mapStatus(status);
-    setSthmState(current => {
-        if (!current) return current;
-        return {
-            ...current,
-            armState: newArmState,
-            // Clear violation state when disarming
-            securityState: newArmState === 'disarmed' ? 'OK' : current.securityState,
-            violatingSensors: newArmState === 'disarmed' ? [] : current.violatingSensors,
-            trigger: newArmState === 'disarmed' ? null : current.trigger
-        };
-    });
-
-    // Announce alarm state change at THIS panel (bypasses mute — alarm is always audible)
-    if (isAudioUnlocked) {
-        const ttsMsg = newArmState === 'disarmed' ? 'Alarm disarmed' : 'Alarm armed';
-        playTextToSpeech(ttsMsg);
-    }
-
-    // Report STHM state to api-server for location-aware intrusion detection
-    // This allows the AlarmEventService to track armed state without relay modifications
-    const locationId = sthmState?.locationId || stConnection.selectedLocations?.[0];
-    if (locationId) {
-        try {
-            await apiReportSTHMState(locationId, status);
-            console.log(`[STHM] Reported ${status} for location ${locationId} to api-server`);
-        } catch (e) {
-            console.warn('[STHM] Failed to report state to api-server:', e);
-            // Don't block on this failure - the alarm system will still work via SSE
-        }
-    }
-  }, [connections, devices, updateDeviceState, triggerScene, sthmState]);
 
   const setHAAlarmStatus = useCallback(async (
       status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY',
@@ -3970,8 +3646,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       updateDeviceState,
       triggerScene,
       updateConnectionConfig,
-      toggleDemoMode,
-      toggleServiceConnection,
       fetchDevicesFromServices,
       refreshDeviceStatus,
       addUser,
@@ -3992,7 +3666,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       addAllowedIP,
       removeAllowedIP,
       updatePanelLayoutConfig,
-      setSTHMStatus,
       setHAAlarmStatus,
       setAlarmStatus,
       primaryAlarmProvider: 'ha' as const,
@@ -4026,16 +3699,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       customBatteryTypes: config.customBatteryTypes || [],
       addCustomBatteryType,
       removeCustomBatteryType,
-      controlSonosPlayer,
-      getSonosSources,
-      playSonosSource,
-      getSonosPlayerState,
       triggerPanicAlarm,
-      sendLitterRobotCommand,
-      sendHaywardPoolCommand,
-      sendFlairCommand,
-      sendCoolMasterCommand,
-      sendPoolFloorCommand,
       activeDevicePanel,
       openDevicePanel,
       closeDevicePanel,
