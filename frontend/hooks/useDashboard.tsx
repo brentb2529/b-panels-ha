@@ -69,6 +69,23 @@ const useSSE = (
     retryNow: () => {},
 });
 
+// Virtual device types tied to removed api-server services (see INTEGRATIONS.md).
+// These have no HA data source and no tile, so they're filtered out of the
+// device list rather than surfacing as "Unsupported Type" tiles. Their data is
+// expected to come from HA entities (core/HACS) going forward.
+const DEAD_VIRTUAL_TYPES = new Set<DeviceType>([
+  DeviceType.InternetMonitor,
+  DeviceType.FishingReport,
+  DeviceType.Generator,
+  DeviceType.LitterRobot,
+  DeviceType.HaywardPool,
+  DeviceType.Flair,
+  DeviceType.CoolMaster,
+  DeviceType.PoolFloor,
+  DeviceType.RSSFeed,
+  DeviceType.AlarmHistory,
+]);
+
 // Export StoredConfig for the API service to use
 export interface StoredConfig {
     panels: DashboardPanel[];
@@ -131,12 +148,9 @@ const getDefaultConfig = (): StoredConfig => ({
       {id: DeviceService.CoolMaster, cloudEndpoint: '', enabled: false, coolmasterConnectionMode: 'demo', coolmasterLocalIp: '', coolmasterLocalDeviceId: '', coolmasterUsername: '', coolmasterPassword: '', coolmasterUnitAliases: {}},
       {id: DeviceService.PoolFloor, cloudEndpoint: '', enabled: false, poolFloorConnectionMode: 'demo', poolFloorIp: '172.20.1.100', poolFloorPort: 502, poolFloorUnitId: 1},
   ],
-  useDemoMode: true,
+  useDemoMode: false,
   users: [{ id: 'user-default', name: 'Admin', pin: '1234' }],
-  virtualDevices: [
-    { id: 'internet-monitor', name: 'Internet Monitor', type: DeviceType.InternetMonitor, service: DeviceService.Virtual, state: {}, location: 'System' },
-    { id: 'fishing-report', name: 'Fishing Report', type: DeviceType.FishingReport, service: DeviceService.Virtual, state: {}, location: 'System' }
-  ],
+  virtualDevices: [],
   mediaItems: [],
   dashboardTitle: 'HomeTile',
   ipFilterEnabled: false,
@@ -146,7 +160,7 @@ const getDefaultConfig = (): StoredConfig => ({
   sensorAliases: {},
   entryDelaySound: { mode: 'beep', beepStyle: 'single' },
   alarmDebug: false,
-  primaryAlarmProvider: 'st',
+  primaryAlarmProvider: 'ha',
   ttsNotificationsEnabled: false,
   sonosNotifications: [],
   armingStatusDeviceId: null,
@@ -1039,7 +1053,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     // Add synthetic devices first, so real stored devices can overwrite them if they exist.
     syntheticVirtualDevices.forEach(d => deviceMap.set(d.id, d));
     storedVirtualDevices.forEach(d => deviceMap.set(d.id, d));
-    return Array.from(deviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    // HA-only: drop virtual devices tied to removed api-server services so they
+    // never surface as "Unsupported Type" tiles (see INTEGRATIONS.md).
+    return Array.from(deviceMap.values())
+      .filter(d => !DEAD_VIRTUAL_TYPES.has(d.type))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [storedVirtualDevices, syntheticVirtualDevices]);
 
   const devices = useMemo(() => {
@@ -2577,8 +2595,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
   const haUnsubsRef = useRef<Array<() => void>>([]);
   const haSensorRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const primaryAlarmProviderRef = useRef<'st' | 'ha'>(config.primaryAlarmProvider ?? 'st');
-  useEffect(() => { primaryAlarmProviderRef.current = config.primaryAlarmProvider ?? 'st'; }, [config.primaryAlarmProvider]);
+  // HA-only: Home Assistant is always the alarm provider.
+  const primaryAlarmProviderRef = useRef<'st' | 'ha'>('ha');
 
   // Expose connection-state and last-event timestamp for Admin UI status badge / stale-data detection
   const [haWsState, setHaWsState] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
@@ -2622,10 +2640,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 if (!new_state) return;
                 setLastHaEventAt(new Date());
 
-                const alarmEntityId = haConnection.haAlarmEntityId || 'alarm_control_panel.alarmo';
+                // HA-only: resolve the alarm panel — configured entity, else the
+                // first discovered alarm_control_panel, else Alarmo's default.
+                // HA is always the alarm provider here.
+                const alarmEntityId = haConnection?.haAlarmEntityId
+                    || Array.from(deviceMap.values()).find(d => d.type === DeviceType.AlarmPanel)?.id
+                    || 'alarm_control_panel.alarmo';
 
-                // Handle Alarmo alarm panel state changes (only when HA is the active alarm provider)
-                if (entity_id === alarmEntityId && primaryAlarmProviderRef.current === 'ha') {
+                if (entity_id === alarmEntityId) {
                     const haState = new_state.state as string;
                     const attrs = new_state.attributes || {};
 
@@ -2831,7 +2853,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     // attribute can't be used here because it's empty while disarmed even
     // when doors are open. Any sensor in the Alarmo list reporting on/open
     // → not ready.
-    if (config.primaryAlarmProvider === 'ha') {
+    // HA-only: derive readiness from Alarmo's configured sensor list.
+    {
         if (haAlarmoSensors.length === 0) {
             setArmingState('no_sensors');
             return;
@@ -4006,13 +4029,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, []);
 
   const setAlarmStatus = useCallback(async (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY', pin?: string) => {
-      const provider = config.primaryAlarmProvider ?? 'st';
-      if (provider === 'ha') {
-          await setHAAlarmStatus(status, pin ? { pin } : undefined);
-      } else {
-          await setSTHMStatus(status);
-      }
-  }, [config.primaryAlarmProvider, setHAAlarmStatus, setSTHMStatus]);
+      // HA-only: always route arm/disarm to Home Assistant (Alarmo).
+      await setHAAlarmStatus(status, pin ? { pin } : undefined);
+  }, [setHAAlarmStatus]);
 
   const updateNotifyingSensorIds = useCallback((ids: string[]) => {
       setConfig(produce(draft => { draft.notifyingSensorIds = ids; }));
@@ -4285,7 +4304,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       setSTHMStatus,
       setHAAlarmStatus,
       setAlarmStatus,
-      primaryAlarmProvider: config.primaryAlarmProvider ?? 'st',
+      primaryAlarmProvider: 'ha',
       updatePrimaryAlarmProvider,
       haWsState,
       lastHaEventAt,
