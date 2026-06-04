@@ -17,6 +17,13 @@ import {
     type HassEntities,
 } from 'home-assistant-js-websocket';
 
+// HA stores the signed-in user's session (full AuthData) under 'hassTokens'.
+// When the SPA runs as an HA sidebar panel it is a same-origin iframe, so we
+// reuse that session and getAuth never runs the OAuth redirect — whose
+// redirect URI is invalid inside the panel iframe ("Invalid redirect URI").
+const HA_TOKEN_STORAGE_KEY = 'hassTokens';
+// Our own key, used only for standalone dev (VITE_HASS_URL) where the redirect
+// flow is valid and HA's hassTokens are not present.
 const TOKEN_STORAGE_KEY = 'bPanelsHassTokens';
 const LOCAL_CONFIG_KEY = 'bPanelsConfig';
 
@@ -29,12 +36,17 @@ const hassUrl = (): string => {
 let connectionPromise: Promise<Connection> | null = null;
 
 const loadTokens = () => {
-    try {
-        const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
+    // Prefer HA's own session (panel mode = no redirect); fall back to our
+    // standalone-dev key.
+    for (const key of [HA_TOKEN_STORAGE_KEY, TOKEN_STORAGE_KEY]) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) return JSON.parse(raw);
+        } catch {
+            /* ignore parse error / disabled storage; try next key */
+        }
     }
+    return null;
 };
 
 const saveTokens = (tokens: unknown) => {

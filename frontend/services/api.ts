@@ -73,11 +73,6 @@ export const apiDeleteAdminUser = async (_userId: string): Promise<void> => {
     return Promise.resolve();
 };
 
-// --- Device tokens (api-server-only; stubs) -----------------------------------
-export const apiListDevices = async (): Promise<any[]> => [];
-export const apiAddDevice = async (name: string): Promise<{ id: string; name: string; token: string }> => ({ id: `device-${Date.now()}`, name, token: '' });
-export const apiDeleteDevice = async (_deviceId: string): Promise<void> => Promise.resolve();
-
 // --- Monitoring webhooks (api-server-only; stubs) -----------------------------
 export const apiSendTestWebhook = async (): Promise<void> => Promise.resolve();
 export const apiSendWebhookNotification = async (_message: string, _status: string, _metadata?: Record<string, any>): Promise<void> => Promise.resolve();
@@ -127,63 +122,5 @@ export const apiFetchRssFeed = async (_feedUrl: string): Promise<string> => {
     throw new Error('RSS proxy is not available in HA-only mode.');
 };
 
-export const apiSendPanelCommand = async (_installationId: string, _command: Record<string, any>): Promise<void> => Promise.resolve();
-export const apiGetPanelScreenshotUrl = async (_installationId: string): Promise<string> => {
-    throw new Error('Panel screenshots are not available in HA-only mode.');
-};
-
 export const apiWhiskerLogin = async (_email: string, _password: string): Promise<any> => ({ access_token: '' });
 export const apiWhiskerGetRobots = async (_token: string): Promise<any[]> => [];
-
-// --- Cloud backup (api-server-only; types + stubs kept so Admin compiles) -----
-export interface CloudBackupConfig {
-    enabled: boolean;
-    provider: 's3' | 'gdrive' | null;
-    encryptionKey?: string;
-    schedule?: { frequency: string; timeOfDay: string };
-    keepLocalBackups?: boolean;
-    notifyOnSuccess?: boolean;
-    notifyOnFailure?: boolean;
-    webhookUrl?: string;
-    s3?: { bucket: string; region: string; prefix?: string; endpoint?: string; accessKeyId?: string; secretAccessKey?: string; retentionDays: number };
-    gdrive?: { folderId?: string; clientId?: string; clientSecret?: string; refreshToken?: string; retentionDays: number };
-}
-export interface CloudBackupStatus {
-    enabled: boolean;
-    provider: string | null;
-    lastBackupTime: string | null;
-    lastBackupResult: { success: boolean; timestamp?: string; filename?: string; size?: number; error?: string } | null;
-    nextScheduledBackup: string | null;
-    backupHistory: any[];
-    serviceAvailable?: boolean;
-    error?: string;
-}
-export interface CloudBackupTestResult {
-    success: boolean;
-    tests: { name: string; passed: boolean; message?: string; error?: string; suggestion?: string }[];
-    config?: { bucket?: string; region?: string; endpoint?: string; prefix?: string; folderId?: string };
-}
-export const apiGetCloudBackupConfig = async (): Promise<CloudBackupConfig | null> => ({ enabled: false, provider: null });
-export const apiSaveCloudBackupConfig = async (_config: CloudBackupConfig): Promise<void> => Promise.resolve();
-export const apiGetCloudBackupStatus = async (): Promise<CloudBackupStatus> => ({ enabled: false, provider: null, lastBackupTime: null, lastBackupResult: null, nextScheduledBackup: null, backupHistory: [], serviceAvailable: false });
-export const apiTriggerCloudBackup = async (): Promise<any> => ({ success: false, error: 'Backups are not available in HA-only mode.' });
-export const apiGenerateEncryptionKey = async (): Promise<{ key: string }> => ({ key: '' });
-export const apiTestCloudBackupConnection = async (_config: CloudBackupConfig): Promise<CloudBackupTestResult> => ({ success: false, tests: [] });
-
-// --- SmartThings backup (removed; types + stubs kept so Admin compiles) -------
-export interface SmartThingsBackupConfig {
-    enabled: boolean;
-    schedule: 'hourly' | 'daily' | 'weekly';
-    hasPat: boolean;
-    lastBackup: string | null;
-    backupCount: number;
-}
-export interface SmartThingsBackupInfo { filename: string; path: string; size: number; created: string }
-export interface SmartThingsPatValidation { valid: boolean; locationCount?: number; locations?: { id: string; name: string }[]; error?: string }
-export const apiGetSmartThingsBackupConfig = async (): Promise<SmartThingsBackupConfig> => ({ enabled: false, schedule: 'daily', hasPat: false, lastBackup: null, backupCount: 0 });
-export const apiSaveSmartThingsBackupConfig = async (_config: { enabled?: boolean; schedule?: string; pat?: string }): Promise<void> => Promise.resolve();
-export const apiValidateSmartThingsPat = async (_pat: string): Promise<SmartThingsPatValidation> => ({ valid: false, error: 'SmartThings is not available in HA-only mode.' });
-export const apiTriggerSmartThingsBackup = async (): Promise<any> => ({ success: false, message: 'SmartThings is not available in HA-only mode.' });
-export const apiListSmartThingsBackups = async (): Promise<{ backups: SmartThingsBackupInfo[] }> => ({ backups: [] });
-export const apiGetSmartThingsBackup = async (_filename: string): Promise<any> => null;
-export const apiGetLatestSmartThingsBackup = async (): Promise<any> => null;
