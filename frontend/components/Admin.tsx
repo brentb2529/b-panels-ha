@@ -42,7 +42,8 @@ const TilePreviewIcon = ({ type }: { type: DeviceType }) => {
         case DeviceType.Valve: return <IconDroplets {...iconProps} className="w-8 h-8 text-blue-400" />;
         case DeviceType.SmokeDetector: return <IconFlame {...iconProps} className="w-8 h-8 text-red-400" />;
         case DeviceType.CarbonMonoxideDetector: return <IconAlertTriangle {...iconProps} className="w-8 h-8 text-orange-400" />;
-        case DeviceType.LitterRobot: return <IconCat {...iconProps} className="w-8 h-8 text-indigo-400" />;
+        case DeviceType.LitterRobot:
+        case DeviceType.Vacuum: return <IconCat {...iconProps} className="w-8 h-8 text-indigo-400" />;
         default: return <IconLayoutGrid {...iconProps} />;
     }
 };

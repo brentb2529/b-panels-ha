@@ -724,6 +724,13 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
                 };
             }
             break;
+        case 'vacuum':
+            // Robot vacuums incl. Litter-Robot (Whisker). state is the HA vacuum
+            // activity (docked/cleaning/returning/paused/idle/error); battery via
+            // attributes.battery_level (already picked up above).
+            type = DeviceType.Vacuum;
+            internalState = typeof state === 'string' ? state : String(state ?? '');
+            break;
         case 'camera':
             type = DeviceType.Camera;
             // The live HLS stream is resolved lazily by CameraTile via HA's

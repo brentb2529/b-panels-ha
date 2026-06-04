@@ -15,6 +15,7 @@ import CameraTile from './tiles/CameraTile';
 import UnknownTile from './tiles/UnknownTile';
 import CameraGroupTile from './tiles/CameraGroupTile';
 import GenericCapabilityTile from './tiles/GenericCapabilityTile';
+import VacuumTile from './tiles/VacuumTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -59,6 +60,7 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.HACustomCard]: HACustomCardTile,
   [DeviceType.Camera]: CameraTile,
   [DeviceType.CameraGroup]: CameraGroupTile,
+  [DeviceType.Vacuum]: VacuumTile,
   [DeviceType.Folder]: FolderTile,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a
