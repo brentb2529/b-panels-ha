@@ -4,6 +4,7 @@ import UnknownTile from './UnknownTile';
 import { IconShieldAlert, IconExpand, IconRefreshCw } from '../icons';
 import TileWrapper from './TileWrapper';
 import { useDashboard } from '../../hooks/useDashboard';
+import * as haClient from '../../services/haClient';
 import { fluidIcon, fluidTextXs } from './tileScale';
 
 declare const Hls: any;
@@ -37,10 +38,33 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
             : null;
 
     const isLocked = !!tile.isLocked;
-    
+    // Home Assistant `camera` entities resolve their stream via HA directly.
+    const isHaCamera = device.service === DeviceService.HomeAssistant;
+
     const [hlsUrl, setHlsUrl] = useState<string | null>(null);
 
     useEffect(() => {
+        // HA camera: ask HA's stream component for a live HLS URL (re-fetched on
+        // reload since the token is short-lived). No relay involved.
+        if (isHaCamera) {
+            let cancelled = false;
+            setHlsUrl(null);
+            haClient.getCameraStreamUrl(device.id)
+                .then(url => {
+                    if (cancelled) return;
+                    if (url) { setHlsUrl(url); }
+                    else { setError('No stream available for this camera.'); setIsLoading(false); }
+                })
+                .catch(err => {
+                    if (cancelled) return;
+                    console.warn(`[Camera] HA stream failed for ${device.id}:`, err);
+                    setError('Stream unavailable.');
+                    setIsLoading(false);
+                });
+            return () => { cancelled = true; };
+        }
+
+        // Legacy RTSP relay path (non-HA cameras).
         const rtspConnection = connections.find(c => c.id === DeviceService.RTSP && c.enabled);
         if (rtspConnection && rtspConnection.cloudEndpoint && rtspStreamUrl) {
             try {
@@ -56,7 +80,7 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
         } else {
              setHlsUrl((device.state as any)?.streamUrl || rtspStreamUrl);
         }
-    }, [connections, rtspStreamUrl, device.name, device.state]);
+    }, [isHaCamera, device.id, connections, rtspStreamUrl, device.name, device.state, reloadKey]);
 
 
     const canEnlarge = !isEditor && !isLocked && tile.cameraEnlargeOnClick && onEnlarge;
@@ -172,7 +196,7 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
         };
     }, [hlsUrl, isEditor, device.name, reloadKey]);
 
-    if (!rtspStreamUrl) {
+    if (!isHaCamera && !rtspStreamUrl) {
         return <UnknownTile tile={tile} device={device} isEditor={isEditor} cornerClassName={cornerClassName} />;
     }
 
