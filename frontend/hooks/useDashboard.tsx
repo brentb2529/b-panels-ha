@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, BatteryReportConfig, BatteryTypeMappings, BatteryQuantityMappings, BatteryTypeDefault, BatteryHistoryData } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, BatteryReportConfig, BatteryTypeMappings, BatteryQuantityMappings, BatteryTypeDefault, BatteryHistoryData, LitterRobotState, LitterRobotStatus } from '../types';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -1090,40 +1090,76 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       if (arr) arr.push(d); else byDevice.set(did, [d]);
     }
 
-    const stripPrefix = (label: string, prefix: string) => {
-      const t = (label || '').trim();
-      return t.toLowerCase().startsWith(prefix.toLowerCase())
-        ? (t.slice(prefix.length).replace(/^[\s:_-]+/, '').trim() || t)
-        : t;
+    const numOf = (d?: Device): number | undefined => {
+      if (!d) return undefined;
+      const n = Number(d.state);
+      return Number.isFinite(n) ? Math.round(n) : undefined;
     };
-    const fmt = (d: Device): string => {
-      const s = d.state;
-      if (typeof s === 'boolean') return s ? 'On' : 'Off';
-      if (s === '' || s === null || s === undefined) return '—';
-      const str = String(s);
-      if (str === 'unavailable' || str === 'unknown') return str.charAt(0).toUpperCase() + str.slice(1);
-      const unit = (d.capabilityData as any)?.unit;
-      const num = Number(str);
-      if (str.trim() !== '' && !Number.isNaN(num)) return unit ? `${num} ${unit}` : `${num}`;
-      return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const truthy = (d?: Device) => !!d && (d.state === true ||
+      (typeof d.state === 'string' && ['on', 'true', 'open', 'detected', 'wet', 'home', 'locked'].includes(d.state.toLowerCase())));
+    const normalizeLitterStatus = (statusText: string, vacState: string, online: boolean): LitterRobotStatus => {
+      const t = `${statusText} ${vacState}`.toLowerCase();
+      if (!online || t.includes('unavailable') || t.includes('offline')) return 'OFFLINE';
+      if (t.includes('drawer') || /\bdf\d?\b|\bdrf\b/.test(t) || t.includes('full')) return 'DRAWER_FULL';
+      if (t.includes('bonnet')) return 'BONNET_REMOVED';
+      if (t.includes('cat')) return 'CAT_DETECTED';
+      if (t.includes('empt')) return 'EMPTYING';
+      if (t.includes('paus')) return 'PAUSED';
+      if (t.includes('clean') || t.includes('cycl') || vacState === 'cleaning' || vacState === 'returning') return 'CYCLING';
+      if (t.includes('fault') || t.includes('error')) return 'FAULT';
+      return 'READY';
     };
 
     const composites: Device[] = [];
     const members = new Set<string>();
     byDevice.forEach((grp, did) => {
       const vac = grp.find(d => d.type === DeviceType.Vacuum);
-      if (!vac) return; // only vacuum-based devices (robots) become composites
-      const stats = grp
-        .filter(d => d.id !== vac.id)
-        .map(d => ({ id: d.id, label: stripPrefix(d.name, vac.name), value: fmt(d) }))
-        .sort((a, b) => a.label.localeCompare(b.label));
+      if (!vac) return;
+      const find = (re: RegExp) => grp.find(d => d.id !== vac.id && re.test(d.id));
+      const wasteS = find(/waste/i);
+      const litterS = find(/litter[_ ]?level|litter_box|hopper/i)
+        || grp.find(d => d.id !== vac.id && /litter/i.test(d.id) && (d.capabilityData as any)?.unit === '%');
+      // Only Litter-Robots become composite cards; generic vacuums (Roomba etc.)
+      // stay as their own VacuumTile.
+      const isLitter = /litter|whisker/i.test(`${vac.name} ${vac.id}`) || !!wasteS || !!litterS;
+      if (!isLitter) return;
+
+      const statusS = find(/status/i);
+      const cyclesS = find(/cycle/i);
+      const sleepS = grp.find(d => d.id !== vac.id && /sleep/i.test(d.id));
+      const petS = find(/pet[_ ]?weight|weight/i);
+      const lastSeenS = find(/last[_ ]?seen/i);
+      const nightSw = grp.find(d => d.type === DeviceType.Switch && /night/i.test(d.id));
+      const lockSw = grp.find(d => d.type === DeviceType.Switch && /lock/i.test(d.id));
+      const resetBtn = grp.find(d => /reset/i.test(d.id));
+
+      const vacState = String(vac.state ?? '').toLowerCase();
+      const statusText = statusS ? String(statusS.state ?? '') : String(vac.state ?? '');
+      const online = vac.isOnline !== false && vacState !== 'unavailable';
+      const normalizedStatus = normalizeLitterStatus(statusText, vacState, online);
+      const waste = numOf(wasteS) ?? 0;
+      const litter = numOf(litterS);
+
+      const lrState: LitterRobotState = {
+        id: did, serial: did, name: vac.name,
+        model: litter !== undefined ? 'Litter-Robot 4' : 'Litter-Robot',
+        isOnline: online, powerStatus: online ? 'on' : 'off',
+        unitStatus: statusText, statusText, normalizedStatus,
+        cycleCount: numOf(cyclesS) ?? 0, cyclesAfterDrawerFull: 0,
+        isDFITriggered: normalizedStatus === 'DRAWER_FULL' || waste >= 90,
+        wasteLevel: waste,
+        isNightLightModeEnabled: nightSw ? truthy(nightSw) : undefined,
+        isPanelLockEnabled: lockSw ? truthy(lockSw) : undefined,
+        sleepModeEnabled: truthy(sleepS),
+        lastSeen: lastSeenS ? String(lastSeenS.state) : undefined,
+        isLR4: litter !== undefined, litterLevel: litter, petWeight: numOf(petS),
+        isLR3: litter === undefined,
+        haEntities: { vacuum: vac.id, nightLight: nightSw?.id, panelLock: lockSw?.id, reset: resetBtn?.id },
+      };
+
       composites.push({
-        id: `robot:${did}`,
-        name: vac.name,
-        type: DeviceType.LitterRobot,
-        service: DeviceService.HomeAssistant,
-        state: { status: String(vac.state ?? ''), stats, isLitter: /litter|whisker/i.test(`${vac.name} ${vac.id}`) },
-        battery: vac.battery,
+        id: `robot:${did}`, name: vac.name, type: DeviceType.LitterRobot,
+        service: DeviceService.HomeAssistant, state: lrState, battery: vac.battery,
       });
       grp.forEach(d => members.add(d.id));
     });
@@ -1145,7 +1181,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // Diagnostic: report composite grouping so issues are visible in the console.
   useEffect(() => {
     console.log(`[B-Panels] robot composite cards: ${robotComposites.length}`,
-      robotComposites.map(r => ({ id: r.id, name: r.name, stats: ((r.state as any)?.stats || []).length })));
+      robotComposites.map(r => ({ name: r.name, status: (r.state as any)?.normalizedStatus, waste: (r.state as any)?.wasteLevel, litter: (r.state as any)?.litterLevel })));
   }, [robotComposites.length]);
 
 

@@ -441,6 +441,8 @@ export interface LitterRobotState {
   // LR3-specific
   isLR3: boolean;
   didNotifyOffline?: boolean;
+  // HA-only: entity_ids backing the modal's quick-action commands.
+  haEntities?: { vacuum?: string; nightLight?: string; panelLock?: string; reset?: string };
 }
 
 export interface ForecastDay {
