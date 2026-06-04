@@ -134,6 +134,27 @@ export async function callService(
     await haCallService(conn, domain, service, data, target as any);
 }
 
+// --- Camera streams -----------------------------------------------------------
+// Resolve a live HLS stream URL for a Home Assistant `camera` entity via HA's
+// stream component (the `camera/stream` WS command). HA replies with a
+// host-relative path (e.g. /api/hls/<token>/master_playlist.m3u8); we resolve
+// it to an absolute URL against the HA origin so hls.js can load it. Returns
+// null if the camera can't provide a stream.
+export async function getCameraStreamUrl(entityId: string): Promise<string | null> {
+    const conn = await getConnection();
+    const result: any = await conn.sendMessagePromise({
+        type: 'camera/stream',
+        entity_id: entityId,
+    });
+    const path = result?.url;
+    if (!path) return null;
+    try {
+        return new URL(path, hassUrl()).toString();
+    } catch {
+        return path;
+    }
+}
+
 // --- Dashboard config storage (custom WebSocket commands) ---------------------
 // Backed by the b_panels integration's storage. Falls back to localStorage in
 // standalone dev where the custom commands are not registered.

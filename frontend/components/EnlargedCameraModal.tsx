@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom';
 import { Device, DeviceService } from '../types';
 import { IconX } from './icons';
 import { useDashboard } from '../hooks/useDashboard';
+import * as haClient from '../services/haClient';
 import VideoStream from './VideoStream';
 
 interface EnlargedCameraModalProps {
@@ -14,9 +15,10 @@ interface EnlargedCameraModalProps {
 
 const EnlargedCameraModal = ({ device, onClose }: EnlargedCameraModalProps) => {
     const { connections } = useDashboard();
+    const isHaCamera = device.service === DeviceService.HomeAssistant;
     const rtspStreamUrl = (device.state as any)?.rtspStreamUrl;
-    
-    const hlsUrl = useMemo(() => {
+
+    const legacyHlsUrl = useMemo(() => {
         const rtspConnection = connections.find(c => c.id === DeviceService.RTSP && c.enabled);
         if (rtspConnection && rtspConnection.cloudEndpoint && rtspStreamUrl) {
             try {
@@ -28,8 +30,21 @@ const EnlargedCameraModal = ({ device, onClose }: EnlargedCameraModalProps) => {
                 return null;
             }
         }
-        return (device.state as any)?.streamUrl || rtspStreamUrl;
+        return (device.state as any)?.streamUrl || rtspStreamUrl || null;
     }, [connections, rtspStreamUrl, device.name, device.state]);
+
+    // HA cameras resolve their live HLS stream from HA; others use the legacy URL.
+    const [haHlsUrl, setHaHlsUrl] = useState<string | null>(null);
+    useEffect(() => {
+        if (!isHaCamera) return;
+        let cancelled = false;
+        haClient.getCameraStreamUrl(device.id)
+            .then(url => { if (!cancelled) setHaHlsUrl(url); })
+            .catch(err => { if (!cancelled) console.warn(`[Camera] HA stream failed for ${device.id}:`, err); });
+        return () => { cancelled = true; };
+    }, [isHaCamera, device.id]);
+
+    const hlsUrl = isHaCamera ? haHlsUrl : legacyHlsUrl;
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

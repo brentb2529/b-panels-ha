@@ -1,10 +1,11 @@
 
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Device, DeviceType, DeviceService } from '../types';
 import { IconX } from './icons';
 import { useDashboard } from '../hooks/useDashboard';
+import * as haClient from '../services/haClient';
 import VideoStream from './VideoStream';
 
 interface CameraGroupModalProps {
@@ -15,31 +16,42 @@ interface CameraGroupModalProps {
 const CameraGroupModal = ({ device, onClose }: CameraGroupModalProps) => {
     const { deviceMap, connections } = useDashboard();
     const cameraIds: string[] = (device.state as any)?.cameraIds || [];
-    
+
     const rtspConnection = useMemo(() => connections.find(c => c.id === DeviceService.RTSP && c.enabled), [connections]);
 
-    const cameras = useMemo(() => 
+    const cameras = useMemo(() =>
         cameraIds
         .map(id => deviceMap.get(id))
         .filter((d): d is Device => !!d && d.type === DeviceType.Camera)
-        .map(cam => {
-            const rtspStreamUrl = (cam.state as any)?.rtspStreamUrl;
-            let finalStreamUrl = (cam.state as any)?.streamUrl || rtspStreamUrl; // Fallback
+    , [cameraIds, deviceMap]);
 
+    // Resolve each camera's stream URL: HA cameras via HA's stream component,
+    // others via the legacy RTSP relay. Async because HA stream tokens are
+    // fetched per-entity.
+    const [streamUrls, setStreamUrls] = useState<Record<string, string | null>>({});
+    useEffect(() => {
+        let cancelled = false;
+        Promise.all(cameras.map(async cam => {
+            if (cam.service === DeviceService.HomeAssistant) {
+                try { return [cam.id, await haClient.getCameraStreamUrl(cam.id)] as const; }
+                catch { return [cam.id, null] as const; }
+            }
+            const rtspStreamUrl = (cam.state as any)?.rtspStreamUrl;
+            let finalStreamUrl: string | null = (cam.state as any)?.streamUrl || rtspStreamUrl || null;
             if (rtspConnection && rtspConnection.cloudEndpoint && rtspStreamUrl) {
                 try {
                     const relayUrl = rtspConnection.cloudEndpoint.replace(/\/+$/, '');
-                    // Generate path key from sanitized name, matching the config generation logic
                     const pathKey = cam.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
                     finalStreamUrl = `${relayUrl}/cam-${pathKey}/index.m3u8`;
                 } catch (e) {
                     console.error("Invalid RTSP URL for camera in group:", cam.name, e);
-                    finalStreamUrl = null; // Invalidate stream if URL is bad
+                    finalStreamUrl = null;
                 }
             }
-            return { ...cam, finalStreamUrl };
-        })
-    , [cameraIds, deviceMap, rtspConnection]);
+            return [cam.id, finalStreamUrl] as const;
+        })).then(entries => { if (!cancelled) setStreamUrls(Object.fromEntries(entries)); });
+        return () => { cancelled = true; };
+    }, [cameras, rtspConnection]);
 
 
     useEffect(() => {
@@ -86,7 +98,7 @@ const CameraGroupModal = ({ device, onClose }: CameraGroupModalProps) => {
                 <div className={`flex-1 p-1 sm:p-2 grid ${gridClasses} gap-1 sm:gap-2 bg-black min-h-0`}>
                     {cameras.map(cam => (
                         <div key={cam.id} className="relative bg-black rounded-md overflow-hidden">
-                           {cam.finalStreamUrl && <VideoStream streamUrl={cam.finalStreamUrl} />}
+                           {streamUrls[cam.id] && <VideoStream streamUrl={streamUrls[cam.id]!} />}
                            <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1 text-center text-white text-xs font-semibold truncate pointer-events-none">
                                {cam.name}
                             </div>

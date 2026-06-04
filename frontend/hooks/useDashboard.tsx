@@ -724,6 +724,12 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
                 };
             }
             break;
+        case 'camera':
+            type = DeviceType.Camera;
+            // The live HLS stream is resolved lazily by CameraTile via HA's
+            // camera/stream command (entity_picture is the snapshot fallback).
+            internalState = { entityId: entity_id, entityPicture: attributes.entity_picture };
+            break;
         case 'person':
             type = DeviceType.OccupancySensor;
             internalState = state === 'home';
