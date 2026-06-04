@@ -135,7 +135,7 @@ const getDefaultConfig = (): StoredConfig => ({
   panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showSTHMAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
   connections: [
       {id: DeviceService.Lutron, cloudEndpoint: '', enabled: false},
-      {id: DeviceService.SmartThings, cloudEndpoint: 'http://localhost:8080', enabled: true, selectedLocations: [], sthmMappings: { armedStay: null, armedAway: null, disarmed: null }},
+      {id: DeviceService.SmartThings, cloudEndpoint: 'http://localhost:8080', enabled: false, selectedLocations: [], sthmMappings: { armedStay: null, armedAway: null, disarmed: null }},
       {id: DeviceService.Sonos, cloudEndpoint: 'http://localhost:5005', enabled: false},
       {id: DeviceService.HomeAssistant, cloudEndpoint: 'http://homeassistant.local:8123', apiKey: '', enabled: false},
       {id: DeviceService.Noonlight, cloudEndpoint: 'https://api-sandbox.noonlight.com/dispatch/v1/alarms', enabled: false, apiToken: '', address: '', city: '', state: '', zip: '', name: '', phone: ''},
@@ -2291,8 +2291,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const haAlarmoSensorsMsgIdRef = useRef<number | null>(null);
 
   const connectHaWebSocket = useCallback(() => {
-    if (!haConnection || useDemoMode) return;
-
+    // HA-only: the websocket is same-origin and always available — never gate
+    // realtime on a configured/enabled "connection". Without this the alarm
+    // state never populates and haWsState stays 'disconnected'.
     console.log('[HA WS] Connecting via home-assistant-js-websocket');
     setHaWsState('connecting');
 
@@ -2319,14 +2320,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 if (!new_state) return;
                 setLastHaEventAt(new Date());
 
-                // HA-only: resolve the alarm panel — configured entity, else the
-                // first discovered alarm_control_panel, else Alarmo's default.
-                // HA is always the alarm provider here.
-                const alarmEntityId = haConnection?.haAlarmEntityId
-                    || Array.from(deviceMap.values()).find(d => d.type === DeviceType.AlarmPanel)?.id
-                    || 'alarm_control_panel.alarmo';
+                // HA-only: match the alarm panel by configured entity if set,
+                // otherwise treat any alarm_control_panel entity as the panel
+                // (robust to naming and to deviceMap not yet being populated when
+                // this handler closure was created). HA is always the provider.
+                const configuredAlarm = haConnection?.haAlarmEntityId;
+                const isAlarmEntity = configuredAlarm
+                    ? entity_id === configuredAlarm
+                    : typeof entity_id === 'string' && entity_id.startsWith('alarm_control_panel.');
 
-                if (entity_id === alarmEntityId) {
+                if (isAlarmEntity) {
                     const haState = new_state.state as string;
                     const attrs = new_state.attributes || {};
 

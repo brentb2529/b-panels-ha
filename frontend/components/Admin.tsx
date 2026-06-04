@@ -2016,23 +2016,6 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                 <p className="text-xs text-gray-400">Visually group tiles</p>
                             </div>
                         </button>
-                        {isSmartThingsEnabled && !panel.tiles.some(t => t.deviceId === 'hometile-sthm-panel') && (
-                            <div 
-                                key="hometile-sthm-panel" 
-                                draggable 
-                                onDragStart={(e) => handleDragStart(e, 'device', 'hometile-sthm-panel')}
-                                className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab bg-blue-900/30 border border-blue-600"
-                            >
-                                <TilePreviewIcon type={DeviceType.AlarmPanel} />
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-semibold truncate">STHM Security Panel</p>
-                                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                                        <ServiceSourceIcon service={DeviceService.SmartThings} />
-                                        <span className="truncate">{sthmState ? sthmState.locationName : 'SmartThings'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                         {availableDevices.map(device => (
                             <div key={device.id} draggable onDragStart={(e) => handleDragStart(e, 'device', device.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab">
                                 <TilePreviewIcon type={device.type} />
