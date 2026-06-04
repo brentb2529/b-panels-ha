@@ -1,0 +1,80 @@
+import React from 'react';
+import { Device, DeviceType, TileConfig } from '../types';
+
+import DimmerTile from './tiles/DimmerTile';
+import ShadeTile from './tiles/ShadeTile';
+import SwitchTile from './tiles/SwitchTile';
+import SceneTile from './tiles/SceneTile';
+import SensorTile from './tiles/SensorTile';
+import ThermostatTile from './tiles/ThermostatTile';
+import AlarmTile from './tiles/AlarmTile';
+import WebFrameTile from './tiles/WebFrameTile';
+import HACustomCardTile from './tiles/HACustomCardTile';
+import FolderTile from './tiles/FolderTile';
+import CameraTile from './tiles/CameraTile';
+import UnknownTile from './tiles/UnknownTile';
+import CameraGroupTile from './tiles/CameraGroupTile';
+import GenericCapabilityTile from './tiles/GenericCapabilityTile';
+
+// Shared prop contract every tile understands. `device` is guaranteed here
+// because Tile.tsx resolves only after the not-found guard; individual tiles
+// may ignore props they don't use (e.g. most ignore `onEnlarge`).
+export interface TileProps {
+  tile: TileConfig;
+  device: Device;
+  onEnlarge?: (device: Device) => void;
+  isEditor?: boolean;
+  cornerClassName?: string;
+}
+
+export type TileComponent = React.ComponentType<TileProps>;
+
+// DeviceType → tile component. This is a 1:1 mirror of the former switch
+// statement in Tile.tsx: to add a bespoke tile, register it here once — no
+// switch case, no extra import in Tile.tsx. Several device types intentionally
+// share a tile (e.g. all the simple on/off types use SwitchTile).
+export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
+  [DeviceType.Light]: SwitchTile,
+  [DeviceType.Switch]: SwitchTile,
+  [DeviceType.SmartPlug]: SwitchTile,
+  [DeviceType.Siren]: SwitchTile,
+  [DeviceType.Lock]: SwitchTile,
+  [DeviceType.Valve]: SwitchTile,
+
+  [DeviceType.Dimmer]: DimmerTile,
+  [DeviceType.Shade]: ShadeTile,
+  [DeviceType.Scene]: SceneTile,
+
+  [DeviceType.TemperatureSensor]: SensorTile,
+  [DeviceType.MotionSensor]: SensorTile,
+  [DeviceType.ContactSensor]: SensorTile,
+  [DeviceType.OccupancySensor]: SensorTile,
+  [DeviceType.WaterSensor]: SensorTile,
+  [DeviceType.SmokeDetector]: SensorTile,
+  [DeviceType.CarbonMonoxideDetector]: SensorTile,
+
+  [DeviceType.Thermostat]: ThermostatTile,
+  [DeviceType.AlarmPanel]: AlarmTile,
+  [DeviceType.WebFrame]: WebFrameTile,
+  [DeviceType.HACustomCard]: HACustomCardTile,
+  [DeviceType.Camera]: CameraTile,
+  [DeviceType.CameraGroup]: CameraGroupTile,
+  [DeviceType.Folder]: FolderTile,
+
+  // Capability-driven fallback for HA entities whose domain isn't mapped to a
+  // bespoke tile above; presentation is derived from the entity's inferred
+  // capabilities rather than its DeviceType.
+  [DeviceType.Generic]: GenericCapabilityTile,
+};
+
+// Resolve the component for a device:
+//  1. an explicitly-registered tile for the DeviceType, else
+//  2. the capability-driven generic tile when the device carries inferred
+//     capabilities (so entities from new integrations render sensibly), else
+//  3. UnknownTile as the true last resort.
+export function resolveTile(device: Device): TileComponent {
+  const byType = tileByType[device.type];
+  if (byType) return byType;
+  if (device.capabilities && device.capabilities.length > 0) return GenericCapabilityTile;
+  return UnknownTile;
+}
