@@ -2444,10 +2444,18 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     setServiceDevices(current => produce(current, draft => {
                         const deviceIndex = draft.findIndex(d => d.id === entity_id);
                         if (deviceIndex !== -1) {
+                            // Refresh state/battery, and keep inferred capabilities
+                            // current (an entity can gain/lose features in HA).
                             draft[deviceIndex].state = updatedDevice.state;
-                            if (updatedDevice.battery !== undefined) {
-                                draft[deviceIndex].battery = updatedDevice.battery;
-                            }
+                            draft[deviceIndex].battery = updatedDevice.battery;
+                            draft[deviceIndex].capabilities = updatedDevice.capabilities;
+                            draft[deviceIndex].capabilityData = updatedDevice.capabilityData;
+                        } else {
+                            // A new entity appeared in HA after initial load (e.g. a
+                            // freshly-added integration like Whisker/Litter-Robot).
+                            // Add it live so it shows on panels and in the Panel
+                            // Builder without a reload. (devices is re-sorted by name.)
+                            draft.push(updatedDevice);
                         }
                     }));
                 }
