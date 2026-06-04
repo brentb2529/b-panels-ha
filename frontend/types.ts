@@ -32,6 +32,7 @@ export enum DeviceType {
   CarbonMonoxideDetector = 'CARBON_MONOXIDE_DETECTOR',
   Generator = 'GENERATOR',
   LitterRobot = 'LITTER_ROBOT',
+  Vacuum = 'VACUUM',
   InternetMonitor = 'INTERNET_MONITOR',
   FishingReport = 'FISHING_REPORT',
   HaywardPool = 'HAYWARD_POOL',
