@@ -29,13 +29,32 @@ const ShieldHalo = ({ color, glow, children }: { color: string; glow: boolean; c
 );
 
 const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds } = useDashboard();
-    const sthmState = device.state as STHMState;
+    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, sthmState: globalSthmState } = useDashboard();
     const isLocked = !!tile.isLocked;
 
-    // Defensive check to ensure we have a valid STHM state object
+    // A real alarm_control_panel device has a plain arm-state string for
+    // device.state; the rich STHMState (open sensors, modes, violation, entry
+    // delay) lives in the global alarm state populated from the HA websocket.
+    // Prefer an STHMState object on the device (synthetic panel) else the global.
+    const deviceState = device.state;
+    const sthmState: STHMState | null =
+        (deviceState && typeof deviceState === 'object' && 'armState' in (deviceState as any))
+            ? (deviceState as STHMState)
+            : globalSthmState;
+
+    // No alarm state yet (panel still connecting, or no alarm_control_panel) —
+    // show a neutral "connecting" placeholder rather than an error tile.
     if (!sthmState || typeof sthmState.armState === 'undefined') {
-        return <UnknownTile tile={tile} device={{ ...device, type: DeviceType.AlarmPanel }} isEditor={isEditor} cornerClassName={cornerClassName} />;
+        return (
+            <TileWrapper label={tile.label || 'Security'} isProtected isLocked={isLocked} isEditor={isEditor} className={cornerClassName}>
+                <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
+                    <ShieldHalo color="#9ca3af" glow={false}>
+                        <IconShield className="text-gray-300" style={fluidIcon(2)} />
+                    </ShieldHalo>
+                    <p className="text-gray-400" style={fluidTextXs}>Waiting for alarm…</p>
+                </div>
+            </TileWrapper>
+        );
     }
 
     // Open sensor labels — HA uses haOpenSensors dict; ST uses notifyingSensorIds filter
