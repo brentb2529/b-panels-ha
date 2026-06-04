@@ -1,0 +1,14 @@
+{
+  "title": "B-Panels",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up B-Panels",
+        "description": "Add the B-Panels dashboard to your Home Assistant sidebar. No configuration is required — open it from the sidebar after setup to start building your panels."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "B-Panels is already configured."
+    }
+  }
+}

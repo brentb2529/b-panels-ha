@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>B-Panels</title>
+    <script>
+      // Redirects non-hash URLs to their hash-based equivalents to support legacy bookmarks
+      // and direct URL entry on simple static servers. This prevents routing issues
+      // where the app would incorrectly default to the main dashboard.
+      (function() {
+        if (window.location.pathname === '/admin' && window.location.hash === '') {
+          window.location.replace('/#/admin' + window.location.search);
+        }
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Colors resolve to CSS custom properties (defined in the theme-tokens
+      // <style> below) using the `<alpha-value>` placeholder, so BOTH plain
+      // utilities (bg-gray-700) and opacity modifiers (bg-gray-900/50) work.
+      // Theming = swap the variables on :root / .light-mode / .ambient-night;
+      // no per-component changes needed for the neutral palette.
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              // Neutral surfaces (override Tailwind's own scale -> de-facto tokens)
+              'gray-900': 'rgb(var(--bg) / <alpha-value>)',
+              'gray-800': 'rgb(var(--surface-raised) / <alpha-value>)',
+              'gray-700': 'rgb(var(--surface) / <alpha-value>)',
+              'gray-600': 'rgb(var(--surface-control) / <alpha-value>)',
+              // Brand + semantic device accents
+              'brand-blue': 'rgb(var(--accent) / <alpha-value>)',
+              'accent': 'rgb(var(--accent) / <alpha-value>)',
+              'accent-light': 'rgb(var(--accent-light) / <alpha-value>)',
+              'accent-plug': 'rgb(var(--accent-plug) / <alpha-value>)',
+              'accent-water': 'rgb(var(--accent-water) / <alpha-value>)',
+              'accent-alert': 'rgb(var(--accent-alert) / <alpha-value>)',
+              'accent-warn': 'rgb(var(--accent-warn) / <alpha-value>)',
+            },
+            borderRadius: {
+              tile: 'var(--radius-tile)',
+              control: 'var(--radius-control)',
+            },
+            boxShadow: {
+              'elev-1': 'var(--elev-1)',
+              'elev-2': 'var(--elev-2)',
+            },
+          },
+        },
+      }
+    </script>
+    <style id="theme-tokens">
+      /* ---- Design tokens (RGB channel triplets so /opacity modifiers work) ---- */
+      :root {
+        /* Surfaces (cool slate ramp): bg < header < tile < control */
+        --bg: 14 19 26;
+        --surface-raised: 22 29 39;   /* header / admin sections (gray-800) */
+        --surface: 33 42 54;          /* tiles, dropdowns (gray-700)        */
+        --surface-control: 47 58 72;  /* inactive buttons/inputs (gray-600) */
+        /* Brand + semantic device accents */
+        --accent: 0 170 255;          /* brand blue          */
+        --accent-light: 251 191 36;   /* lights  -> amber    */
+        --accent-plug: 52 211 153;    /* plugs   -> green    */
+        --accent-water: 56 189 248;   /* water   -> blue     */
+        --accent-alert: 248 113 113;  /* alarm   -> red      */
+        --accent-warn: 251 146 60;    /* warning -> orange   */
+        /* Base inherited text color (used by the body; elements with an
+           explicit text-gray-* class still win where set). */
+        --text: 243 245 248;
+        /* Shape + elevation */
+        --radius-tile: 1rem;
+        --radius-control: 0.75rem;
+        --elev-1: 0 1px 2px rgba(0,0,0,0.4), 0 10px 24px -8px rgba(0,0,0,0.6);
+        --elev-2: 0 14px 40px -8px rgba(0,0,0,0.65);
+        /* Frosted-glass tile surface (alpha applied over --surface). Kept high
+           so tile text stays legible at a distance — the gradient must not
+           bleed through behind labels. */
+        --tile-alpha: 0.94;
+        --tile-border: rgba(255,255,255,0.08);
+        --tile-blur: 6px;
+        /* Ambient canvas gradient */
+        --bg-gradient: radial-gradient(125% 105% at 30% -10%, rgb(28 38 52) 0%, rgb(var(--bg)) 55%, rgb(7 10 15) 100%);
+      }
+
+      /* Light mode: white surfaces, soft cool canvas. Accent inherits :root. */
+      body.light-mode {
+        --bg: 238 241 245;
+        --surface-raised: 255 255 255;
+        --surface: 255 255 255;
+        --surface-control: 229 231 235;
+        --text: 31 41 55;             /* near-black so inherited text reads on white */
+        --elev-1: 0 1px 2px rgba(0,0,0,0.07), 0 8px 20px -8px rgba(0,0,0,0.14);
+        --elev-2: 0 14px 34px -10px rgba(0,0,0,0.2);
+        --tile-alpha: 0.97;
+        --tile-border: rgba(0,0,0,0.07);
+        --bg-gradient: radial-gradient(125% 105% at 30% -10%, #ffffff 0%, rgb(var(--bg)) 60%, #e2e8f0 100%);
+      }
+
+      /* Ambient night: dim, warm, low-contrast for a wall panel after dark. */
+      body.ambient-night {
+        --bg: 10 9 8;
+        --surface-raised: 20 17 13;
+        --surface: 27 23 18;
+        --surface-control: 39 32 25;
+        --accent: 217 138 58;         /* warm amber, less blue light at night */
+        --text: 216 205 190;          /* warm dim */
+        --tile-alpha: 0.92;
+        --tile-border: rgba(255,205,150,0.06);
+        --bg-gradient: radial-gradient(125% 105% at 50% -10%, rgb(28 22 14) 0%, rgb(var(--bg)) 70%, rgb(6 5 4) 100%);
+      }
+
+      /* Ambient gradient canvas: painted on the body and any base bg-gray-900
+         container, viewport-fixed so it stays seamless behind glass tiles. */
+      body {
+        color: rgb(var(--text));
+        background-color: rgb(var(--bg));
+        background-image: var(--bg-gradient);
+        background-attachment: fixed;
+        background-repeat: no-repeat;
+        background-size: cover;
+      }
+      .bg-gray-900 {
+        background-image: var(--bg-gradient);
+        background-attachment: fixed;
+        background-repeat: no-repeat;
+        background-size: cover;
+      }
+
+      /* ---- Touch-friendly range slider (TileSlider) ---- */
+      .tp-range {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 0.75rem;
+        border-radius: 9999px;
+        outline: none;
+      }
+      .tp-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 9999px;
+        /* Glossy bead: top-lit highlight fading to a soft grey for 3D depth */
+        background: radial-gradient(circle at 35% 28%, #ffffff 0%, #f1f4f8 45%, #d6dbe2 100%);
+        border: 2px solid var(--tp-thumb, #ffffff);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.9);
+        cursor: pointer;
+        transition: transform 0.1s ease;
+      }
+      .tp-range:active::-webkit-slider-thumb { transform: scale(1.15); }
+      .tp-range::-moz-range-thumb {
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 9999px;
+        background: radial-gradient(circle at 35% 28%, #ffffff 0%, #f1f4f8 45%, #d6dbe2 100%);
+        border: 2px solid var(--tp-thumb, #ffffff);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.9);
+        cursor: pointer;
+      }
+
+      /* Invalid-entry shake (e.g. wrong PIN) */
+      @keyframes tp-shake {
+        0%, 100% { transform: translateX(0); }
+        20%, 60% { transform: translateX(-7px); }
+        40%, 80% { transform: translateX(7px); }
+      }
+      .animate-shake { animation: tp-shake 0.4s ease-in-out; }
+
+      /* Respect reduced-motion: kill decorative loops (pulsing alarm screens,
+         shake, bounce) for users/panels that ask for less animation. */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+    </style>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+  <body class="bg-gray-900">
+    <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
+  </body>
+</html>

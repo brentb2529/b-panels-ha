@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-attach:
+    name: Build frontend & attach integration zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the SPA into the integration
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stamp manifest version from the release tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          python - "$TAG" <<'PY'
+          import json, sys
+          p = "custom_components/b_panels/manifest.json"
+          m = json.load(open(p))
+          m["version"] = sys.argv[1]
+          json.dump(m, open(p, "w"), indent=2)
+          open(p, "a").write("\n")
+          PY
+
+      - name: Zip the integration (with built frontend)
+        run: |
+          cd custom_components/b_panels
+          zip -r "${GITHUB_WORKSPACE}/b_panels.zip" . \
+            -x '*.map'
+
+      - name: Attach zip to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: b_panels.zip
