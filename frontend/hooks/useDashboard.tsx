@@ -1280,11 +1280,29 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, [connections]);
 
   const fetchDevicesFromServices = useCallback(async () => {
-    console.log('Fetching devices... useDemoMode:', useDemoMode);
+    // HA-only: Home Assistant is the sole backend (same-origin, always-on).
+    // Fetch every HA entity and map it to a Device; unmapped domains fall
+    // through to the generic capability tile, so new HA core / HACS devices
+    // appear automatically with no config.
     setIsDeviceLoading(true);
     setServiceError(null);
     let fetchedDevices: Device[] = [];
+    try {
+        const haEntities = await homeAssistantService.getDevices();
+        fetchedDevices = haEntities
+            .map(mapHaEntityToInternalDevice)
+            .filter((d): d is Device => d !== null);
+    } catch (error) {
+        const errorMessage = (error as Error).message;
+        console.error(`[Home Assistant] Failed to fetch devices:`, errorMessage);
+        setServiceError(`[Home Assistant] ${errorMessage}`);
+    }
+    fetchedDevices.sort((a, b) => a.name.localeCompare(b.name));
+    setServiceDevices(fetchedDevices);
+    setIsDeviceLoading(false);
+    return;
 
+    // --- legacy multi-provider path below is unreachable; removed in cleanup ---
     if (useDemoMode) {
       fetchedDevices = await demoService.getDevices();
       setSthmState(null);
@@ -2799,17 +2817,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    if (useDemoMode || !haConnection) {
-        teardownHa();
-        return;
-    }
-
+    // HA is always-on (same-origin). Connect the realtime websocket
+    // unconditionally so device state stays live.
     connectHaWebSocket();
-
     return () => {
         teardownHa();
     };
-  }, [useDemoMode, haConnection, connectHaWebSocket, teardownHa]);
+  }, [connectHaWebSocket, teardownHa]);
 
   useEffect(() => {
     // For HA provider: derive readiness from Alarmo's configured sensor list
