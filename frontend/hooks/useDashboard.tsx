@@ -1142,6 +1142,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds]);
 
+  // Diagnostic: report composite grouping so issues are visible in the console.
+  useEffect(() => {
+    console.log(`[B-Panels] robot composite cards: ${robotComposites.length}`,
+      robotComposites.map(r => ({ id: r.id, name: r.name, stats: ((r.state as any)?.stats || []).length })));
+  }, [robotComposites.length]);
+
 
   const allDevicesForUpdate = useRef<Device[]>([]);
   // Track selected locations for WebSocket handler (location filtering)

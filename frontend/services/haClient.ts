@@ -140,22 +140,31 @@ export async function callService(
 // vacuum + waste + litter sensors). Uses the display-oriented registry command,
 // which is available to non-admin users. Returns {} if unavailable.
 export async function getEntityDeviceMap(): Promise<Record<string, string>> {
-    try {
-        const conn = await getConnection();
-        const res: any = await conn.sendMessagePromise({
-            type: 'config/entity_registry/list_for_display',
-        });
-        const entities: any[] = Array.isArray(res?.entities) ? res.entities : Array.isArray(res) ? res : [];
-        const map: Record<string, string> = {};
-        for (const e of entities) {
-            const eid = e.ei ?? e.entity_id;
-            const did = e.di ?? e.device_id;
-            if (eid && did) map[eid] = did;
+    const conn = await getConnection();
+    const map: Record<string, string> = {};
+    // Prefer the full registry (admin users): each entry has entity_id +
+    // device_id directly. Fall back to the display list (non-admin) whose
+    // entries use the short keys { ei: entity_id, di: device_id }.
+    const commands = ['config/entity_registry/list', 'config/entity_registry/list_for_display'];
+    for (const type of commands) {
+        try {
+            const res: any = await conn.sendMessagePromise({ type });
+            const entities: any[] = Array.isArray(res?.entities) ? res.entities : Array.isArray(res) ? res : [];
+            for (const e of entities) {
+                const eid = e.entity_id ?? e.ei;
+                const did = e.device_id ?? e.di;
+                if (eid && did) map[eid] = did;
+            }
+            if (Object.keys(map).length > 0) {
+                console.log(`[B-Panels] entity→device map: ${Object.keys(map).length} entities via ${type}`);
+                return map;
+            }
+        } catch (e) {
+            console.warn(`[B-Panels] ${type} unavailable:`, e);
         }
-        return map;
-    } catch {
-        return {};
     }
+    console.warn('[B-Panels] No entity→device map available; composite device cards (e.g. Litter-Robot) will fall back to individual tiles.');
+    return map;
 }
 
 // --- Camera streams -----------------------------------------------------------
