@@ -983,7 +983,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const { panels, connections, useDemoMode, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig, batteryReportConfig } = config;
+  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig, batteryReportConfig } = config;
+  // HA-only: demo mode is never used. Force it off regardless of any stale
+  // saved config (older builds persisted useDemoMode:true, which routed device
+  // control to a no-op demo service so toggles never reached Home Assistant).
+  const useDemoMode = false;
   const [isDeviceLoading, setIsDeviceLoading] = useState(true);
   const [sthmState, setSthmState] = useState<STHMState | null>(null);
   /// Tracks the previous arm state so the next effect can detect when
@@ -2470,7 +2474,17 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     (async () => {
         try {
             const conn = await haClient.getConnection();
-            setHaWsState('connected');
+            // Reflect the real socket state and keep it accurate as the library
+            // auto-reconnects, rather than latching a single value.
+            setHaWsState(conn.connected ? 'connected' : 'connecting');
+            const onReady = () => setHaWsState('connected');
+            const onDisc = () => setHaWsState('connecting');
+            conn.addEventListener('ready', onReady);
+            conn.addEventListener('disconnected', onDisc);
+            haUnsubsRef.current.push(() => {
+                conn.removeEventListener('ready', onReady);
+                conn.removeEventListener('disconnected', onDisc);
+            });
 
             // Realtime entity state via the library's entity subscription.
             // It emits the full entity collection on each change; we synthesize
@@ -2487,23 +2501,28 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 prevEntities = entities;
             });
             haUnsubsRef.current.push(unsubEntities);
+            setHaWsState('connected');
 
-            // Alarmo custom events (failed-to-arm / ready-modes).
-            const unsubFail = await conn.subscribeEvents(
-                (ev: any) => handleEvent('alarmo_failed_to_arm', ev?.data),
-                'alarmo_failed_to_arm'
-            );
-            haUnsubsRef.current.push(unsubFail);
-            const unsubModes = await conn.subscribeEvents(
-                (ev: any) => handleEvent('alarmo_ready_to_arm_modes_updated', ev?.data),
-                'alarmo_ready_to_arm_modes_updated'
-            );
-            haUnsubsRef.current.push(unsubModes);
-
-            // Initial fetch + 30s poll of Alarmo's configured sensor list.
-            requestAlarmoSensors();
-            if (haSensorRefreshTimerRef.current) clearInterval(haSensorRefreshTimerRef.current);
-            haSensorRefreshTimerRef.current = setInterval(requestAlarmoSensors, 30000);
+            // Alarmo custom events + sensor list are best-effort: if Alarmo is
+            // not installed these must NOT knock the connection to
+            // 'disconnected'. The core entity subscription above is what matters.
+            try {
+                const unsubFail = await conn.subscribeEvents(
+                    (ev: any) => handleEvent('alarmo_failed_to_arm', ev?.data),
+                    'alarmo_failed_to_arm'
+                );
+                haUnsubsRef.current.push(unsubFail);
+                const unsubModes = await conn.subscribeEvents(
+                    (ev: any) => handleEvent('alarmo_ready_to_arm_modes_updated', ev?.data),
+                    'alarmo_ready_to_arm_modes_updated'
+                );
+                haUnsubsRef.current.push(unsubModes);
+                requestAlarmoSensors();
+                if (haSensorRefreshTimerRef.current) clearInterval(haSensorRefreshTimerRef.current);
+                haSensorRefreshTimerRef.current = setInterval(requestAlarmoSensors, 30000);
+            } catch (e) {
+                console.warn('[HA WS] Alarmo subscriptions unavailable (Alarmo not installed?):', e);
+            }
         } catch (e) {
             console.warn('[HA WS] Connection failed:', e);
             setHaWsState('disconnected');
