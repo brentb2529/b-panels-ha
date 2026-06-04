@@ -427,24 +427,19 @@ const Dashboard = () => {
       )}
 
       {!activeDevicePanel && <div
-        className="grid gap-2.5 flex-1 min-h-0"
+        className={`grid gap-2.5 flex-1 min-h-0 ${fitEnabled ? '' : 'overflow-y-auto'}`}
         style={{
             gridTemplateColumns: `repeat(${activePanel.columns || 8}, minmax(0, 1fr))`,
-            // Native iPad / admin: minmax(rowHeight, 1fr) — rows stay at the
-            // configured height as a FLOOR, but stretch evenly to fill the
-            // available vertical space in `main` when there's room.
-            // Eliminates the "white space at the bottom" the user hit on the
-            // iPad kiosk without changing tile design at smaller breakpoints.
+            // Headless kiosk fit: minmax(0, 1fr) — rows compress to exactly fill
+            // the definite screen height so the whole panel fits edge-to-edge.
             //
-            // Browser / Fully-Kiosk fit: minmax(0, 1fr) — drop the floor so
-            // the rows compress to exactly fill the definite h-screen height.
-            // The whole panel fits the window edge-to-edge with no overflow,
-            // no clipped bottom row, and no scaling transform (which a long
-            // content tile like News would otherwise break by inflating the
-            // measured height).
+            // Normal (browser / native shell): honor the configured rowHeight
+            // exactly so tile sizes match the Panel Builder. A 2-row tile is
+            // 2×rowHeight, not stretched to fill the viewport. The grid scrolls
+            // if the panel is taller than the window.
             gridAutoRows: fitEnabled
                 ? 'minmax(0, 1fr)'
-                : `minmax(${activePanel.rowHeight || 120}px, 1fr)`,
+                : `${activePanel.rowHeight || 120}px`,
         }}
       >
         {/* Render Highlight Sections */}
