@@ -18,8 +18,10 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          # `brands` requires a merged PR in home-assistant/brands. Drop this
-          # line once the B-Panels brand assets are accepted upstream.
+          # home-assistant/brands no longer accepts custom integrations (HA
+          # 2026.3+). The icon ships locally in custom_components/b_panels/brand/
+          # and is served via HA's brands proxy API, so there is no
+          # brands.home-assistant.io entry for the HACS brands check to find.
           ignore: brands
 
   hassfest:
