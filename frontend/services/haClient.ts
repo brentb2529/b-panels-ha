@@ -134,6 +134,30 @@ export async function callService(
     await haCallService(conn, domain, service, data, target as any);
 }
 
+// --- Entity → device grouping -------------------------------------------------
+// Map each entity_id to the HA device it belongs to, so the UI can group an
+// integration's split entities back into one tile (e.g. a Litter-Robot's
+// vacuum + waste + litter sensors). Uses the display-oriented registry command,
+// which is available to non-admin users. Returns {} if unavailable.
+export async function getEntityDeviceMap(): Promise<Record<string, string>> {
+    try {
+        const conn = await getConnection();
+        const res: any = await conn.sendMessagePromise({
+            type: 'config/entity_registry/list_for_display',
+        });
+        const entities: any[] = Array.isArray(res?.entities) ? res.entities : Array.isArray(res) ? res : [];
+        const map: Record<string, string> = {};
+        for (const e of entities) {
+            const eid = e.ei ?? e.entity_id;
+            const did = e.di ?? e.device_id;
+            if (eid && did) map[eid] = did;
+        }
+        return map;
+    } catch {
+        return {};
+    }
+}
+
 // --- Camera streams -----------------------------------------------------------
 // Resolve a live HLS stream URL for a Home Assistant `camera` entity via HA's
 // stream component (the `camera/stream` WS command). HA replies with a

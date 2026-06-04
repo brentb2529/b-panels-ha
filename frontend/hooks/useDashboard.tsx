@@ -986,6 +986,14 @@ export const useDashboard = () => {
 
 export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [serviceDevices, setServiceDevices] = useState<Device[]>([]);
+  // entity_id -> HA device_id, used to group an integration's split entities
+  // (e.g. a Litter-Robot's vacuum + sensors) back into one composite tile.
+  const [entityDeviceMap, setEntityDeviceMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    haClient.getEntityDeviceMap().then(m => { if (!cancelled) setEntityDeviceMap(m); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [syntheticVirtualDevices, setSyntheticVirtualDevices] = useState<Device[]>([]);
   const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
@@ -1065,15 +1073,74 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [storedVirtualDevices, syntheticVirtualDevices]);
 
+  // Group a robot device's entities (vacuum + all its sensors/switches) into one
+  // composite "robot" device so it renders as a single beautified card instead
+  // of a dozen separate tiles. Recomputed from live serviceDevices, so the card
+  // stays current as member entities update. (Litter-Robot/Whisker and any
+  // vacuum-based device.)
+  const { robotComposites, robotMemberIds } = useMemo(() => {
+    const empty = { robotComposites: [] as Device[], robotMemberIds: new Set<string>() };
+    if (!entityDeviceMap || Object.keys(entityDeviceMap).length === 0) return empty;
+
+    const byDevice = new Map<string, Device[]>();
+    for (const d of serviceDevices) {
+      const did = entityDeviceMap[d.id];
+      if (!did) continue;
+      const arr = byDevice.get(did);
+      if (arr) arr.push(d); else byDevice.set(did, [d]);
+    }
+
+    const stripPrefix = (label: string, prefix: string) => {
+      const t = (label || '').trim();
+      return t.toLowerCase().startsWith(prefix.toLowerCase())
+        ? (t.slice(prefix.length).replace(/^[\s:_-]+/, '').trim() || t)
+        : t;
+    };
+    const fmt = (d: Device): string => {
+      const s = d.state;
+      if (typeof s === 'boolean') return s ? 'On' : 'Off';
+      if (s === '' || s === null || s === undefined) return '—';
+      const str = String(s);
+      if (str === 'unavailable' || str === 'unknown') return str.charAt(0).toUpperCase() + str.slice(1);
+      const unit = (d.capabilityData as any)?.unit;
+      const num = Number(str);
+      if (str.trim() !== '' && !Number.isNaN(num)) return unit ? `${num} ${unit}` : `${num}`;
+      return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
+    const composites: Device[] = [];
+    const members = new Set<string>();
+    byDevice.forEach((grp, did) => {
+      const vac = grp.find(d => d.type === DeviceType.Vacuum);
+      if (!vac) return; // only vacuum-based devices (robots) become composites
+      const stats = grp
+        .filter(d => d.id !== vac.id)
+        .map(d => ({ id: d.id, label: stripPrefix(d.name, vac.name), value: fmt(d) }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+      composites.push({
+        id: `robot:${did}`,
+        name: vac.name,
+        type: DeviceType.LitterRobot,
+        service: DeviceService.HomeAssistant,
+        state: { status: String(vac.state ?? ''), stats, isLitter: /litter|whisker/i.test(`${vac.name} ${vac.id}`) },
+        battery: vac.battery,
+      });
+      grp.forEach(d => members.add(d.id));
+    });
+    return { robotComposites: composites, robotMemberIds: members };
+  }, [serviceDevices, entityDeviceMap]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
-    // Then add service devices, overwriting any virtual device with the same ID
-    serviceDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
-    
+    // Then service devices, except those folded into a robot composite card.
+    serviceDevices.forEach(d => { if (!robotMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d); });
+    // Finally the composite robot cards.
+    robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds]);
 
 
   const allDevicesForUpdate = useRef<Device[]>([]);
