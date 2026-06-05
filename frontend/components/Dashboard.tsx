@@ -4,7 +4,7 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { useDashboard } from '../hooks/useDashboard';
 import Tile from './Tile';
 import { IconArrowLeft, IconRefreshCw, IconAlertTriangle } from './icons';
-import EnlargedCameraModal from './EnlargedCameraModal';
+import CameraControlModal from './CameraControlModal';
 import { Device, DeviceType, DeviceService } from '../types';
 import CameraGroupModal from './CameraGroupModal';
 import IntrusionModal from './IntrusionModal';
@@ -355,7 +355,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {enlargedCamera && <EnlargedCameraModal device={enlargedCamera} onClose={() => setEnlargedCamera(null)} />}
+      {enlargedCamera && <CameraControlModal device={enlargedCamera} onClose={() => setEnlargedCamera(null)} />}
       {enlargedCameraGroup && <CameraGroupModal device={enlargedCameraGroup} onClose={() => setEnlargedCameraGroup(null)} />}
       {!activeDevicePanel && activePanel.tiles.length === 0 && (
          <div className="text-center text-gray-400 p-8 bg-gray-800 rounded-lg">

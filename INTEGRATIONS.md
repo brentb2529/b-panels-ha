@@ -30,7 +30,7 @@ from this fork because they cannot work without that backend. For each, it lists
 | **Lutron LEAP** | Caséta/RA3 lights & shades | dimmer / shade | HA **Lutron Caséta** integration → `light` / `cover` | ✅ covered |
 | **Sonos** (node-sonos-http-api) | Player transport, sources, grouping | media-transport | HA **Sonos** integration → `media_player` | ✅ covered |
 | **Noonlight** | Panic / professional dispatch | panic button | HA **Noonlight** integration (see sibling repo `hass-noonlight`) → `switch`/`binary_sensor` | ✅ covered |
-| **RTSP / MediaMTX relay** | Camera stream proxy | camera | HA **camera** entities (HLS/WebRTC via HA `stream`) | ⚠️ needs camera-tile rework (see below) |
+| **RTSP / MediaMTX relay** | Camera stream proxy | camera | HA **camera** entities (HLS via HA `stream`); UniFi Protect, etc. | ✅ covered — native HLS tile + spotlight control modal |
 | **EnergyTrak / Generac** | Generator/energy telemetry | sensor-readonly | HA **Generac** integration → `sensor` | ✅ covered |
 | **Whisker / Litter-Robot** | Robot status & cycle control | sensor + toggle | HA **Litter-Robot** integration → `vacuum`/`sensor`/`switch` | ✅ covered |
 | **Tempest (WeatherFlow)** | Local weather station | sensor-readonly / weather | HA **WeatherFlow Tempest** integration → `weather`/`sensor` | ✅ covered |
@@ -120,9 +120,16 @@ domain we don't yet render generically (`fan` % / `humidifier` target /
 
 ## Items needing a small re-wire (not just deletion)
 
-- **Cameras** — drop the RTSP/MediaMTX relay; use HA `camera` entities and HA's
-  `stream` component (HLS) or WebRTC. Camera tiles should resolve the stream via
-  HA, not a relay `cloudEndpoint`.
+- **Cameras** — ✅ done. The RTSP/MediaMTX relay is gone; camera tiles resolve a
+  live HLS stream directly from HA's `stream` component (`getCameraStreamUrl`).
+  Clicking a camera opens `CameraControlModal` — a spotlight view + thumbnail
+  strip across all cameras + a control rail that auto-renders the camera's
+  sibling control entities (recording mode, IR, HDR, mic, detections…) via the
+  generic capability path, plus live detection chips and read-only status. For
+  UniFi Protect, the controllable `switch`/`select`/`number` entities require
+  the integration's UniFi account to have **local admin** rights (otherwise HA
+  exposes read-only mirrors only); once present they appear in the rail with no
+  code change.
 - **TTS broadcast / notifications** — re-point at HA `tts` + `media_player`
   (or `notify`) services instead of the api-server fan-out.
 - **Alarm** — already HA-native via **Alarmo** (or any `alarm_control_panel`).
