@@ -5,25 +5,24 @@ interface FitToWindowProps {
     children: React.ReactNode;
 }
 
-// Browser / Fully-Kiosk fit-to-window, modeled on the (perfect) native
-// iPad shell: the panel fills the full width and is squished vertically
-// only as much as needed to fit the viewport height — so it fills the
-// screen edge-to-edge with NO letterbox side bars, and translucent tiles
-// composite over the app's own background (this wrapper is transparent,
-// never a solid colour, so light/dark theme renders correctly).
+// Uniform scale-to-fit, modeled on the (perfect) native iPad shell. The panel
+// renders at its intrinsic *design* size (a fixed landscape grid of square
+// cells — see Dashboard), and this wrapper scales that whole block by a single
+// factor to fit the viewport, then centers it. Because both axes scale by the
+// same factor, tile proportions are ALWAYS preserved — no tall-skinny squish on
+// a phone, no distortion in any orientation.
 //
-// scale = min(1, vh / naturalHeight): when the panel already fits, scale
-// is 1 and the grid's `1fr` rows stretch to fill the full width AND height
-// (just like the iPad); when it's taller than the viewport, the WHOLE panel
-// is scaled down UNIFORMLY (both axes by the same factor) so tile
-// proportions are preserved — never squished. A uniform shrink can leave a
-// little transparent room on the right; that shows the app's own background
-// (the wrapper is transparent), not black bars. The earlier scaleY-only
-// version filled the width but distorted every tile vertically.
+//   scale = min(vw / naturalWidth, vh / naturalHeight)
 //
-// Gated by `enabled`: false inside the native iPad app
-// (window.__bpanelsNative), where SwiftUI does the scaling — there we
-// render children verbatim, no wrapper.
+// The factor can be <1 (shrink to fit a small/portrait screen) or >1 (grow to
+// fill a large display). Any leftover space around the scaled panel is
+// transparent — it shows the app/theme background, not letterbox bars (the
+// wrapper sets no colour). This is what makes the dashboard look right in every
+// mode: browser, phone, iPad, and the HA sidebar panel.
+//
+// Disabled (`enabled=false`) inside the native iPad app (window.__bpanelsNative,
+// SwiftUI scales) and on non-dashboard routes (Admin/login scroll normally) —
+// there we render children verbatim, no wrapper.
 const FitToWindow: React.FC<FitToWindowProps> = ({ enabled, children }) => {
     const innerRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
@@ -40,11 +39,14 @@ const FitToWindow: React.FC<FitToWindowProps> = ({ enabled, children }) => {
         const measure = () => {
             cancelAnimationFrame(raf);
             raf = requestAnimationFrame(() => {
-                // scrollHeight is the content's full layout height and is
-                // unaffected by the transform, so this never feeds back.
-                const natural = el.scrollHeight;
-                const vh = window.innerHeight;
-                setScale(natural > 0 ? Math.min(1, vh / natural) : 1);
+                // offsetWidth/Height are the untransformed layout size, so this
+                // never feeds back through the scale transform.
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                if (w > 0 && h > 0) {
+                    const s = Math.min(window.innerWidth / w, window.innerHeight / h);
+                    setScale(s > 0 && Number.isFinite(s) ? s : 1);
+                }
             });
         };
 
@@ -64,13 +66,13 @@ const FitToWindow: React.FC<FitToWindowProps> = ({ enabled, children }) => {
     if (!enabled) return <>{children}</>;
 
     return (
-        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div
                 ref={innerRef}
                 style={{
-                    width: '100vw',
+                    flex: '0 0 auto',
                     transform: `scale(${scale})`,
-                    transformOrigin: 'top left',
+                    transformOrigin: 'center center',
                 }}
             >
                 {children}
