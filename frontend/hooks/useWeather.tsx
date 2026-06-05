@@ -2,7 +2,25 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { IconSun, IconCloud, IconCloudRain, IconCloudSnow, IconCloudLightning, IconCloudSun } from '../components/icons';
 import { useDashboard } from './useDashboard';
+import * as haClient from '../services/haClient';
 import { WeatherData, ForecastDay } from '../types';
+
+// HA weather `condition` string -> description + icon (parity with the Tempest
+// display in the original). Mirrors mapWeatherCode but for HA's condition enum.
+const mapHaCondition = (cond: string): { description: string; icon: React.ReactNode } => {
+  const p = { className: 'w-6 h-6 text-white' };
+  switch ((cond || '').toLowerCase()) {
+    case 'sunny': case 'clear-night': return { description: 'Clear', icon: <IconSun {...p} /> };
+    case 'partlycloudy': return { description: 'Partly cloudy', icon: <IconCloudSun {...p} /> };
+    case 'cloudy': return { description: 'Cloudy', icon: <IconCloud {...p} /> };
+    case 'fog': return { description: 'Fog', icon: <IconCloud {...p} /> };
+    case 'rainy': case 'pouring': return { description: 'Rain', icon: <IconCloudRain {...p} /> };
+    case 'snowy': case 'snowy-rainy': return { description: 'Snow', icon: <IconCloudSnow {...p} /> };
+    case 'lightning': case 'lightning-rainy': return { description: 'Thunderstorm', icon: <IconCloudLightning {...p} /> };
+    case 'windy': case 'windy-variant': return { description: 'Windy', icon: <IconCloudSun {...p} /> };
+    default: return { description: cond ? cond.charAt(0).toUpperCase() + cond.slice(1) : 'Cloudy', icon: <IconCloud {...p} /> };
+  }
+};
 
 const WEATHER_CACHE_KEY = 'homeTileWeatherCache';
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
@@ -68,7 +86,54 @@ export const useWeather = () => {
   // Once we've ever loaded weather, keep showing the last-known value through
   // transient refresh failures instead of flashing "Weather unavailable".
   const hasDataRef = useRef(false);
+  const [isTempest, setIsTempest] = useState(false);
   const { weatherZipCode } = useDashboard();
+
+  // Prefer a Home Assistant weather entity (e.g. a Tempest station) — the
+  // user's real local weather — over the Open-Meteo fallback.
+  const fetchFromHa = useCallback(async (): Promise<WeatherData | null> => {
+    let states: any[];
+    try { states = await haClient.getStates(); } catch { return null; }
+    const weatherEnts = (states || []).filter(s => s.entity_id.startsWith('weather.'));
+    if (!weatherEnts.length) return null;
+    // Prefer a Tempest/WeatherFlow station, else the first weather entity.
+    const w = weatherEnts.find(s => /tempest|weatherflow/i.test(s.attributes?.attribution || '')) || weatherEnts[0];
+    const a = w.attributes || {};
+    const cond = String(w.state || '');
+    const tempest = /tempest|weatherflow/i.test(a.attribution || '');
+
+    let forecast: ForecastDay[] = [];
+    try {
+      const fcRaw = await haClient.getWeatherForecast(w.entity_id);
+      forecast = fcRaw.slice(0, 7).map((d: any) => {
+        const dt = new Date(d.datetime);
+        return {
+          date: d.datetime,
+          dayOfWeek: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+          icon: mapHaCondition(d.condition).icon,
+          highTemp: Math.round(d.temperature ?? 0),
+          lowTemp: Math.round(d.templow ?? d.temperature ?? 0),
+        };
+      });
+    } catch { /* forecast best-effort */ }
+
+    const m = mapHaCondition(cond);
+    setIsTempest(tempest);
+    return {
+      temperature: Math.round(a.temperature ?? 0),
+      feelsLike: a.apparent_temperature,
+      humidity: a.humidity,
+      description: m.description,
+      icon: m.icon,
+      forecast,
+      windSpeed: a.wind_speed,
+      windGust: a.wind_gust_speed,
+      windDirection: a.wind_bearing,
+      pressure: a.pressure,
+      uvIndex: a.uv_index,
+      stationName: a.friendly_name,
+    };
+  }, []);
 
   // Fetch from Open-Meteo
   const fetchFromOpenMeteo = useCallback(async () => {
@@ -182,6 +247,20 @@ export const useWeather = () => {
       // background refreshes we keep the current value to avoid flicker.
       if (!hasDataRef.current) setLoading(true);
 
+      // Prefer the HA weather entity (Tempest) — the user's real station.
+      try {
+        const haData = await fetchFromHa();
+        if (haData) {
+          setWeather(haData);
+          setError(null);
+          hasDataRef.current = true;
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('[Weather] HA weather fetch failed, falling back:', e);
+      }
+
       // Check cache first for Open-Meteo data
       const cachedWeather = localStorage.getItem(WEATHER_CACHE_KEY);
       if (cachedWeather) {
@@ -224,7 +303,7 @@ export const useWeather = () => {
     const intervalId = setInterval(fetchWeather, CACHE_DURATION);
     return () => clearInterval(intervalId);
 
-  }, [weatherZipCode, fetchFromOpenMeteo]);
+  }, [weatherZipCode, fetchFromOpenMeteo, fetchFromHa]);
 
-  return { weather, loading, error, isTempest: false };
+  return { weather, loading, error, isTempest };
 };
