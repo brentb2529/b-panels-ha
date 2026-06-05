@@ -15,6 +15,7 @@ auth of its own and stores no tokens.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from urllib.parse import urlparse
@@ -26,10 +27,11 @@ from aiohttp import web
 from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -58,11 +60,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_save_config)
     websocket_api.async_register_command(hass, websocket_rss)
     websocket_api.async_register_command(hass, websocket_generator)
-    # HTTP endpoint the native iPad kiosk app polls for its idle/kiosk config.
-    # The native app has no HA token, so this is unauthenticated — it therefore
-    # exposes ONLY the non-sensitive per-panel idle settings (screen timeout,
-    # screen-saver, dim/mute schedules, motion-wake), never connections/tokens/users.
+    # HTTP endpoints the native iPad kiosk app uses (it has no HA token, so these
+    # are unauthenticated and carry only non-sensitive data). These replace the
+    # old Node api-server the kiosk used to talk to:
+    #   GET  /api/b_panels/idle_config              — per-panel idle/kiosk settings
+    #   POST /api/b_panels/heartbeat                — panel "online" reporting
+    #   GET  /api/b_panels/command_channel  (WS)    — receives push commands
+    #   POST /api/b_panels/panels/{id}/screenshot   — screenshot upload sink
     hass.http.register_view(BPanelsIdleConfigView)
+    hass.http.register_view(BPanelsHeartbeatView)
+    hass.http.register_view(BPanelsScreenshotView)
+    hass.http.register_view(BPanelsCommandChannelView)
+
+    # Service to push a command to connected kiosk panels (remote screen on/off,
+    # brightness, TTS, reload, switch panel, screenshot). The command SOURCE is
+    # authenticated (an HA service call from a user/automation); the device WS is
+    # receive-only. Callable from automations, scripts, or the dashboard.
+    async def _handle_command_service(call: ServiceCall) -> None:
+        await _async_send_command(hass, call)
+
+    hass.services.async_register(
+        DOMAIN, "command", _handle_command_service, schema=COMMAND_SERVICE_SCHEMA
+    )
     return True
 
 
@@ -97,6 +116,152 @@ class BPanelsIdleConfigView(HomeAssistantView):
                     }
                 )
         return self.json({"panels": panels})
+
+
+class BPanelsHeartbeatView(HomeAssistantView):
+    """Record a kiosk panel's heartbeat (online status, battery, version).
+
+    Replaces the old api-server `POST /api/panels/heartbeat`. Best-effort and
+    unauthenticated (kiosk has no HA token). Stores the latest beat per device in
+    hass.data and fires a `b_panels_heartbeat` event so automations can alert on
+    a panel going dark. No sensitive data.
+    """
+
+    url = "/api/b_panels/heartbeat"
+    name = "api:b_panels:heartbeat"
+    requires_auth = False
+
+    async def post(self, request: web.Request) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        iid = str(body.get("installationId") or "unknown")
+        record = {**body, "lastSeen": dt_util.utcnow().isoformat()}
+        hass.data.setdefault(DOMAIN, {}).setdefault("heartbeats", {})[iid] = record
+        hass.bus.async_fire("b_panels_heartbeat", record)
+        return self.json({"ok": True})
+
+
+class BPanelsScreenshotView(HomeAssistantView):
+    """Accept a kiosk screenshot upload (verification feature).
+
+    Replaces `POST /api/panels/{id}/screenshot`. Stores the latest base64 image
+    per device in hass.data and fires `b_panels_screenshot`. Unauthenticated LAN
+    sink — bounded by a max body size to avoid memory abuse.
+    """
+
+    url = "/api/b_panels/panels/{installation_id}/screenshot"
+    name = "api:b_panels:screenshot"
+    requires_auth = False
+
+    async def post(self, request: web.Request, installation_id: str) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        # Cap the upload (~6 MB of base64) so a rogue client can't exhaust memory.
+        if request.content_length and request.content_length > 6_000_000:
+            return self.json({"ok": False, "error": "too_large"}, status_code=413)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        record = {
+            "imageBase64": body.get("imageBase64"),
+            "contentType": body.get("contentType", "image/jpeg"),
+            "ts": dt_util.utcnow().isoformat(),
+        }
+        hass.data.setdefault(DOMAIN, {}).setdefault("screenshots", {})[installation_id] = record
+        hass.bus.async_fire("b_panels_screenshot", {"installation_id": installation_id, "ts": record["ts"]})
+        return self.json({"ok": True})
+
+
+class BPanelsCommandChannelView(HomeAssistantView):
+    """Server→device command channel (WebSocket hub) for kiosk panels.
+
+    Replaces the api-server WebSocket. A panel connects, sends a `register`
+    message ({type:'register', installationId}), and then receives push commands
+    in the original shape ({type:'bpanels-command', command:{action,...}}) sent by
+    the `b_panels.command` service. The WS is receive-only for the device; the
+    command source (the service) is authenticated, so no unauthenticated party can
+    inject commands. LAN-trust on the connect itself (kiosk holds no HA token).
+    """
+
+    url = "/api/b_panels/command_channel"
+    name = "api:b_panels:command_channel"
+    requires_auth = False
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        hass: HomeAssistant = request.app["hass"]
+        ws = web.WebSocketResponse(heartbeat=30)
+        await ws.prepare(request)
+        panels: dict = hass.data.setdefault(DOMAIN, {}).setdefault("command_panels", {})
+        iid: str | None = None
+        try:
+            async for msg in ws:
+                if msg.type != web.WSMsgType.TEXT:
+                    if msg.type == web.WSMsgType.ERROR:
+                        break
+                    continue
+                try:
+                    data = json.loads(msg.data)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(data, dict) and data.get("type") == "register":
+                    new_iid = str(data.get("installationId") or "")
+                    if new_iid:
+                        iid = new_iid
+                        panels[iid] = ws  # last registration for an id wins
+        finally:
+            if iid and panels.get(iid) is ws:
+                panels.pop(iid, None)
+        return ws
+
+
+COMMAND_SERVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required("action"): vol.In(
+            ["reload", "hardReset", "switchPanel", "screenOn", "screenOff", "setBrightness", "tts", "playSound", "screenshot"]
+        ),
+        vol.Optional("installation_id"): str,  # target one panel; omit = all panels
+        vol.Optional("panel_id"): str,         # for switchPanel
+        vol.Optional("value"): vol.Coerce(float),  # for setBrightness (0.0–1.0)
+        vol.Optional("text"): str,             # for tts
+        vol.Optional("url"): str,              # for playSound
+    }
+)
+
+
+async def _async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Fan a command out to connected kiosk panels in the native message shape."""
+    panels: dict = hass.data.get(DOMAIN, {}).get("command_panels", {})
+    if not panels:
+        _LOGGER.warning("b_panels.command: no kiosk panels are connected")
+        return
+    command: dict = {"action": call.data["action"]}
+    if "panel_id" in call.data:
+        command["panelId"] = call.data["panel_id"]
+    if "value" in call.data:
+        command["value"] = call.data["value"]
+    if "text" in call.data:
+        command["text"] = call.data["text"]
+    if "url" in call.data:
+        command["url"] = call.data["url"]
+    message = json.dumps({"type": "bpanels-command", "command": command})
+
+    target = call.data.get("installation_id")
+    if target:
+        targets = [panels[target]] if target in panels else []
+    else:
+        targets = list(panels.values())
+    for ws in targets:
+        try:
+            await ws.send_str(message)
+        except Exception:  # noqa: BLE001 - drop dead sockets silently
+            pass
 
 
 def _is_blocked_rss_host(host: str) -> bool:

@@ -1,0 +1,57 @@
+command:
+  name: Send kiosk command
+  description: >-
+    Push a command to connected B-Panels native iPad kiosk panels (remote screen
+    control, brightness, text-to-speech, reload, switch panel, screenshot).
+  fields:
+    action:
+      name: Action
+      description: The command to send.
+      required: true
+      example: screenOff
+      selector:
+        select:
+          options:
+            - reload
+            - hardReset
+            - switchPanel
+            - screenOn
+            - screenOff
+            - setBrightness
+            - tts
+            - playSound
+            - screenshot
+    installation_id:
+      name: Installation ID
+      description: Target a single panel by its installation id. Omit to send to all connected panels.
+      required: false
+      example: "ABCD-1234"
+      selector:
+        text:
+    panel_id:
+      name: Panel ID
+      description: Dashboard panel id (for the switchPanel action).
+      required: false
+      selector:
+        text:
+    value:
+      name: Brightness
+      description: Brightness 0.0–1.0 (for the setBrightness action).
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.05
+    text:
+      name: Text
+      description: Text to speak (for the tts action).
+      required: false
+      selector:
+        text:
+    url:
+      name: Sound URL
+      description: Audio URL to play (for the playSound action).
+      required: false
+      selector:
+        text:
