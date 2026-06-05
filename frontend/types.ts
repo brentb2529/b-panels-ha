@@ -64,6 +64,8 @@ export type Capability =
   | 'position'
   | 'setpoint'
   | 'mode-select'
+  | 'number'
+  | 'press'
   | 'media-transport'
   | 'sensor-readonly'
   | 'lock'

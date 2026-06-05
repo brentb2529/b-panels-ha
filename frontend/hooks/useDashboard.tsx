@@ -756,13 +756,24 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
 
     if (!type) {
         // Unmapped domain (e.g. a new HACS integration) — surface it generically
-        // rather than returning null. Read-only entities show their value; the
-        // raw state is preserved for the generic tile to format.
+        // rather than returning null. The internal state is shaped from the
+        // inferred primary so the generic tile can render a real control:
+        //   number  -> numeric value (slider)
+        //   select  -> current option string (tap-to-cycle)
+        //   press   -> no meaningful value (momentary button)
+        //   else    -> raw value, read-only.
         type = DeviceType.Generic;
-        internalState =
-            typeof state === 'string' || typeof state === 'number' || typeof state === 'boolean'
-                ? state
-                : String(state ?? '');
+        if (profile.primary === 'number') {
+            const n = parseFloat(state);
+            internalState = Number.isNaN(n) ? 0 : n;
+        } else if (profile.primary === 'press') {
+            internalState = '';
+        } else {
+            internalState =
+                typeof state === 'string' || typeof state === 'number' || typeof state === 'boolean'
+                    ? state
+                    : String(state ?? '');
+        }
     }
 
     return {
@@ -784,6 +795,12 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
             deviceClass: profile.deviceClass,
             unit: profile.unit,
             rawState: state,
+            // Control metadata the generic tile needs to render real controls
+            // for the common settable domains, straight from HA attributes.
+            options: Array.isArray(attributes.options) ? attributes.options : undefined,
+            min: getNumericValue(attributes.min) ?? undefined,
+            max: getNumericValue(attributes.max) ?? undefined,
+            step: getNumericValue(attributes.step) ?? undefined,
         },
     };
 };

@@ -9,6 +9,8 @@ type TileSliderProps = {
   value: number;
   min?: number;
   max?: number;
+  /** Increment granularity (defaults to 1; needed for fractional `number` entities). */
+  step?: number;
   /** CSS color for the filled portion + thumb ring. */
   accentColor?: string;
   /** Override the whole track background (skips the progress fill). */
@@ -23,6 +25,7 @@ const TileSlider = ({
   value,
   min = 0,
   max = 100,
+  step = 1,
   accentColor = 'rgb(var(--accent))',
   trackBackground,
   disabled,
@@ -40,6 +43,7 @@ const TileSlider = ({
       type="range"
       min={min}
       max={max}
+      step={step}
       value={value}
       onChange={onChange}
       onMouseUp={onCommit}
