@@ -74,8 +74,14 @@ const SensorTile = ({ device, tile, isEditor, cornerClassName }: { device: Devic
                     </div>
                  );
             case DeviceType.WaterSensor:
-                 const state = device.state as { leak: boolean, temperature?: number };
-                 const isWet = state.leak;
+                 // HA binary_sensor (device_class moisture/water) maps to a plain
+                 // boolean, like the other binary sensors. The legacy SmartThings
+                 // path produced { leak, temperature } — accept both shapes so a
+                 // re-pointed HA entity renders WET/Dry correctly.
+                 const wState = device.state as boolean | { leak?: boolean; temperature?: number | null };
+                 const isObjState = typeof wState === 'object' && wState !== null;
+                 const isWet = isObjState ? !!(wState as any).leak : !!wState;
+                 const waterTemp = isObjState ? (wState as any).temperature : undefined;
                  return (
                     <div className="flex flex-col items-center justify-center" style={fluidGap(0.5)}>
                         <SensorHalo color="#38bdf8" active={isWet && !isUnavailable}>
@@ -85,8 +91,8 @@ const SensorTile = ({ device, tile, isEditor, cornerClassName }: { device: Devic
                             />
                         </SensorHalo>
                         <p className={`font-bold ${isWet ? 'text-sky-300' : 'text-white'}`} style={fluidTextXl}>{isWet ? 'WET' : 'Dry'}</p>
-                        {state.temperature !== undefined && state.temperature !== null && (
-                            <p className="text-gray-400 tabular-nums" style={fluidTextXs}>{state.temperature}°</p>
+                        {waterTemp !== undefined && waterTemp !== null && (
+                            <p className="text-gray-400 tabular-nums" style={fluidTextXs}>{waterTemp}°</p>
                         )}
                     </div>
                  );
