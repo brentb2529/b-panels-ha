@@ -320,7 +320,7 @@ export interface AllowedIP {
     ip: string;
 }
 
-export interface STHMState {
+export interface AlarmState {
     locationId: string;
     locationName: string;
     armState: 'disarmed' | 'armedStay' | 'armedAway';
@@ -361,7 +361,7 @@ export interface ArmingEvent {
     /// itself stays the same on intrusion (the alarm is still armed,
     /// just now in violation), so we need a distinct status value
     /// to render it in the history tile.
-    status: STHMState['armState'] | 'triggered';
+    status: AlarmState['armState'] | 'triggered';
     /// For `status === 'triggered'`, the device/sensor that fired
     /// the alarm (e.g. "Front Door"). Undefined for arm/disarm events.
     triggerName?: string;

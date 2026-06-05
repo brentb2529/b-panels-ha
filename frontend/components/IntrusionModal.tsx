@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { STHMState } from '../types';
+import { AlarmState } from '../types';
 import { IconShieldAlert } from './icons';
 import AlarmPinPad from './AlarmPinPad';
 
@@ -12,16 +12,16 @@ import AlarmPinPad from './AlarmPinPad';
 // the card surface adapts via the var-mapped grays and body text inherits
 // --text so it stays legible in every theme.
 interface IntrusionModalProps {
-  sthmState: STHMState;
+  alarmState: AlarmState;
   onDisarm: (pin: string) => Promise<boolean>;
 }
 
 const RED = '#ef4444';
 
-const STHMIntrusionModal = ({ sthmState, onDisarm }: IntrusionModalProps) => {
-  const sensors = sthmState.violatingSensors?.length
-    ? sthmState.violatingSensors
-    : (sthmState.trigger?.name ? [{ name: sthmState.trigger.name }] : []);
+const IntrusionModal = ({ alarmState, onDisarm }: IntrusionModalProps) => {
+  const sensors = alarmState.violatingSensors?.length
+    ? alarmState.violatingSensors
+    : (alarmState.trigger?.name ? [{ name: alarmState.trigger.name }] : []);
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-pulse-bg">
@@ -58,4 +58,4 @@ const STHMIntrusionModal = ({ sthmState, onDisarm }: IntrusionModalProps) => {
   );
 };
 
-export default STHMIntrusionModal;
+export default IntrusionModal;

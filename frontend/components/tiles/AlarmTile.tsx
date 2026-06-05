@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Device, TileConfig, STHMState, DeviceType } from '../../types';
+import { Device, TileConfig, AlarmState, DeviceType } from '../../types';
 import { useDashboard } from '../../hooks/useDashboard';
 import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from '../icons';
 import TileWrapper from './TileWrapper';
@@ -30,27 +30,27 @@ const ShieldHalo = ({ color, glow, children }: { color: string; glow: boolean; c
 );
 
 const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, haAlarmoSensors, sthmState: globalSthmState } = useDashboard();
+    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, haAlarmoSensors, alarmState: globalAlarmState } = useDashboard();
     const isLocked = !!tile.isLocked;
 
     // A real alarm_control_panel device has a plain arm-state string for
-    // device.state; the rich STHMState (open sensors, modes, violation, entry
+    // device.state; the rich AlarmState (open sensors, modes, violation, entry
     // delay) lives in the global alarm state populated from the HA websocket.
-    // Prefer an STHMState object on the device (synthetic panel) else the global.
+    // Prefer an AlarmState object on the device (synthetic panel) else the global.
     const deviceState = device.state;
-    const sthmState: STHMState | null =
+    const alarmState: AlarmState | null =
         (deviceState && typeof deviceState === 'object' && 'armState' in (deviceState as any))
-            ? (deviceState as STHMState)
-            : globalSthmState;
+            ? (deviceState as AlarmState)
+            : globalAlarmState;
 
     // Live exit/entry-delay countdown for the inline tile indicator (same
     // reconnect-safe anchor the modals use). Hook must run before any early return.
-    const { remaining: delayRemaining } = useAlarmCountdown(sthmState);
-    const phase = sthmState?.phase ?? 'idle';
+    const { remaining: delayRemaining } = useAlarmCountdown(alarmState);
+    const phase = alarmState?.phase ?? 'idle';
 
     // No alarm state yet (panel still connecting, or no alarm_control_panel) —
     // show a neutral "connecting" placeholder rather than an error tile.
-    if (!sthmState || typeof sthmState.armState === 'undefined') {
+    if (!alarmState || typeof alarmState.armState === 'undefined') {
         return (
             <TileWrapper label={tile.label || 'Security'} isProtected isLocked={isLocked} isEditor={isEditor} className={cornerClassName}>
                 <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
@@ -73,7 +73,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
 
     const openSensorLabels = React.useMemo(() => {
         // Armed / pending: Alarmo reports the actual open sensors directly.
-        const openSensors = sthmState.haOpenSensors;
+        const openSensors = alarmState.haOpenSensors;
         if (openSensors && Object.keys(openSensors).length > 0) {
             return Object.keys(openSensors).map(labelFor).filter(Boolean).sort((a, b) => a.localeCompare(b));
         }
@@ -95,15 +95,15 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
             .map(d => (sensorAliases?.[d.id] || d.name || '').trim())
             .filter(Boolean)
             .sort((a, b) => a.localeCompare(b));
-    }, [sthmState.haOpenSensors, haAlarmoSensors, devices, sensorAliases, notifyingSensorIds]);
+    }, [alarmState.haOpenSensors, haAlarmoSensors, devices, sensorAliases, notifyingSensorIds]);
 
-    const isViolation = sthmState.securityState === 'VIOLATION';
+    const isViolation = alarmState.securityState === 'VIOLATION';
     const isReady = armingState === 'ready';
 
     // HA: check if a specific arm mode is available (from alarmo_ready_to_arm_modes_updated)
     const isModeAvailable = (mode: 'away' | 'home') => {
-        if (!sthmState.haAvailableModes) return true;
-        return sthmState.haAvailableModes.includes(mode);
+        if (!alarmState.haAvailableModes) return true;
+        return alarmState.haAvailableModes.includes(mode);
     };
 
     const handleAction = (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY') => {
@@ -119,8 +119,8 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
 
     // --- INTRUSION STATE ---
     if (isViolation) {
-        const faultReason = sthmState.violatingSensors.length > 0
-            ? sthmState.violatingSensors.map(s => s.name).join(', ')
+        const faultReason = alarmState.violatingSensors.length > 0
+            ? alarmState.violatingSensors.map(s => s.name).join(', ')
             : 'Unknown';
 
         return (
@@ -177,7 +177,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
             grad: 'linear-gradient(160deg,#dc2626_0%,#b91c1c_55%,#7f1d1d_100%)',
             glowColor: '#fca5a5',
         },
-    }[sthmState.armState] || {
+    }[alarmState.armState] || {
         text: 'Unknown',
         icon: IconShield,
         grad: 'linear-gradient(160deg,#4b5563_0%,#374151_55%,#1f2937_100%)',
@@ -185,7 +185,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
     };
 
     const Icon = statusConfig.icon;
-    const isArmed = sthmState.armState === 'armedStay' || sthmState.armState === 'armedAway';
+    const isArmed = alarmState.armState === 'armedStay' || alarmState.armState === 'armedAway';
 
     const btnBase = "flex-1 rounded-control font-bold transition-all flex items-center justify-center gap-2 uppercase tracking-wide active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
     const btnScaleStyle: React.CSSProperties = {
@@ -204,7 +204,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
     const btnSecondary = "!text-white border border-white/35 bg-white/15 backdrop-blur-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.30),0_2px_5px_-1px_rgb(0_0_0/0.3)] hover:bg-white/25 active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.3)]";
     const btnPrimary = "bg-white text-gray-900 border border-white/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.6),0_3px_8px_-1px_rgb(0_0_0/0.45)] hover:bg-gray-100 active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.25)]";
 
-    const armError = sthmState.haArmError ?? null;
+    const armError = alarmState.haArmError ?? null;
 
     return (
         <TileWrapper
@@ -215,7 +215,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
             isEditor={isEditor}
         >
             <div className="flex-1 flex flex-col justify-center items-center text-center w-full p-2 min-h-0" style={fluidGap(0.4)}>
-                <ShieldHalo color={statusConfig.glowColor} glow={isArmed || sthmState.armState === 'disarmed'}>
+                <ShieldHalo color={statusConfig.glowColor} glow={isArmed || alarmState.armState === 'disarmed'}>
                     <Icon className="!text-white" style={{ ...fluidIcon(2.25), filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' }} />
                 </ShieldHalo>
 

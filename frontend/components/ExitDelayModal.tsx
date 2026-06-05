@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { STHMState } from '../types';
+import { AlarmState } from '../types';
 import { IconShield, IconX } from './icons';
 import { useAlarmCountdown } from '../hooks/useAlarmCountdown';
 import { playDelayBeep } from '../services/alarmTones';
@@ -11,13 +11,13 @@ import { playDelayBeep } from '../services/alarmTones';
 // reconnect-safe (anchored on Alarmo delay + last_changed). A calm beep ticks
 // each second. "Cancel" disarms (no PIN needed to cancel your own arming).
 interface ExitDelayModalProps {
-  sthmState: STHMState;
+  alarmState: AlarmState;
   onCancel: () => void;
 }
 
-const ExitDelayModal = ({ sthmState, onCancel }: ExitDelayModalProps) => {
-  const { remaining } = useAlarmCountdown(sthmState);
-  const armingFor = sthmState.armState === 'armedAway' ? 'Away' : sthmState.armState === 'armedStay' ? 'Stay' : '';
+const ExitDelayModal = ({ alarmState, onCancel }: ExitDelayModalProps) => {
+  const { remaining } = useAlarmCountdown(alarmState);
+  const armingFor = alarmState.armState === 'armedAway' ? 'Away' : alarmState.armState === 'armedStay' ? 'Stay' : '';
 
   const prevSecRef = useRef<number | null>(null);
   useEffect(() => {
