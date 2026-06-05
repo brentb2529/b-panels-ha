@@ -1097,16 +1097,27 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     };
     const truthy = (d?: Device) => !!d && (d.state === true ||
       (typeof d.state === 'string' && ['on', 'true', 'open', 'detected', 'wet', 'home', 'locked'].includes(d.state.toLowerCase())));
-    const normalizeLitterStatus = (statusText: string, vacState: string, online: boolean): LitterRobotStatus => {
-      const t = `${statusText} ${vacState}`.toLowerCase();
-      if (!online || t.includes('unavailable') || t.includes('offline')) return 'OFFLINE';
-      if (t.includes('drawer') || /\bdf\d?\b|\bdrf\b/.test(t) || t.includes('full')) return 'DRAWER_FULL';
-      if (t.includes('bonnet')) return 'BONNET_REMOVED';
-      if (t.includes('cat')) return 'CAT_DETECTED';
-      if (t.includes('empt')) return 'EMPTYING';
-      if (t.includes('paus')) return 'PAUSED';
-      if (t.includes('clean') || t.includes('cycl') || vacState === 'cleaning' || vacState === 'returning') return 'CYCLING';
-      if (t.includes('fault') || t.includes('error')) return 'FAULT';
+    // Litter-Robot status_code enum -> normalized status (mirrors the original
+    // B-Panels normalization of the Whisker status codes).
+    const LR_STATUS_CODES: Record<string, LitterRobotStatus> = {
+      rdy: 'READY', ccc: 'READY',
+      ccp: 'CYCLING', pwru: 'CYCLING',
+      cd: 'CAT_DETECTED', csi: 'CAT_DETECTED', cst: 'CAT_DETECTED',
+      df1: 'DRAWER_FULL', df2: 'DRAWER_FULL', dfs: 'DRAWER_FULL', sdf: 'DRAWER_FULL',
+      br: 'BONNET_REMOVED',
+      p: 'PAUSED', pd: 'PAUSED',
+      ec: 'EMPTYING',
+      off: 'OFFLINE', offline: 'OFFLINE', pwrd: 'OFFLINE',
+      csf: 'FAULT', scf: 'FAULT', spf: 'FAULT', otf: 'FAULT', hpf: 'FAULT', dhf: 'FAULT', dpf: 'FAULT',
+    };
+    const normalizeLitterStatus = (code: string, vacState: string, online: boolean): LitterRobotStatus => {
+      if (!online) return 'OFFLINE';
+      const mapped = LR_STATUS_CODES[code.trim().toLowerCase()];
+      if (mapped) return mapped;
+      if (vacState === 'cleaning' || vacState === 'returning') return 'CYCLING';
+      if (vacState === 'paused') return 'PAUSED';
+      if (vacState === 'error') return 'FAULT';
+      if (vacState === 'unavailable' || vacState === 'off') return 'OFFLINE';
       return 'READY';
     };
 
@@ -1117,48 +1128,55 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       if (!vac) return;
       const find = (re: RegExp) => grp.find(d => d.id !== vac.id && re.test(d.id));
       const wasteS = find(/waste/i);
-      const litterS = find(/litter[_ ]?level|litter_box|hopper/i)
+      const litterS = find(/litter[_ ]?level/i)
         || grp.find(d => d.id !== vac.id && /litter/i.test(d.id) && (d.capabilityData as any)?.unit === '%');
-      // Only Litter-Robots become composite cards; generic vacuums (Roomba etc.)
-      // stay as their own VacuumTile.
+      // Only Litter-Robots become composite cards; generic vacuums stay as VacuumTile.
       const isLitter = /litter|whisker/i.test(`${vac.name} ${vac.id}`) || !!wasteS || !!litterS;
       if (!isLitter) return;
 
-      const statusS = find(/status/i);
-      const cyclesS = find(/cycle/i);
-      const sleepS = grp.find(d => d.id !== vac.id && /sleep/i.test(d.id));
-      const petS = find(/pet[_ ]?weight|weight/i);
+      const statusS = find(/status[_ ]?code|_status\b/i) || find(/status/i);
+      const sleepStartS = find(/sleep.*start/i);
+      const sleepEndS = find(/sleep.*end/i);
+      const petS = find(/pet[_ ]?weight/i);
       const lastSeenS = find(/last[_ ]?seen/i);
-      const nightSw = grp.find(d => d.type === DeviceType.Switch && /night/i.test(d.id));
-      const lockSw = grp.find(d => d.type === DeviceType.Switch && /lock/i.test(d.id));
+      const waitSel = find(/clean[_ ]?cycle[_ ]?wait/i);
+      const lightCtl = grp.find(d => d.id !== vac.id && /night[_ ]?light/i.test(d.id))
+        || grp.find(d => d.id !== vac.id && /globe[_ ]?light/i.test(d.id));
+      const lockSw = grp.find(d => d.id !== vac.id && /panel[_ ]?lock|lockout/i.test(d.id));
       const resetBtn = grp.find(d => /reset/i.test(d.id));
 
       const vacState = String(vac.state ?? '').toLowerCase();
-      const statusText = statusS ? String(statusS.state ?? '') : String(vac.state ?? '');
-      const online = vac.isOnline !== false && vacState !== 'unavailable';
-      const normalizedStatus = normalizeLitterStatus(statusText, vacState, online);
+      const statusCode = statusS ? String(statusS.state ?? '') : '';
+      const online = vac.isOnline !== false && vacState !== 'unavailable' && statusCode.toLowerCase() !== 'offline';
+      const normalizedStatus = normalizeLitterStatus(statusCode || vacState, vacState, online);
       const waste = numOf(wasteS) ?? 0;
       const litter = numOf(litterS);
+      const lightOn = lightCtl ? String(lightCtl.state).toLowerCase() !== 'off' : undefined;
+      // The vacuum entity is named "<robot> Litter box"; show just the robot name.
+      const name = vac.name.replace(/\s*litter\s*box\s*$/i, '').trim() || vac.name;
 
       const lrState: LitterRobotState = {
-        id: did, serial: did, name: vac.name,
+        id: did, serial: did, name,
         model: litter !== undefined ? 'Litter-Robot 4' : 'Litter-Robot',
         isOnline: online, powerStatus: online ? 'on' : 'off',
-        unitStatus: statusText, statusText, normalizedStatus,
-        cycleCount: numOf(cyclesS) ?? 0, cyclesAfterDrawerFull: 0,
+        unitStatus: statusCode, statusText: statusCode, statusCode, normalizedStatus,
+        cycleCount: 0, cyclesAfterDrawerFull: 0,
         isDFITriggered: normalizedStatus === 'DRAWER_FULL' || waste >= 90,
         wasteLevel: waste,
-        isNightLightModeEnabled: nightSw ? truthy(nightSw) : undefined,
+        cleanCycleWaitTime: numOf(waitSel),
+        isNightLightModeEnabled: lightOn,
         isPanelLockEnabled: lockSw ? truthy(lockSw) : undefined,
-        sleepModeEnabled: truthy(sleepS),
+        sleepModeEnabled: !!(sleepStartS && String(sleepStartS.state).toLowerCase() !== 'unknown'),
+        sleepModeStartTime: sleepStartS ? String(sleepStartS.state) : undefined,
+        sleepModeEndTime: sleepEndS ? String(sleepEndS.state) : undefined,
         lastSeen: lastSeenS ? String(lastSeenS.state) : undefined,
         isLR4: litter !== undefined, litterLevel: litter, petWeight: numOf(petS),
         isLR3: litter === undefined,
-        haEntities: { vacuum: vac.id, nightLight: nightSw?.id, panelLock: lockSw?.id, reset: resetBtn?.id },
+        haEntities: { vacuum: vac.id, nightLight: lightCtl?.id, panelLock: lockSw?.id, reset: resetBtn?.id },
       };
 
       composites.push({
-        id: `robot:${did}`, name: vac.name, type: DeviceType.LitterRobot,
+        id: `robot:${did}`, name, type: DeviceType.LitterRobot,
         service: DeviceService.HomeAssistant, state: lrState, battery: vac.battery,
       });
       grp.forEach(d => members.add(d.id));
