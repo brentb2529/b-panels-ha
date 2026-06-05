@@ -79,8 +79,10 @@ const TileWrapper = ({
     // tint % and ring opacity are deliberately higher now that the surface is
     // near-opaque (--tile-alpha ~0.94): a low-% mix barely registered against
     // the solid fill, so the active state was hard to read at a glance across
-    // the room. 24% tint + a fully-opaque accent ring + a stronger outer glow
-    // make "on" unmistakable without washing out the content.
+    // the room. 24% tint + a fully-opaque accent ring + an INSET accent glow
+    // make "on" unmistakable without washing out the content. The glow is inset
+    // (not an outer 0 0 26px shadow) so the highlight stays within the tile's
+    // rounded border instead of bleeding a halo past the edges.
     backgroundColor: activeGlow
       ? `color-mix(in srgb, ${accentColor} 24%, ${restBg})`
       : restBg,
@@ -94,7 +96,7 @@ const TileWrapper = ({
     backdropFilter: 'blur(var(--tile-blur))',
     WebkitBackdropFilter: 'blur(var(--tile-blur))',
     boxShadow: activeGlow
-      ? `inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -3px 7px rgb(0 0 0 / 0.22), 0 0 26px -4px ${accentColor}, var(--elev-1)`
+      ? `inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -3px 7px rgb(0 0 0 / 0.22), inset 0 0 18px -2px ${accentColor}, var(--elev-1)`
       : `inset 0 1px 0 rgb(255 255 255 / 0.13), inset 0 -3px 7px rgb(0 0 0 / 0.22), var(--elev-1)`,
   };
 

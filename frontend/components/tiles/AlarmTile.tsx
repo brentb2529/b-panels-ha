@@ -158,7 +158,11 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
         armedStay: {
             text: 'Armed Stay',
             icon: IconShield,
-            grad: 'linear-gradient(160deg,#ea580c_0%,#c2410c_55%,#7c2d12_100%)',
+            // Deepened from orange-600 → orange-700/800/900. The old top stop
+            // (#ea580c) was too light for white text (~2.6:1); this keeps the
+            // amber/orange identity (distinct from the red armed-away) while
+            // giving the white status text legible contrast.
+            grad: 'linear-gradient(160deg,#c2410c_0%,#9a3412_55%,#7c2d12_100%)',
             glowColor: '#fdba74',
         },
         armedAway: {
@@ -209,7 +213,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                     <Icon className="!text-white" style={{ ...fluidIcon(2.25), filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.4))' }} />
                 </ShieldHalo>
 
-                <p className="font-black !text-white tracking-tight" style={{ ...fluidText2xl, textShadow: '0 1px 3px rgba(0,0,0,0.45)' }}>
+                <p className="font-black !text-white tracking-tight" style={{ ...fluidText2xl, textShadow: '0 1px 4px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.5)' }}>
                     {statusConfig.text}
                 </p>
 
