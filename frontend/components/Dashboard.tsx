@@ -9,9 +9,8 @@ import { Device, DeviceType, DeviceService } from '../types';
 import CameraGroupModal from './CameraGroupModal';
 import STHMIntrusionModal from './STHMIntrusionModal';
 import EntryDelayModal from './EntryDelayModal';
-
-// Entry delay duration in seconds (SmartThings default is typically 15-30 seconds)
-const ENTRY_DELAY_SECONDS = 15;
+import ExitDelayModal from './ExitDelayModal';
+import { startSiren, stopSiren } from '../services/alarmTones';
 
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
@@ -23,7 +22,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 
 const Dashboard = () => {
-  const { panels, deviceMap, loading, isDeviceLoading, devices, sthmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, dismissIntrusion, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, escalateToFullAlarm, entryDelaySound, haWsState, lastHaEventAt, primaryAlarmProvider } = useDashboard();
+  const { panels, deviceMap, loading, isDeviceLoading, devices, sthmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider } = useDashboard();
   const { panelId } = useParams<{ panelId: string }>();
   const location = useLocation();
   const [enlargedCamera, setEnlargedCamera] = useState<Device | null>(null);
@@ -63,18 +62,58 @@ const Dashboard = () => {
     };
   }, [connectionState]);
 
-  // Intrusion alert states
-  const [showEntryDelay, setShowEntryDelay] = useState(false);
-  const [showFullAlarm, setShowFullAlarm] = useState(false);
-  const hasNotifiedIntrusion = useRef(false);
-  const lastViolationId = useRef<string | null>(null);
-  // Track pending intrusion that requires PIN acknowledgment
-  // This ensures the alert stays visible until explicitly dismissed, even if STHM state changes
-  const [pendingIntrusionAck, setPendingIntrusionAck] = useState<{
-    triggerName: string;
-    triggerType?: string;
-    violatingSensors: { name: string }[];
-  } | null>(null);
+  // Alarm flow is driven entirely by the alarm panel's `phase` (from Alarmo):
+  //   arming    -> exit-delay banner
+  //   pending   -> entry-delay disarm modal
+  //   triggered -> full intrusion modal + siren
+  // Alarmo owns the delay timers (we anchor countdowns on its delay/last_changed
+  // and never run our own escalation timer — pending->triggered is Alarmo's call).
+  const phase = sthmState?.phase ?? 'idle';
+  // Identifies one alarm "episode" so dismissals/announcements reset per event.
+  const episodeKey = `${phase}:${sthmState?.trigger?.name ?? ''}:${sthmState?.haDelayStartedAt ?? ''}`;
+  const [entryDismissedKey, setEntryDismissedKey] = useState<string | null>(null);
+
+  // Per-panel WebAudio siren while triggered, so EVERY panel sounds — not only
+  // ones running Fully Kiosk or driving Sonos (those are layered on by the
+  // hook's escalateToFullAlarm). Security audio ignores the panel Mute schedule
+  // by design: an armed-system trigger must always be audible.
+  useEffect(() => {
+    if (phase === 'triggered') {
+      startSiren();
+      return () => stopSiren();
+    }
+    stopSiren();
+  }, [phase]);
+
+  // One-shot intrusion toast per episode.
+  const announcedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (phase === 'triggered') {
+      if (announcedRef.current !== episodeKey) {
+        announcedRef.current = episodeKey;
+        const name = sthmState?.trigger?.name || sthmState?.violatingSensors?.[0]?.name || 'Unknown sensor';
+        addNotification(`INTRUSION: ${name} triggered the alarm!`, 'error');
+      }
+    } else if (phase === 'idle') {
+      announcedRef.current = null;
+    }
+  }, [phase, episodeKey, sthmState, addNotification]);
+
+  // PIN-validated disarm shared by every alarm modal. Validates against the
+  // dashboard users, then routes the disarm (with code) to HA/Alarmo.
+  const handleDisarmAttempt = useCallback(async (pin: string): Promise<boolean> => {
+    const validUser = users.find(u => u.pin === pin);
+    if (!validUser) return false;
+    await setAlarmStatus('DISARMED', pin);
+    addNotification(`System disarmed by ${validUser.name}`, 'success');
+    return true;
+  }, [users, setAlarmStatus, addNotification]);
+
+  // Cancel arming (exit delay): disarm via the global PIN modal (Alarmo needs a
+  // code to disarm, even to cancel your own arming).
+  const cancelArming = useCallback(() => {
+    requestPin((pin) => { setAlarmStatus('DISARMED', pin); });
+  }, [requestPin, setAlarmStatus]);
 
   useEffect(() => {
     if (panelId) {
@@ -97,76 +136,6 @@ const Dashboard = () => {
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
   const fitEnabled = isHeadless && !isNativeShell;
 
-  // Handle intrusion detection - show entry delay first
-  // The alert persists until explicitly acknowledged via PIN (pendingIntrusionAck)
-  useEffect(() => {
-    // The warning/disarm modal pops on EVERY panel during the entry-delay
-    // window, regardless of the per-panel `showSTHMAlerts` toggle (that toggle
-    // now only governs the non-intrusion STHM status indicators).
-    if (sthmState?.securityState === 'VIOLATION') {
-        // Create a unique ID for this violation event
-        const violationId = sthmState.violatingSensors.map(s => s.name).join(',') + sthmState.trigger?.name;
-
-        // Only trigger for new violations
-        if (violationId !== lastViolationId.current) {
-            lastViolationId.current = violationId;
-            hasNotifiedIntrusion.current = false;
-            // Store the intrusion details for persistent display
-            setPendingIntrusionAck({
-                triggerName: sthmState.trigger?.name || sthmState.violatingSensors?.[0]?.name || 'Unknown',
-                triggerType: sthmState.trigger?.type,
-                violatingSensors: [...sthmState.violatingSensors]
-            });
-            setShowEntryDelay(true);
-            setShowFullAlarm(false);
-        }
-    }
-    // NOTE: We intentionally do NOT clear the alert when securityState changes
-    // The alert only clears when user enters PIN (handled in handleDisarmAttempt)
-  }, [sthmState, activePanel]);
-
-  // Handle PIN verification for disarm
-  const handleDisarmAttempt = useCallback(async (pin: string): Promise<boolean> => {
-    // Check PIN against stored users
-    const validUser = users.find(u => u.pin === pin);
-    if (validUser) {
-      await setAlarmStatus('DISARMED', pin);
-      // Clear all intrusion alert states - this is the ONLY way to dismiss the alert
-      setShowEntryDelay(false);
-      setShowFullAlarm(false);
-      setPendingIntrusionAck(null);
-      lastViolationId.current = null;
-      hasNotifiedIntrusion.current = false;
-      addNotification(`System disarmed by ${validUser.name}`, 'success');
-      return true;
-    }
-    return false;
-  }, [users, setAlarmStatus, addNotification]);
-
-  // Handle entry delay expiration - transition to full alarm.
-  // The window elapsed without a disarm, so NOW fire the deferred alarm
-  // annunciation (kiosk siren, 'triggered' history, Sonos). A disarm before
-  // this point unmounts the modal, so this never runs and nothing fires.
-  const handleEntryDelayExpired = useCallback(() => {
-    setShowEntryDelay(false);
-    setShowFullAlarm(true);
-
-    const triggerName = pendingIntrusionAck?.triggerName
-      || sthmState?.trigger?.name
-      || sthmState?.violatingSensors?.[0]?.name
-      || 'Unknown';
-
-    if (!hasNotifiedIntrusion.current) {
-      escalateToFullAlarm(triggerName);
-      addNotification(`INTRUSION ALERT: ${triggerName} triggered the alarm!`, 'error');
-      hasNotifiedIntrusion.current = true;
-    }
-  }, [sthmState, pendingIntrusionAck, escalateToFullAlarm, addNotification]);
-
-  // Handle canceling entry delay (user explicitly cancels - triggers full alarm)
-  const handleEntryDelayCancel = useCallback(() => {
-    handleEntryDelayExpired();
-  }, [handleEntryDelayExpired]);
 
   // Precompute rounded-corner classes for tiles inside highlight regions.
   // MUST stay above the early returns below — moving it after them caused the
@@ -282,69 +251,21 @@ const Dashboard = () => {
 
   return (
     <div className="relative h-full flex flex-col">
-      {/* Entry Delay Modal - shown first when intrusion detected */}
-      {/* Uses pendingIntrusionAck to persist even if underlying sthmState changes */}
-      {showEntryDelay && pendingIntrusionAck && (
+      {/* Alarm flow — driven by the panel phase, shown on every panel. */}
+      {phase === 'arming' && sthmState && (
+          <ExitDelayModal sthmState={sthmState} onCancel={cancelArming} />
+      )}
+      {phase === 'pending' && sthmState && entryDismissedKey !== episodeKey && (
           <EntryDelayModal
-            sthmState={sthmState ? {
-                ...sthmState,
-                // Override with pending intrusion data to ensure correct trigger displays
-                trigger: { name: pendingIntrusionAck.triggerName, type: pendingIntrusionAck.triggerType || 'SENSOR_EVENT' },
-                violatingSensors: pendingIntrusionAck.violatingSensors,
-                securityState: 'VIOLATION'
-            } : {
-                // Fallback if sthmState is null but we have pending intrusion
-                locationId: '',
-                locationName: 'SmartThings',
-                armState: 'armedAway',
-                securityState: 'VIOLATION',
-                violatingSensors: pendingIntrusionAck.violatingSensors,
-                trigger: { name: pendingIntrusionAck.triggerName, type: pendingIntrusionAck.triggerType || 'SENSOR_EVENT' }
-            }}
-            entryDelaySeconds={sthmState?.source === 'ha' && sthmState.haEntryDelay != null ? sthmState.haEntryDelay : ENTRY_DELAY_SECONDS}
-            soundMode={entryDelaySound?.mode || 'beep'}
-            beepStyle={entryDelaySound?.beepStyle || 'single'}
+            sthmState={sthmState}
             onDisarm={handleDisarmAttempt}
-            onExpired={handleEntryDelayExpired}
-            onCancel={handleEntryDelayCancel}
+            onCancel={() => setEntryDismissedKey(episodeKey)}
           />
+      )}
+      {phase === 'triggered' && sthmState && (
+          <STHMIntrusionModal sthmState={sthmState} onDisarm={handleDisarmAttempt} />
       )}
 
-      {/* Full Alarm Modal - shown after entry delay expires */}
-      {/* Persists until PIN acknowledgment - cannot be dismissed by background state changes */}
-      {showFullAlarm && pendingIntrusionAck && (
-          <STHMIntrusionModal
-            sthmState={sthmState ? {
-                ...sthmState,
-                trigger: { name: pendingIntrusionAck.triggerName, type: pendingIntrusionAck.triggerType || 'SENSOR_EVENT' },
-                violatingSensors: pendingIntrusionAck.violatingSensors,
-                securityState: 'VIOLATION'
-            } : {
-                locationId: '',
-                locationName: 'SmartThings',
-                armState: 'armedAway',
-                securityState: 'VIOLATION',
-                violatingSensors: pendingIntrusionAck.violatingSensors,
-                trigger: { name: pendingIntrusionAck.triggerName, type: pendingIntrusionAck.triggerType || 'SENSOR_EVENT' }
-            }}
-            onClose={() => {
-                // Require PIN to disarm the system - this is the ONLY way to dismiss
-                requestPin((pin) => {
-                    const validUser = users.find(u => u.pin === pin);
-                    if (validUser) {
-                        setAlarmStatus('DISARMED', pin);
-                        // Clear all intrusion alert states
-                        setShowFullAlarm(false);
-                        setPendingIntrusionAck(null);
-                        lastViolationId.current = null;
-                        hasNotifiedIntrusion.current = false;
-                        addNotification(`System disarmed by ${validUser.name}`, 'success');
-                    }
-                });
-            }}
-          />
-      )}
-      
       {/* Connection Status Banner - shows after sustained disconnection or on error */}
       {(showReconnecting || serviceError) && (
         <div className={`mb-2 p-2 rounded text-sm flex items-center justify-between ${

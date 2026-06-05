@@ -335,6 +335,17 @@ export interface STHMState {
     haArmError?: { reason: string; sensors: string[] } | null;  // from alarmo_failed_to_arm
     haExitDelay?: number | null;                          // remaining exit-delay seconds during 'arming' state
     haEntryDelay?: number | null;                         // remaining entry-delay seconds during 'pending' state
+    // Raw alarm phase straight from the alarm_control_panel state machine. Drives
+    // the exit/entry/trigger UI. 'arming' = exit delay, 'pending' = entry delay,
+    // 'triggered' = siren. Everything else is steady-state (idle/armed).
+    phase?: 'idle' | 'arming' | 'pending' | 'triggered';
+    // Absolute-time countdown anchor for the current delay phase. The UI computes
+    // remaining = (delayStartedAt + delayTotal) - now each tick, so it stays
+    // correct across reconnects, tab-throttling, and every panel (vs a local
+    // decrementing timer that drifts). delayTotal is Alarmo's `delay` attribute
+    // (total seconds); delayStartedAt is the entity's last_changed (ISO).
+    haDelayTotal?: number | null;
+    haDelayStartedAt?: string | null;
 }
 
 export interface AppNotification {

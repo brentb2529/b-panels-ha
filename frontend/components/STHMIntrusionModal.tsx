@@ -1,71 +1,57 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom';
 import { STHMState } from '../types';
 import { IconShieldAlert } from './icons';
+import AlarmPinPad from './AlarmPinPad';
 
-// Generic intrusion overlay. Originally SmartThings-Home-Monitor specific; now
-// driven entirely by the Home Assistant / Alarmo alarm path (sthmState.source
-// === 'ha'). Kept as a neutral, integration-agnostic full-screen alert.
+// Full-screen intrusion overlay shown while the alarm panel is `triggered`
+// (siren active). Driven by the Home Assistant / Alarmo alarm path. Lists the
+// triggering sensor(s) from open_sensors and disarms via the shared PIN pad.
+//
+// Theming: the backdrop pulses red (semantic urgency, identical in light/dark);
+// the card surface adapts via the var-mapped grays and body text inherits
+// --text so it stays legible in every theme.
 interface IntrusionModalProps {
   sthmState: STHMState;
-  onClose: () => void;
+  onDisarm: (pin: string) => Promise<boolean>;
 }
 
-const STHMIntrusionModal = ({ sthmState, onClose }: IntrusionModalProps) => {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose]);
+const RED = '#ef4444';
+
+const STHMIntrusionModal = ({ sthmState, onDisarm }: IntrusionModalProps) => {
+  const sensors = sthmState.violatingSensors?.length
+    ? sthmState.violatingSensors
+    : (sthmState.trigger?.name ? [{ name: sthmState.trigger.name }] : []);
 
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 bg-red-900/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-pulse-bg">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-pulse-bg">
       <style>{`
-        @keyframes pulse-bg {
-          0%, 100% { background-color: rgba(127, 29, 29, 0.8); }
-          50% { background-color: rgba(153, 27, 27, 0.8); }
-        }
+        @keyframes pulse-bg { 0%,100%{background-color:rgba(127,29,29,0.82)} 50%{background-color:rgba(153,27,27,0.82)} }
         .animate-pulse-bg { animation: pulse-bg 2s infinite; }
-        @keyframes ping-slow {
-            75%, 100% {
-                transform: scale(1.2);
-                opacity: 0;
-            }
-        }
-        .animate-ping-slow {
-            animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
+        @keyframes ping-slow { 75%,100%{transform:scale(1.25);opacity:0} }
+        .animate-ping-slow { animation: ping-slow 2s cubic-bezier(0,0,0.2,1) infinite; }
       `}</style>
-      <div className="bg-gray-800 rounded-lg shadow-2xl p-6 sm:p-8 w-full max-w-lg text-center border-4 border-red-500">
-        <IconShieldAlert className="w-20 h-20 text-red-400 mx-auto mb-4 animate-ping-slow" />
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-2 uppercase">Intrusion Detected</h1>
-        <p className="text-lg text-gray-300 mb-6">
-          At location: <span className="font-bold text-white">{sthmState.locationName}</span>
-        </p>
+      <div
+        className="w-full max-w-md text-center rounded-tile bg-gray-800 border-2 border-red-500 p-6"
+        style={{ color: 'rgb(var(--text))', boxShadow: '0 0 0 1px rgba(239,68,68,0.3), 0 24px 60px -12px rgba(0,0,0,0.7)' }}
+      >
+        <div className="relative inline-flex mb-3">
+          <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping-slow" />
+          <IconShieldAlert className="relative w-16 h-16 text-red-500" />
+        </div>
+        <h1 className="text-3xl font-black uppercase tracking-wide text-red-500 mb-1">Intrusion</h1>
+        <p className="text-sm mb-4" style={{ opacity: 0.75 }}>Alarm triggered — enter your PIN to disarm</p>
 
-        {sthmState.violatingSensors.length > 0 && (
-          <div className="bg-gray-900/50 rounded-md p-4 mb-6">
-            <h2 className="text-xl font-semibold text-red-300 mb-2">Triggering Devices</h2>
-            <ul className="text-white text-lg space-y-1">
-              {sthmState.violatingSensors.map((sensor, index) => (
-                <li key={index}>{sensor.name}</li>
-              ))}
+        {sensors.length > 0 && (
+          <div className="rounded-control bg-red-500/12 px-3 py-2 mb-4">
+            <p className="text-xs uppercase tracking-wide font-bold text-red-500 mb-1">Triggered by</p>
+            <ul className="text-sm font-semibold space-y-0.5">
+              {sensors.map((s, i) => <li key={i}>{s.name}</li>)}
             </ul>
           </div>
         )}
 
-        <button
-          onClick={onClose}
-          className="bg-red-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-red-500 transition-colors text-lg"
-        >
-          Disarm &amp; Dismiss
-        </button>
+        <AlarmPinPad accent={RED} onDisarm={onDisarm} />
       </div>
     </div>,
     document.body
