@@ -20,6 +20,7 @@ import LitterRobotTile from './tiles/LitterRobotTile';
 import SonosPlayerTile from './tiles/SonosPlayerTile';
 import PetTile from './tiles/PetTile';
 import FlairTile from './tiles/FlairTile';
+import RSSFeedTile from './tiles/RSSFeedTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -69,6 +70,7 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.SonosPlayer]: SonosPlayerTile,
   [DeviceType.Pet]: PetTile,
   [DeviceType.Flair]: FlairTile,
+  [DeviceType.RSSFeed]: RSSFeedTile,
   [DeviceType.Folder]: FolderTile,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a

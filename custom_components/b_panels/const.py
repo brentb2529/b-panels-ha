@@ -20,3 +20,5 @@ STORAGE_VERSION = 1
 # Websocket command types used by the SPA (services/haClient.ts).
 WS_CONFIG_GET = "b_panels/config/get"
 WS_CONFIG_SAVE = "b_panels/config/save"
+# Server-side RSS/Atom fetch proxy (CORS-safe; SSRF-guarded) for the News tile.
+WS_RSS = "b_panels/rss"
