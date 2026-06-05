@@ -442,35 +442,27 @@ const AppContent = () => {
       return <AccessDenied clientIp={clientIp} />;
   }
   
-  // Fit-to-window: scale the kiosk panel down to fit the viewport when it
-  // would otherwise overflow. Only in headless (kiosk) mode, and NOT inside
-  // the native iPad shell — that app does its own SwiftUI scaling and sets
-  // window.__bpanelsNative. Fully Kiosk / wall browsers set window.fully but
-  // not that flag, so they get the web scaling instead.
+  // Dynamic resize: the dashboard is a fixed landscape design that we uniformly
+  // scale to fit ANY viewport — browser, phone, iPad, and the HA sidebar panel.
+  // This is on for every dashboard view EXCEPT the native iPad shell (it does
+  // its own SwiftUI scaling and sets window.__bpanelsNative). Admin/login are
+  // not dashboards, so they keep the normal scrolling layout. No longer gated on
+  // ?headless — the panel resizes correctly everywhere by default.
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
-  const fitEnabled = isHeadless && !isNativeShell;
+  const fitEnabled = isDashboardRoute && !isNativeShell;
 
-  // The chrome is a DEFINITE viewport height (h-screen) in every mode,
-  // including the browser fit path. This is what the native iPad uses and
-  // why it looks perfect: a definite height gives the grid's `1fr` rows a
-  // fixed box to distribute, so content-heavy tiles (News, etc.) stay
-  // constrained and scroll internally. Using `min-h-screen` here was the
-  // regression — a mere *minimum* makes the grid auto-height, so those
-  // tiles balloon to fit all their content and the panel grows to many
-  // thousands of px tall, which FitToWindow then shrank to a tiny strip.
-  const chromeClass = "flex flex-col h-screen antialiased";
+  // In fit mode the chrome is shrink-to-fit (intrinsic design size) so
+  // FitToWindow can measure it and scale the whole block. Otherwise (Admin, or
+  // the native shell which scales itself) it's a normal full-height column.
+  const chromeClass = fitEnabled
+    ? "inline-flex flex-col antialiased"
+    : "flex flex-col h-screen antialiased";
 
-  const mainContainerClass = isHeadless
-    ? (fitEnabled
-        // Fit: clip to the viewport. The grid below uses minmax(0, 1fr)
-        // rows in this mode, so it always fits the definite h-screen height
-        // exactly — nothing overflows, nothing is clipped, and no scaling
-        // transform is needed. (We do NOT measure scrollHeight to scale:
-        // a single content-heavy tile like News, with no internal height
-        // limit, would inflate the measurement and shrink everything.)
-        ? "flex-1 overflow-hidden p-2"
-        : "flex-1 overflow-y-auto p-2") // Native iPad kiosk: native scaling handles fit
-    : "flex-1 overflow-y-auto container mx-auto p-6 md:p-8"; // Admin/etc.
+  const mainContainerClass = fitEnabled
+    ? "p-2" // intrinsic; the Dashboard grid defines the design width/height
+    : (isHeadless
+        ? "flex-1 overflow-y-auto p-2" // native iPad kiosk: native scaling handles fit
+        : "flex-1 overflow-y-auto container mx-auto p-6 md:p-8"); // Admin/etc.
 
   return (
     <>

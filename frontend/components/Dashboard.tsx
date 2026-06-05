@@ -140,14 +140,14 @@ const Dashboard = () => {
   const activePanel = panels.find(p => p.id === panelId);
   const parentPanel = activePanel?.parentId ? panels.find(p => p.id === activePanel.parentId) : null;
 
-  // Browser / Fully-Kiosk fit mode: headless URL, not the native iPad shell.
-  // In this mode the rows must compress to fit the viewport instead of
-  // holding a pixel floor (which would overflow and clip the bottom rows on
-  // a wall display that's shorter than the iPad design height).
-  const searchParams = new URLSearchParams(location.search);
-  const isHeadless = searchParams.get('headless') === 'true';
+  // Dynamic resize: render the grid at a fixed *design* size — square cells
+  // (column width == row height) so the panel has a locked landscape aspect —
+  // and let FitToWindow (App.tsx) uniformly scale that whole block to fit any
+  // viewport. This is on everywhere EXCEPT the native iPad shell, which scales
+  // itself. (Previously this only ran for ?headless URLs and used fluid 1fr
+  // columns, which squished cells tall-and-skinny on narrow/portrait screens.)
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
-  const fitEnabled = isHeadless && !isNativeShell;
+  const fitEnabled = !isNativeShell;
 
 
   // Precompute rounded-corner classes for tiles inside highlight regions.
@@ -265,7 +265,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="relative h-full flex flex-col">
+    <div className={`relative flex flex-col ${fitEnabled ? '' : 'h-full'}`}>
       {/* Alarm flow — driven by the panel phase, shown on every panel. */}
       {phase === 'arming' && alarmState && (
           <ExitDelayModal alarmState={alarmState} onCancel={cancelArming} />
@@ -364,19 +364,19 @@ const Dashboard = () => {
       )}
 
       {!activeDevicePanel && <div
-        className={`grid gap-2.5 flex-1 min-h-0 ${fitEnabled ? '' : 'overflow-y-auto'}`}
+        className={`grid gap-2.5 ${fitEnabled ? '' : 'flex-1 min-h-0 overflow-y-auto'}`}
         style={{
-            gridTemplateColumns: `repeat(${activePanel.columns || 8}, minmax(0, 1fr))`,
-            // Headless kiosk fit: minmax(0, 1fr) — rows compress to exactly fill
-            // the definite screen height so the whole panel fits edge-to-edge.
+            // Fit mode: fixed *square* design cells (cellW == cellH == rowHeight)
+            // give the grid a locked landscape aspect at an intrinsic pixel size;
+            // FitToWindow then uniformly scales the whole panel to fit the
+            // viewport. This is what keeps tile proportions correct in every mode
+            // (browser/phone/iPad/sidebar) instead of squishing on narrow widths.
             //
-            // Normal (browser / native shell): honor the configured rowHeight
-            // exactly so tile sizes match the Panel Builder. A 2-row tile is
-            // 2×rowHeight, not stretched to fill the viewport. The grid scrolls
-            // if the panel is taller than the window.
-            gridAutoRows: fitEnabled
-                ? 'minmax(0, 1fr)'
-                : `${activePanel.rowHeight || 120}px`,
+            // Native shell: fluid columns + fixed rowHeight rows (SwiftUI scales).
+            gridTemplateColumns: fitEnabled
+                ? `repeat(${activePanel.columns || 8}, ${activePanel.rowHeight || 120}px)`
+                : `repeat(${activePanel.columns || 8}, minmax(0, 1fr))`,
+            gridAutoRows: `${activePanel.rowHeight || 120}px`,
         }}
       >
         {/* Render Highlight Sections */}
