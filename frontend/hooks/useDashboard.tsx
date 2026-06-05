@@ -1184,17 +1184,52 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { robotComposites: composites, robotMemberIds: members };
   }, [serviceDevices, entityDeviceMap]);
 
+  // Pet cards (Whisker pets): a `*_weight` sensor paired with a `*_visits_today`
+  // sibling becomes one pet card. Grouped by entity-id stem so it's independent
+  // of the device registry. Robot pet-weight sensors have no visits sibling and
+  // are skipped (they stay part of the robot composite).
+  const { petComposites, petMemberIds } = useMemo(() => {
+    const composites: Device[] = [];
+    const members = new Set<string>();
+    const byId = new Map(serviceDevices.map(d => [d.id, d]));
+    for (const d of serviceDevices) {
+      const m = d.id.match(/^sensor\.(.+)_weight$/);
+      if (!m) continue;
+      const stem = m[1];
+      const visits = byId.get(`sensor.${stem}_visits_today`) || serviceDevices.find(x => x.id.startsWith(`sensor.${stem}_visits`));
+      if (!visits) continue;
+      const w = Number(d.state);
+      composites.push({
+        id: `pet:${stem}`,
+        name: d.name.replace(/\s*weight\s*$/i, '').trim() || stem,
+        type: DeviceType.Pet,
+        service: DeviceService.HomeAssistant,
+        state: {
+          weight: Number.isFinite(w) ? w : null,
+          weightUnit: (d.capabilityData as any)?.unit || 'lb',
+          visits: Number.isFinite(Number(visits.state)) ? Number(visits.state) : null,
+        },
+      });
+      members.add(d.id);
+      members.add(visits.id);
+    }
+    return { petComposites: composites, petMemberIds: members };
+  }, [serviceDevices]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
-    // Then service devices, except those folded into a robot composite card.
-    serviceDevices.forEach(d => { if (!robotMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d); });
-    // Finally the composite robot cards.
+    // Then service devices, except those folded into a robot or pet composite.
+    serviceDevices.forEach(d => {
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+    });
+    // Finally the composite robot + pet cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds]);
 
   // Diagnostic: report composite grouping so issues are visible in the console.
   useEffect(() => {
