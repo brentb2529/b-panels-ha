@@ -19,3 +19,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Internal dev handoff notes — references the private upstream; never publish.
+RESUME.md
