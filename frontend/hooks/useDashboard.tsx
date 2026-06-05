@@ -600,18 +600,44 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
     let internalState: Device['state'] = {};
     // Allow both 'battery_level' (common) and 'battery' (less common but possible)
     let batteryLevel: number | undefined = getNumericValue(attributes.battery_level) ?? getNumericValue(attributes.battery) ?? undefined;
+    // Light color capability hints (set in the 'light' case; read by DimmerTile).
+    let lightSupportsColor = false;
+    let lightSupportsColorTemp = false;
+    let lightColorTempRange: { min: number; max: number } | undefined = undefined;
 
     switch (domain) {
-        case 'light':
-            const supportedModes = attributes.supported_color_modes || [];
-            if (supportedModes.includes('brightness')) {
+        case 'light': {
+            const supportedModes: string[] = attributes.supported_color_modes || [];
+            const dimmable = supportedModes.some(m => ['brightness', 'color_temp', 'hs', 'rgb', 'rgbw', 'rgbww', 'xy'].includes(m));
+            const supportsColor = supportedModes.some(m => ['hs', 'rgb', 'rgbw', 'rgbww', 'xy'].includes(m));
+            const supportsColorTemp = supportedModes.includes('color_temp');
+            if (dimmable) {
                 type = DeviceType.Dimmer;
-                internalState = state === 'on' ? Math.round((attributes.brightness / 255) * 100) : 0;
+                const isOn = state === 'on';
+                const level = isOn ? Math.round(((attributes.brightness ?? 0) / 255) * 100) : 0;
+                if (supportsColor || supportsColorTemp) {
+                    // Rich state so DimmerTile shows brightness + color / color-temp.
+                    lightSupportsColor = supportsColor;
+                    lightSupportsColorTemp = supportsColorTemp;
+                    if (attributes.min_color_temp_kelvin && attributes.max_color_temp_kelvin) {
+                        lightColorTempRange = { min: attributes.min_color_temp_kelvin, max: attributes.max_color_temp_kelvin };
+                    }
+                    internalState = {
+                        level, isOn,
+                        hsColor: Array.isArray(attributes.hs_color) ? attributes.hs_color : undefined,
+                        colorTemp: typeof attributes.color_temp_kelvin === 'number' ? attributes.color_temp_kelvin : undefined,
+                        colorTempRange: lightColorTempRange,
+                        supportsColor, supportsColorTemp,
+                    };
+                } else {
+                    internalState = level; // simple dimmer
+                }
             } else {
                 type = DeviceType.Light;
                 internalState = state === 'on';
             }
             break;
+        }
         case 'switch':
             type = DeviceType.Switch;
             internalState = state === 'on';
@@ -768,6 +794,9 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
         state: internalState,
         location: 'Home Assistant',
         battery: batteryLevel,
+        supportsColor: lightSupportsColor || undefined,
+        supportsColorTemp: lightSupportsColorTemp || undefined,
+        colorTempRange: lightColorTempRange,
         capabilities: profile.capabilities,
         capabilityData: {
             domain,
