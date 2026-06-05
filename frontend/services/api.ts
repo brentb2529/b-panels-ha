@@ -104,6 +104,21 @@ export const apiHomeAssistantArm = async (
     }
 };
 
+// Panic / emergency dispatch via the Noonlight HACS integration
+// (konnected-io/noonlight-hass). Its `noonlight.create_alarm` service dispatches
+// emergency services using the lat/long configured in the integration. Requires
+// the integration to be set up in HA first (Settings → Devices & Services →
+// Noonlight) — otherwise the `noonlight` service domain won't exist and this
+// rejects, which the caller surfaces to the user.
+export const apiNoonlightCreateAlarm = async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+        await haClient.callService('noonlight', 'create_alarm', {});
+        return { ok: true };
+    } catch (e: any) {
+        return { ok: false, error: e?.message ?? String(e) };
+    }
+};
+
 // --- Removed api-server features (Lutron / SmartThings / RSS / panel fleet / ---
 // --- cloud + ST backup / Noonlight / Whisker). Stubbed so imports compile. -----
 

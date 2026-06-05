@@ -107,8 +107,10 @@ const FolderTile = ({ device, tile, isEditor, cornerClassName }: { device: Devic
           const d = deviceMap.get(t.deviceId);
           if (!d) continue;
 
-          // Water Leak
-          if (d.type === DeviceType.WaterSensor && (d.state as any)?.leak === true) {
+          // Water Leak — HA binary_sensor maps to a boolean; the legacy
+          // SmartThings path used { leak }. Accept either so a contained HA
+          // leak sensor still bounces the folder when wet.
+          if (d.type === DeviceType.WaterSensor && (d.state === true || (d.state as any)?.leak === true)) {
               hasLeak = true;
           }
           

@@ -99,18 +99,12 @@ function deriveReasons(state: Record<string, any>): { severity: 'error' | 'warni
         }
     }
 
-    // 7. Vendor freshness. The site doc carries vendor timestamps; if the
-    //    equipment telemetry is explicitly flagged stale, surface it. (The
-    //    poller-silence heuristics from the api-server era no longer apply —
-    //    the integration fetches on demand.)
-    const fmtSecs = (s: number) =>
-        s < 3600 ? `${Math.round(s / 60)}m`
-        : s < 86400 ? `${Math.round(s / 3600)}h`
-        : `${Math.round(s / 86400)}d`;
-
-    if (state.equipmentDataStale === true && state.equipmentDataAgeSeconds) {
-        reasons.push({ severity: 'warning', text: `Equipment telemetry stale (${fmtSecs(Number(state.equipmentDataAgeSeconds))} old)` });
-    }
+    // 7. Vendor freshness is intentionally NOT surfaced as a warning. The
+    //    `equipmentDataStale` / `equipmentDataAgeSeconds` fields reflect a vendor
+    //    telemetry timestamp that frequently never updates (observed 200+ days
+    //    "stale" on a perfectly healthy unit), so it produced a bogus standing
+    //    warning on the main widget. Real problems are caught by fault state,
+    //    active alarms, and component health above.
 
     return reasons;
 }

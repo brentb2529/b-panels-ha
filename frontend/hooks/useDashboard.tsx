@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, BatteryReportConfig, BatteryTypeMappings, BatteryQuantityMappings, BatteryTypeDefault, BatteryHistoryData, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -10,7 +10,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
 import { apiGetConfig, apiSaveConfig } from '../services/api';
 import { playTextToSpeech, getFully } from '../services/audioPlayer';
-import { apiHomeAssistantArm } from '../services/api';
+import { apiHomeAssistantArm, apiNoonlightCreateAlarm } from '../services/api';
 
 // --- HA-only stubs for removed non-HA integrations ---------------------------
 // This dashboard was ported from a multi-integration app. SmartThings, Sonos,
@@ -131,12 +131,6 @@ export interface StoredConfig {
     sthmHistory?: ArmingEvent[];
     internetMonitorConfig?: InternetMonitorConfig;
     fishingReportConfig?: FishingReportConfig;
-    batteryReportConfig?: BatteryReportConfig;
-    batteryTypeMappings?: BatteryTypeMappings;
-    batteryQuantityMappings?: BatteryQuantityMappings;
-    batteryTypeDefaults?: BatteryTypeDefault[];
-    batteryHistory?: BatteryHistoryData;
-    customBatteryTypes?: string[];
     primaryAlarmProvider?: 'st' | 'ha';
 }
 
@@ -214,38 +208,6 @@ const getDefaultConfig = (): StoredConfig => ({
     notifyOnReboot: true,
     notifyOnRecovery: true,
   },
-  batteryTypeMappings: {},
-  batteryQuantityMappings: {},
-  batteryTypeDefaults: [
-    // Samsung SmartThings sensors
-    { pattern: 'smartthings motion sensor', batteryType: 'CR2450', description: 'SmartThings Motion Sensor' },
-    { pattern: 'smartthings multipurpose sensor', batteryType: 'CR2450', description: 'SmartThings Multipurpose Sensor' },
-    { pattern: 'smartthings water leak sensor', batteryType: 'CR2450', description: 'SmartThings Water Leak Sensor' },
-    { pattern: 'smartthings button', batteryType: 'CR2450', description: 'SmartThings Button' },
-    // Aeotec sensors (common SmartThings-compatible)
-    { pattern: 'aeotec multipurpose sensor', batteryType: 'CR2450', description: 'Aeotec Multipurpose Sensor' },
-    { pattern: 'aeotec motion sensor', batteryType: 'CR2450', description: 'Aeotec Motion Sensor' },
-    { pattern: 'aeotec water leak sensor', batteryType: 'CR2450', description: 'Aeotec Water Leak Sensor' },
-    // Centralite sensors
-    { pattern: 'centralite', batteryType: 'CR2450', description: 'Centralite Sensors' },
-    // Generic Zigbee contact sensors (most use CR2032)
-    { pattern: 'contact sensor', batteryType: 'CR2032', description: 'Generic Contact Sensor' },
-    { pattern: 'door sensor', batteryType: 'CR2032', description: 'Generic Door Sensor' },
-    { pattern: 'window sensor', batteryType: 'CR2032', description: 'Generic Window Sensor' },
-    // Smoke/CO detectors (typically CR123A)
-    { pattern: 'smoke', batteryType: 'CR123A', description: 'Smoke Detector' },
-    { pattern: 'carbon monoxide', batteryType: 'CR123A', description: 'CO Detector' },
-    // Locks (typically AA)
-    { pattern: 'lock', batteryType: 'AA', description: 'Smart Lock' },
-    // Thermostats (typically AA)
-    { pattern: 'thermostat', batteryType: 'AA', description: 'Thermostat' },
-  ],
-  batteryHistory: {
-    devices: {},
-    maxReadingsPerDevice: 90, // ~3 months of daily readings
-    recordingIntervalHours: 24, // Record once per day
-  },
-  customBatteryTypes: [],
 });
 
 // #region Helper functions for mapping data
@@ -698,6 +660,15 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
             if (attributes.device_class === 'temperature') {
                 type = DeviceType.TemperatureSensor;
                 internalState = parseFloat(state) || 0;
+            } else if (/smoke/i.test(entity_id)) {
+                // Z-Wave/Konnected smoke detectors often surface as an enum
+                // `sensor.*` (state 'clear'/'detected'/'tested') rather than a
+                // binary_sensor. Treat anything but a known-safe value as an alarm.
+                type = DeviceType.SmokeDetector;
+                internalState = !['clear', 'off', 'idle', 'normal', 'ok', 'none', 'safe', 'unavailable', 'unknown'].includes(String(state).toLowerCase());
+            } else if (/carbon_monoxide|carbon monoxide|co_detector/i.test(entity_id)) {
+                type = DeviceType.CarbonMonoxideDetector;
+                internalState = !['clear', 'off', 'idle', 'normal', 'ok', 'none', 'safe', 'unavailable', 'unknown'].includes(String(state).toLowerCase());
             }
             break;
         case 'binary_sensor':
@@ -992,15 +963,6 @@ interface DashboardContextType {
   updateInternetMonitorConfig: (updates: Partial<InternetMonitorConfig>) => void;
   fishingReportConfig: FishingReportConfig | undefined;
   updateFishingReportConfig: (updates: Partial<FishingReportConfig>) => void;
-  batteryReportConfig: BatteryReportConfig | undefined;
-  updateBatteryReportConfig: (updates: Partial<BatteryReportConfig>) => void;
-  batteryTypeMappings: BatteryTypeMappings;
-  updateBatteryTypeMapping: (deviceId: string, batteryType: string) => void;
-  batteryQuantityMappings: BatteryQuantityMappings;
-  updateBatteryQuantityMapping: (deviceId: string, quantity: number) => void;
-  customBatteryTypes: string[];
-  addCustomBatteryType: (batteryType: string) => void;
-  removeCustomBatteryType: (batteryType: string) => void;
   triggerPanicAlarm: (deviceId: string) => void;
   activeDevicePanel: { deviceId: string; device: Device } | null;
   openDevicePanel: (deviceId: string) => void;
@@ -1039,7 +1001,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig, batteryReportConfig } = config;
+  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig } = config;
   // HA-only: demo mode is never used. Force it off regardless of any stale
   // saved config (older builds persisted useDemoMode:true, which routed device
   // control to a no-op demo service so toggles never reached Home Assistant).
@@ -3389,37 +3351,36 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, [useDemoMode, updateDeviceState]);
 
   const triggerPanicAlarm = useCallback(async (deviceId: string) => {
-    const noonlightConn = connections.find(c => c.id === DeviceService.Noonlight && c.enabled);
-    if (!noonlightConn || !noonlightConn.apiToken || !noonlightConn.address || !noonlightConn.city || !noonlightConn.state || !noonlightConn.zip || !noonlightConn.name || !noonlightConn.phone) {
-        addNotification('Noonlight is not configured. Please check all fields in Admin > Connections.', 'error');
+    // Gate emergency dispatch behind a dashboard user PIN so an accidental tap
+    // can't call the authorities. (Validated against the same user PINs the
+    // alarm disarm flow uses.)
+    const pin = await requestInput("Enter PIN to trigger emergency dispatch:", '', 'password');
+    if (!pin) return;
+    const validUser = users.find(u => u.pin === pin);
+    if (!validUser) {
+        addNotification('Invalid PIN — emergency dispatch cancelled.', 'error');
         updateVirtualDevice(deviceId, { state: 'ERROR' });
-        setTimeout(() => {
-            updateVirtualDevice(deviceId, { state: 'IDLE' });
-        }, 5000);
+        setTimeout(() => updateVirtualDevice(deviceId, { state: 'IDLE' }), 5000);
         return;
     }
-    
-    const pin = await requestInput("Enter Noonlight PIN:", '', 'password');
-    if (pin) {
-        try {
-            await noonlightService.createAlarm(pin);
-            addNotification('Noonlight alarm successfully triggered.', 'success');
-            updateVirtualDevice(deviceId, { state: 'TRIGGERED' });
-            
-            setTimeout(() => {
-                updateVirtualDevice(deviceId, { state: 'IDLE' });
-            }, 30 * 1000);
 
-        } catch (error) {
-            console.error("Failed to trigger Noonlight alarm:", error);
-            addNotification(`Noonlight Error: ${(error as Error).message}`, 'error');
-            updateVirtualDevice(deviceId, { state: 'ERROR' });
-            setTimeout(() => {
-                updateVirtualDevice(deviceId, { state: 'IDLE' });
-            }, 5000);
-        }
+    updateVirtualDevice(deviceId, { state: 'TRIGGERED' });
+    // Dispatch via the Noonlight HACS integration's noonlight.create_alarm
+    // service (uses the lat/long configured in the integration). The integration
+    // must be set up in HA for the `noonlight` service to exist.
+    const result = await apiNoonlightCreateAlarm();
+    if (result.ok) {
+        addNotification('Emergency dispatch triggered via Noonlight.', 'success');
+        setTimeout(() => updateVirtualDevice(deviceId, { state: 'IDLE' }), 30 * 1000);
+    } else {
+        console.error("Failed to trigger Noonlight alarm:", result.error);
+        addNotification(`Noonlight dispatch failed: ${result.error}. Is the Noonlight integration set up in Home Assistant?`, 'error');
+        updateVirtualDevice(deviceId, { state: 'ERROR' });
+        setTimeout(() => updateVirtualDevice(deviceId, { state: 'IDLE' }), 5000);
     }
-  }, [connections, addNotification, requestInput]);
+    // updateVirtualDevice is declared later in this hook; referenced via closure
+    // (kept out of deps to avoid the temporal-dead-zone, matching the original).
+  }, [users, addNotification, requestInput]);
 
   const openDevicePanel = useCallback((deviceId: string) => {
     setActiveDevicePanelId(deviceId);
@@ -3802,82 +3763,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }));
   }, []);
 
-  const updateBatteryReportConfig = useCallback((updates: Partial<BatteryReportConfig>) => {
-      setConfig(produce(draft => {
-          if (!draft.batteryReportConfig) {
-              draft.batteryReportConfig = {
-                  enabled: false,
-                  dayOfWeek: 'sunday',
-                  timeOfDay: '09:00',
-                  timezone: 'America/New_York',
-                  smtpHost: '',
-                  smtpPort: 587,
-                  smtpSecure: false,
-                  smtpUser: '',
-                  smtpPassword: '',
-                  fromEmail: '',
-                  fromName: 'HomeTile Battery Report',
-                  recipientEmails: [],
-                  includeAllBatteries: true,
-                  lowBatteryThreshold: 20,
-                  criticalBatteryThreshold: 10,
-                  reportTitle: 'Weekly Battery Status Report',
-              };
-          }
-          Object.assign(draft.batteryReportConfig, updates);
-      }));
-  }, []);
-
-  const updateBatteryTypeMapping = useCallback((deviceId: string, batteryType: string) => {
-      setConfig(produce(draft => {
-          if (!draft.batteryTypeMappings) {
-              draft.batteryTypeMappings = {};
-          }
-          if (batteryType === 'Unknown' || batteryType === '') {
-              // Remove the mapping to fall back to auto-detection
-              delete draft.batteryTypeMappings[deviceId];
-          } else {
-              draft.batteryTypeMappings[deviceId] = batteryType as any;
-          }
-      }));
-  }, []);
-
-  const updateBatteryQuantityMapping = useCallback((deviceId: string, quantity: number) => {
-      setConfig(produce(draft => {
-          if (!draft.batteryQuantityMappings) {
-              draft.batteryQuantityMappings = {};
-          }
-          if (quantity <= 1) {
-              // Remove the mapping to fall back to default (1)
-              delete draft.batteryQuantityMappings[deviceId];
-          } else {
-              draft.batteryQuantityMappings[deviceId] = quantity;
-          }
-      }));
-  }, []);
-
-  const addCustomBatteryType = useCallback((batteryType: string) => {
-      const trimmed = batteryType.trim();
-      if (!trimmed) return;
-      setConfig(produce(draft => {
-          if (!draft.customBatteryTypes) {
-              draft.customBatteryTypes = [];
-          }
-          // Don't add duplicates
-          if (!draft.customBatteryTypes.includes(trimmed)) {
-              draft.customBatteryTypes.push(trimmed);
-          }
-      }));
-  }, []);
-
-  const removeCustomBatteryType = useCallback((batteryType: string) => {
-      setConfig(produce(draft => {
-          if (draft.customBatteryTypes) {
-              draft.customBatteryTypes = draft.customBatteryTypes.filter(t => t !== batteryType);
-          }
-      }));
-  }, []);
-
   const sendBroadcastNotification = useCallback(async (message: string) => {
       const stConnection = connections.find(c => c.id === DeviceService.SmartThings && c.enabled);
       if (!stConnection) {
@@ -4006,15 +3891,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       updateInternetMonitorConfig,
       fishingReportConfig,
       updateFishingReportConfig,
-      batteryReportConfig,
-      updateBatteryReportConfig,
-      batteryTypeMappings: config.batteryTypeMappings || {},
-      updateBatteryTypeMapping,
-      batteryQuantityMappings: config.batteryQuantityMappings || {},
-      updateBatteryQuantityMapping,
-      customBatteryTypes: config.customBatteryTypes || [],
-      addCustomBatteryType,
-      removeCustomBatteryType,
       triggerPanicAlarm,
       activeDevicePanel,
       openDevicePanel,
