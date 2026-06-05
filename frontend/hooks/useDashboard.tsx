@@ -88,7 +88,6 @@ const DEAD_VIRTUAL_TYPES = new Set<DeviceType>([
   DeviceType.Flair,
   DeviceType.CoolMaster,
   DeviceType.PoolFloor,
-  DeviceType.AlarmHistory,
 ]);
 
 // Export StoredConfig for the API service to use
