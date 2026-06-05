@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, BatteryReportConfig, BatteryTypeMappings, BatteryQuantityMappings, BatteryTypeDefault, BatteryHistoryData, LitterRobotState, LitterRobotStatus } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, BatteryReportConfig, BatteryTypeMappings, BatteryQuantityMappings, BatteryTypeDefault, BatteryHistoryData, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -1245,20 +1245,90 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { petComposites: composites, petMemberIds: members };
   }, [serviceDevices]);
 
+  // Flair: one structure card aggregating the room climates + vent covers
+  // (and hiding the per-vent duct sensors / puck-lock switches). Built from the
+  // mapped devices by naming convention (climate.*_structure / *_room,
+  // cover.*_vent), since Flair splits them into separate HA devices.
+  const { flairComposites, flairMemberIds } = useMemo(() => {
+    const empty = { flairComposites: [] as Device[], flairMemberIds: new Set<string>() };
+    const structureClimate = serviceDevices.find(d => /^climate\..*structure/i.test(d.id));
+    const ventCovers = serviceDevices.filter(d => /^cover\..*_vent$/i.test(d.id));
+    if (!structureClimate && ventCovers.length === 0) return empty;
+
+    const members = new Set<string>();
+    const roomClimatesAll = serviceDevices.filter(d => /^climate\./i.test(d.id) && d.id !== structureClimate?.id);
+    const roomClimates = roomClimatesAll.filter(d => /_room$/i.test(d.id));
+    const rooms2 = roomClimates.length ? roomClimates : roomClimatesAll;
+    const rawState = (d: Device) => String((d.capabilityData as any)?.rawState ?? '');
+    const ventRoomSlug = (id: string) => id.replace(/^cover\./, '').replace(/_[0-9a-z]+_vent$/i, '');
+
+    const rooms = rooms2.map(rc => {
+      const slug = rc.id.replace(/^climate\./, '').replace(/_room$/i, '');
+      const st: any = rc.state || {};
+      const unavailable = rawState(rc) === 'unavailable';
+      const cur = !unavailable && typeof st.currentTemp === 'number' && st.currentTemp !== 0 ? st.currentTemp : null;
+      const setp = !unavailable && typeof st.setpoint === 'number' && st.setpoint !== 0 ? st.setpoint : null;
+      const mode = String(st.mode || '').toLowerCase();
+      let hvacState: any = 'idle';
+      if (unavailable || mode === 'off') hvacState = 'off';
+      else if (cur != null && setp != null) {
+        if (mode === 'cool') hvacState = cur > setp + 0.5 ? 'cooling' : 'idle';
+        else if (mode === 'heat') hvacState = cur < setp - 0.5 ? 'heating' : 'idle';
+        else hvacState = cur > setp + 0.5 ? 'cooling' : cur < setp - 0.5 ? 'heating' : 'idle';
+      }
+      const vents = ventCovers.filter(v => ventRoomSlug(v.id) === slug).map(v => {
+        members.add(v.id);
+        const pos = typeof v.state === 'number' ? v.state : (v.state ? 100 : 0);
+        return { id: v.id, name: v.name, roomId: rc.id, percentOpen: pos, targetPercentOpen: pos, isInverted: false, hasBuck: false, ductTemp: null, ductPressure: null, rssi: null, voltage: null, isActive: pos > 0, isOnline: true };
+      });
+      members.add(rc.id);
+      return {
+        id: rc.id, name: rc.name.replace(/\s*room\s*$/i, '').trim() || rc.name, structureId: structureClimate?.id || 'flair',
+        currentTemp: cur, currentHumidity: null, setPointTemp: setp, setPointManual: false,
+        activeMode: (unavailable || mode === 'off') ? 'inactive' : 'active' as any,
+        hvacState, hasPuck: false, puckTemp: null, puckHumidity: null, vents, isOnline: !unavailable, lastUpdated: null,
+      };
+    });
+
+    // Exclude any unmatched vents + the per-vent duct sensors and puck switches.
+    ventCovers.forEach(v => members.add(v.id));
+    serviceDevices.forEach(d => { if (/_duct_(temperature|pressure)/i.test(d.id) || /_lock_puck$/i.test(d.id)) members.add(d.id); });
+    if (structureClimate) members.add(structureClimate.id);
+
+    const structMode = structureClimate ? String((structureClimate.state as any)?.mode || rawState(structureClimate) || '').toLowerCase() : 'auto';
+    const sysMode = (structMode === 'heat_cool' ? 'auto' : (structMode || 'auto')) as any;
+    const ventCount = rooms.reduce((n, r) => n + r.vents.length, 0);
+    const state: FlairState = {
+      structureId: structureClimate?.id || 'flair',
+      structureName: structureClimate?.name?.replace(/\s*structure\s*$/i, '').trim() || 'Flair',
+      isOnline: structureClimate ? rawState(structureClimate) !== 'unavailable' : true,
+      connectionMode: 'cloud', lastUpdated: '',
+      structure: {
+        id: structureClimate?.id || 'flair', name: structureClimate?.name || 'Flair', systemMode: sysMode,
+        setPointDisplay: 'F', homeAwayMode: 'auto', isOnline: true, outsideTemp: null, outsideHumidity: null,
+        roomCount: rooms.length, ventCount, activeRoomCount: rooms.filter(r => r.activeMode === 'active').length,
+      },
+      rooms: rooms as any,
+    };
+    const comp: Device = { id: `flair:${state.structureId}`, name: state.structureName, type: DeviceType.Flair, service: DeviceService.HomeAssistant, state };
+    return { flairComposites: [comp], flairMemberIds: members };
+  }, [serviceDevices]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
-    // Then service devices, except those folded into a robot or pet composite.
+    // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
-    // Finally the composite robot + pet cards.
+    // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
 
   // Diagnostic: report composite grouping so issues are visible in the console.
   useEffect(() => {
