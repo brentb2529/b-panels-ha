@@ -39,6 +39,17 @@ class HomeAssistantService {
                     } else {
                         service = 'turn_off';
                     }
+                } else if (newState && typeof newState === 'object') {
+                    // Rich state from DimmerTile color/colorTemp controls.
+                    const s = newState as any;
+                    if (s.isOn === false || s.level === 0) {
+                        service = 'turn_off';
+                    } else {
+                        service = 'turn_on';
+                        if (typeof s.level === 'number') serviceData.brightness_pct = s.level;
+                        if (Array.isArray(s.hsColor)) serviceData.hs_color = s.hsColor;
+                        else if (typeof s.colorTemp === 'number') serviceData.color_temp_kelvin = s.colorTemp;
+                    }
                 } else {
                     service = newState ? 'turn_on' : 'turn_off';
                 }
