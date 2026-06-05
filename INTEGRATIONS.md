@@ -56,7 +56,8 @@ A device renders in B-Panels when it maps to one of these capabilities
 `frontend/services/haCapabilities.ts`):
 
 `toggle` · `brightness` · `color` · `colorTemp` · `position` · `setpoint` ·
-`mode-select` · `media-transport` · `sensor-readonly` · `lock` · `alarm`
+`mode-select` · `number` · `press` · `media-transport` · `sensor-readonly` ·
+`lock` · `alarm`
 
 A future plugin only needs to expose its data as **HA entities** with the right
 domain/`device_class`/attributes; B-Panels then renders it with zero changes.
@@ -64,6 +65,56 @@ The only true gaps are devices with **no HA representation at all** (e.g. the
 fishing report) — those need either a custom HA sensor/integration that
 publishes the data as entity attributes, or a dedicated B-Panels info tile +
 plugin data source.
+
+---
+
+## The zero-rework contract — how a new integration flows in
+
+Every HA entity passes through three layers, each with a graceful fallback, so a
+**newly-added integration renders (and usually controls) with no code change**:
+
+1. **Map** — `mapHaEntityToInternalDevice` (`frontend/hooks/useDashboard.tsx`).
+   Known domains become a bespoke `DeviceType`; everything else becomes
+   `DeviceType.Generic` (never dropped). The entity is never discarded.
+2. **Infer** — `inferCapabilityProfile` (`frontend/services/haCapabilities.ts`).
+   Derives `capabilities` + a `primary` + `controllable` from the domain,
+   `device_class`, and attributes. Never throws, never returns null.
+3. **Resolve** — `resolveTile` (`frontend/components/tileRegistry.tsx`).
+   `bespoke tile for the type` → else `GenericCapabilityTile` (if it has
+   capabilities) → else `UnknownTile`.
+
+### What already works automatically (no rework)
+
+| Entity kind | Example new domains | Generic rendering |
+| --- | --- | --- |
+| Read-only value | `sensor`, `weather`, `air_quality`, `device_tracker` | Value + unit, formatted (`412 W`, `23.5 °C`) |
+| On/off control | `switch`, `fan`, `humidifier`, `input_boolean` | Power button, optimistic toggle |
+| Numeric setpoint | `number` | Bounded slider (`min`/`max`/`step` + unit) |
+| Option picker | `select`, `input_select` | Current option, **tap-to-cycle** |
+| Momentary action | `button`, `input_button` | **Press** button → `<domain>.press` |
+
+Command routing for these lives in `HomeAssistantService.setDeviceState`
+(`frontend/services/homeassistant.ts`), **allowlisted by domain** — we never
+blindly `turn_on`/`turn_off` a domain that doesn't support it.
+
+### Adding richer support is a small, known edit (not a rework)
+
+When a new integration's device deserves a *bespoke* look, or a controllable
+domain we don't yet render generically (`fan` % / `humidifier` target /
+`water_heater` / `vacuum` / `lawn_mower` / `lock open` / `update` / `text`):
+
+1. **Bespoke tile** — build `MyTile.tsx`, register one line in
+   `tileByType` (`tileRegistry.tsx`), and map the domain → `DeviceType` in
+   `mapHaEntityToInternalDevice`. No `switch` in `Tile.tsx`, no other edits.
+2. **New generic capability** — add the capability to the `Capability` union
+   (`types.ts`), emit it from `inferCapabilityProfile`, render a branch in
+   `GenericCapabilityTile`, and add the service mapping in `setDeviceState`.
+   (This is exactly how `number` / `select` / `press` were added — ~4 small,
+   localized edits, no churn to existing tiles.)
+
+> The dividing line: **read-only + the five common controllable patterns are
+> free**; anything fancier is a contained ~4-file addition, never a refactor of
+> the ingestion module.
 
 ---
 

@@ -136,11 +136,24 @@ export function inferCapabilityProfile(entity: HaEntityLike): CapabilityProfile 
     case 'scene':
     case 'script':
     case 'automation':
-    case 'button':
-    case 'input_button':
-      // Momentary activation reads as a toggle in tile terms.
+      // Momentary activation reads as a toggle in tile terms (these map to
+      // bespoke SceneTile; kept here for completeness of the profile).
       caps.push('toggle');
       primary = 'toggle';
+      break;
+    case 'button':
+    case 'input_button':
+      // Stateless momentary action — a single press. NOT a toggle: routing a
+      // button through turn_on/turn_off is a no-op/error (see HA semantics).
+      caps.push('press');
+      primary = 'press';
+      break;
+    case 'number':
+    case 'input_number':
+      // Settable numeric value (target temp, threshold, etc.) rendered as a
+      // slider bounded by attributes.min/max/step.
+      caps.push('number');
+      primary = 'number';
       break;
     case 'select':
     case 'input_select':

@@ -79,6 +79,17 @@ class HomeAssistantService {
                 service = 'set_value';
                 serviceData.value = newState as number;
                 break;
+            case 'select':
+            case 'input_select':
+                // Generic mode-select: tap-to-cycle sends the next option string.
+                service = 'select_option';
+                serviceData.option = String(newState);
+                break;
+            case 'button':
+            case 'input_button':
+                // Momentary press — no payload, newState is ignored.
+                service = 'press';
+                break;
             case 'lock':
                 service = newState ? 'lock' : 'unlock';
                 break;
