@@ -108,7 +108,9 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
 
     const handleAction = (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY') => {
         if (isEditor || isLocked) return;
-        requestPin((pin) => { setAlarmStatus(status, pin); });
+        // The PIN is the Alarmo code (validated server-side by Alarmo), not gated
+        // against the dashboard Users list — validate:false.
+        requestPin((pin) => { setAlarmStatus(status, pin); }, { validate: false });
     };
 
     // Shared depth styling for the bold full-bleed state backgrounds: a top-lit
