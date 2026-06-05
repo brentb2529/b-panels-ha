@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
 import { IconArrowUp, IconArrowDown } from '../icons';
 import { fluidGap, fluidTextXs } from './tileScale';
@@ -15,7 +15,7 @@ const getNumericValue = (val: any): number => {
 };
 
 const ShadeTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { updateDeviceState, requestPin } = useDashboard();
+    const { updateDeviceState, requestPin } = useDashboardActions();
     const level = getNumericValue(device.state);
     const isLocked = !!tile.isLocked;
 

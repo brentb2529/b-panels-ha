@@ -1,13 +1,13 @@
 
 import React from 'react';
 import { Device, TileConfig, DeviceType } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import { IconLightbulb, IconLightbulbOff, IconZap, IconShieldAlert, IconLock, IconLockOpen, getIcon, IconDroplets } from '../icons';
 import TileWrapper, { TileAccent } from './TileWrapper';
 import { fluidIcon, fluidTextXl } from './tileScale';
 
 const SwitchTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { updateDeviceState, requestPin } = useDashboard();
+    const { updateDeviceState, requestPin } = useDashboardActions();
     
     const override = tile.displayOverride;
     const rawIsActive = !!device.state;

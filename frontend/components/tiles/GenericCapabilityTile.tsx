@@ -1,6 +1,6 @@
 import React from 'react';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
 import { IconActivity, IconPower } from '../icons';
 import { fluidIcon, fluidText2xl, fluidTextXs, fluidGap } from './tileScale';
@@ -81,7 +81,7 @@ const GenericCapabilityTile = ({
   isEditor?: boolean;
   cornerClassName?: string;
 }) => {
-  const { updateDeviceState, requestPin } = useDashboard();
+  const { updateDeviceState, requestPin } = useDashboardActions();
 
   const data = device.capabilityData || {};
   const isToggle = data.controllable === true && data.primary === 'toggle';

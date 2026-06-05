@@ -1,6 +1,6 @@
 import React from 'react';
 import { Device, TileConfig, FlairState } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
 import { IconThermometer, IconSnowflake, IconFlame, IconPower, IconCheck, IconAlertTriangle, IconHome } from '../icons';
 import { fluidTextSm, fluidTextLg, fluidText3xl, fluidIcon, fluidGap } from './tileScale';
@@ -87,7 +87,7 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
     isEditor?: boolean;
     cornerClassName?: string;
 }) => {
-    const { openDevicePanel } = useDashboard();
+    const { openDevicePanel } = useDashboardActions();
     const state = device.state as FlairState;
     const isLocked = !!tile.isLocked;
 

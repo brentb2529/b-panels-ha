@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import { IconAlertOctagon, IconCheckCircle, IconXCircle } from '../icons';
 import TileWrapper from './TileWrapper';
 import { fluidTextLg, fluidIcon } from './tileScale';
@@ -9,7 +9,7 @@ import { fluidTextLg, fluidIcon } from './tileScale';
 const ARM_DURATION = 3000; // 3 seconds to hold
 
 const PanicTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { triggerPanicAlarm } = useDashboard();
+    const { triggerPanicAlarm } = useDashboardActions();
     const [progress, setProgress] = useState(0); // 0 to 1
     const armingTimerRef = useRef<number | null>(null);
 
