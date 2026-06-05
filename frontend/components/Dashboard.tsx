@@ -99,20 +99,32 @@ const Dashboard = () => {
     }
   }, [phase, episodeKey, alarmState, addNotification]);
 
-  // PIN-validated disarm shared by every alarm modal. Validates against the
-  // dashboard users, then routes the disarm (with code) to HA/Alarmo.
-  const handleDisarmAttempt = useCallback(async (pin: string): Promise<boolean> => {
-    const validUser = users.find(u => u.pin === pin);
-    if (!validUser) return false;
-    await setAlarmStatus('DISARMED', pin);
-    addNotification(`System disarmed by ${validUser.name}`, 'success');
-    return true;
-  }, [users, setAlarmStatus, addNotification]);
+  // Latest alarm state, for confirming a disarm without stale closure capture.
+  const alarmStateRef = useRef(alarmState);
+  useEffect(() => { alarmStateRef.current = alarmState; }, [alarmState]);
 
-  // Cancel arming (exit delay): disarm via the global PIN modal (Alarmo needs a
-  // code to disarm, even to cancel your own arming).
+  // Disarm shared by every alarm modal. The entered PIN is the ALARMO CODE —
+  // Alarmo validates it server-side, so we don't gate it against the dashboard
+  // Users list. We confirm success by the panel actually reaching 'disarmed'
+  // (a wrong code leaves the state unchanged), so the PIN pad shows "Invalid PIN"
+  // only when Alarmo actually rejected it.
+  const handleDisarmAttempt = useCallback(async (pin: string): Promise<boolean> => {
+    await setAlarmStatus('DISARMED', pin);
+    const disarmed = await new Promise<boolean>(resolve => {
+      const start = Date.now();
+      const iv = window.setInterval(() => {
+        if (alarmStateRef.current?.armState === 'disarmed') { clearInterval(iv); resolve(true); }
+        else if (Date.now() - start > 2500) { clearInterval(iv); resolve(false); }
+      }, 150);
+    });
+    if (disarmed) { addNotification('System disarmed', 'success'); return true; }
+    return false;
+  }, [setAlarmStatus, addNotification]);
+
+  // Cancel arming (exit delay): disarm via the PIN pad. validate:false → the PIN
+  // is sent to Alarmo as the code (Alarmo validates), not checked locally.
   const cancelArming = useCallback(() => {
-    requestPin((pin) => { setAlarmStatus('DISARMED', pin); });
+    requestPin((pin) => { setAlarmStatus('DISARMED', pin); }, { validate: false });
   }, [requestPin, setAlarmStatus]);
 
   useEffect(() => {

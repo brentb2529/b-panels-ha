@@ -898,7 +898,7 @@ interface DashboardContextType {
   sthmHistory: ArmingEvent[];
   setActivePanelId: (panelId: string | null) => void;
   unlockAudio: () => void;
-  requestPin: (onConfirm: (pin: string) => void) => void;
+  requestPin: (onConfirm: (pin: string) => void, opts?: { validate?: boolean }) => void;
   requestConfirmation: (message: string) => Promise<boolean>;
   requestInput: (message: string, initialValue?: string, type?: 'text' | 'password' | 'number') => Promise<string | null>;
   addPanel: (name: string) => string;
@@ -1020,7 +1020,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [isAudioUnlocked, setAudioUnlocked] = useState(false);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeDevicePanelId, setActiveDevicePanelId] = useState<string | null>(null);
-  const [pinRequest, setPinRequest] = useState<{ onConfirm: (pin: string) => void } | null>(null);
+  const [pinRequest, setPinRequest] = useState<{ onConfirm: (pin: string) => void; validate: boolean } | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<{ message: string; resolve: (confirmed: boolean) => void } | null>(null);
   const [inputRequest, setInputRequest] = useState<{ message: string; initialValue?: string; type?: 'text' | 'password' | 'number', resolve: (value: string | null) => void; } | null>(null);
   const [serviceError, setServiceError] = useState<string | null>(null);
@@ -2928,13 +2928,20 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       return users.some(u => u.pin === pin);
   }, [users]);
   
-  const requestPin = useCallback((onConfirm: (pin: string) => void) => {
-      setPinRequest({ onConfirm });
+  // requestPin opens the PIN pad. By default the entered PIN is validated against
+  // the dashboard Users (tile locks, panic confirmation). Pass { validate: false }
+  // for alarm arm/disarm: the PIN is the Alarmo code, which Alarmo validates
+  // server-side — we don't gate it against the local Users list (HA can't expose
+  // user PINs anyway, and Alarmo is the source of truth for alarm codes).
+  const requestPin = useCallback((onConfirm: (pin: string) => void, opts?: { validate?: boolean }) => {
+      setPinRequest({ onConfirm, validate: opts?.validate !== false });
   }, []);
 
   const handlePinConfirm = (pin: string): Promise<boolean> => {
       return new Promise(resolve => {
-          if (validatePin(pin) && pinRequest) {
+          if (!pinRequest) { resolve(false); return; }
+          const accepted = pinRequest.validate ? validatePin(pin) : pin.length > 0;
+          if (accepted) {
               pinRequest.onConfirm(pin);
               setPinRequest(null);
               resolve(true);
