@@ -124,5 +124,12 @@ export const apiFetchRssFeed = async (feedUrl: string): Promise<string> => {
     return haClient.fetchRssFeed(feedUrl);
 };
 
+export const apiFetchGenerator = async (endpointUrl: string): Promise<any> => {
+    // Served by the b_panels integration's b_panels/generator websocket command
+    // (server-side fetch, CORS-safe, LAN-allowed, admin-gated). The endpoint URL
+    // is stored in the dashboard config. Returns the parsed JSON document.
+    return haClient.fetchGeneratorData(endpointUrl);
+};
+
 export const apiWhiskerLogin = async (_email: string, _password: string): Promise<any> => ({ access_token: '' });
 export const apiWhiskerGetRobots = async (_token: string): Promise<any[]> => [];

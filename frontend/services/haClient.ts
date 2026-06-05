@@ -143,6 +143,16 @@ export async function fetchRssFeed(url: string): Promise<string> {
     return res?.body ?? '';
 }
 
+// --- Generator / local-device JSON proxy --------------------------------------
+// Fetch a generator endpoint (e.g. an EnergyTrak/genmon site-details API) via
+// the b_panels integration (server-side, CORS-safe, LAN-allowed). The URL comes
+// from the dashboard config, never hardcoded. Returns the parsed JSON document.
+export async function fetchGeneratorData(url: string): Promise<any> {
+    const conn = await getConnection();
+    const res: any = await conn.sendMessagePromise({ type: 'b_panels/generator', url });
+    return res?.data ?? null;
+}
+
 // --- Weather forecast ---------------------------------------------------------
 // Daily forecast for a HA `weather.*` entity via the get_forecasts service
 // (response-returning). Returns [] if unavailable.

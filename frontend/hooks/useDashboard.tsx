@@ -73,16 +73,21 @@ const useSSE = (
 // These have no HA data source and no tile, so they're filtered out of the
 // device list rather than surfacing as "Unsupported Type" tiles. Their data is
 // expected to come from HA entities (core/HACS) going forward.
+//
+// NOTE: RSSFeed and Generator are NOT dead — they remain config-stored virtual
+// devices with working tiles (the News tile fetches via b_panels/rss; the
+// Generator tile fetches its configured endpoint via b_panels/generator). They
+// must stay OUT of this set or they get filtered before they can render.
+// LitterRobot/Flair are filtered here because they're rebuilt as composites
+// from HA entities (robotComposites/flairComposites), not virtual devices.
 const DEAD_VIRTUAL_TYPES = new Set<DeviceType>([
   DeviceType.InternetMonitor,
   DeviceType.FishingReport,
-  DeviceType.Generator,
   DeviceType.LitterRobot,
   DeviceType.HaywardPool,
   DeviceType.Flair,
   DeviceType.CoolMaster,
   DeviceType.PoolFloor,
-  DeviceType.RSSFeed,
   DeviceType.AlarmHistory,
 ]);
 
@@ -116,6 +121,10 @@ export interface StoredConfig {
     sonosNotifications?: SonosNotification[];
     armingStatusDeviceId?: string | null;
     weatherZipCode?: string;
+    // Explicit HA `weather.*` entity to source the header weather from. When
+    // unset, useWeather auto-prefers a Tempest/WeatherFlow station. Lets the
+    // user pick among multiple stations (e.g. Arlington vs. a second site).
+    weatherEntityId?: string;
     monitoringEnabled?: boolean;
     monitoringWebhookUrl?: string;
     mediamtxConfig?: Record<string, any>;
@@ -165,6 +174,7 @@ const getDefaultConfig = (): StoredConfig => ({
   sonosNotifications: [],
   armingStatusDeviceId: null,
   weatherZipCode: '',
+  weatherEntityId: '',
   monitoringEnabled: false,
   monitoringWebhookUrl: '',
   mediamtxConfig: {
@@ -910,6 +920,8 @@ interface DashboardContextType {
   retryConnection: () => void;
   armingStatusDeviceId: string | null;
   weatherZipCode: string;
+  weatherEntityId: string;
+  updateWeatherEntityId: (entityId: string) => void;
   monitoringEnabled: boolean;
   monitoringWebhookUrl: string;
   mediamtxConfig: Record<string, any> | undefined;
@@ -1027,7 +1039,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig, batteryReportConfig } = config;
+  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig, batteryReportConfig } = config;
   // HA-only: demo mode is never used. Force it off regardless of any stale
   // saved config (older builds persisted useDemoMode:true, which routed device
   // control to a no-op demo service so toggles never reached Home Assistant).
@@ -3560,6 +3572,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     setConfig(produce(draft => { draft.weatherZipCode = zip; }));
   }, []);
 
+  const updateWeatherEntityId = useCallback((entityId: string) => {
+    setConfig(produce(draft => { draft.weatherEntityId = entityId; }));
+  }, []);
+
   const addFolder = useCallback((panelId: string, folderName: string) => {
     const timestamp = Date.now();
     const newPanelId = `panel-${timestamp}`;
@@ -3919,6 +3935,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       retryConnection,
       armingStatusDeviceId: armingStatusDeviceId || null,
       weatherZipCode: weatherZipCode || '',
+      weatherEntityId: weatherEntityId || '',
+      updateWeatherEntityId,
       monitoringEnabled: monitoringEnabled || false,
       monitoringWebhookUrl: monitoringWebhookUrl || '',
       mediamtxConfig,
