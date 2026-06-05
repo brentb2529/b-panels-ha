@@ -29,4 +29,7 @@ const Tile = ({ tile, device, onEnlarge, isEditor, cornerClassName }: TileProps)
   );
 };
 
-export default Tile;
+// Memoized: the realtime layer keeps unchanged Device objects referentially
+// stable (immer), so a tile only re-renders when its own device/tile/props
+// actually change — not on every entity update elsewhere on the dashboard.
+export default React.memo(Tile);
