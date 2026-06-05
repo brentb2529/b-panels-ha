@@ -951,7 +951,7 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
     const {
         panels, devices, deviceMap, addTileToPanel, removeTileFromPanel,
         updateTileConfig, addFolder, requestInput, updatePanelLayoutConfig,
-        updatePanelConfig, updatePanelTiles, updatePanelHighlights, sthmState, connections,
+        updatePanelConfig, updatePanelTiles, updatePanelHighlights, alarmState, connections,
         addHighlightToPanel, removeHighlightFromPanel, updateHighlightConfig,
     } = useDashboard();
     const navigate = useNavigate();
@@ -1293,13 +1293,13 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                         {panel.tiles.map(tile => {
                             let device = deviceMap.get(tile.deviceId);
                             // Special handling for STHM tile
-                            if (tile.deviceId === 'hometile-sthm-panel' && sthmState) {
+                            if (tile.deviceId === 'hometile-sthm-panel' && alarmState) {
                                 device = {
                                     id: 'hometile-sthm-panel',
-                                    name: `${sthmState.locationName} Monitor`,
+                                    name: `${alarmState.locationName} Monitor`,
                                     type: DeviceType.AlarmPanel,
                                     service: DeviceService.Virtual,
-                                    state: sthmState,
+                                    state: alarmState,
                                 };
                             }
                             return (

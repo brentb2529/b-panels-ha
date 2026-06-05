@@ -7,7 +7,7 @@ import { IconArrowLeft, IconRefreshCw, IconAlertTriangle } from './icons';
 import EnlargedCameraModal from './EnlargedCameraModal';
 import { Device, DeviceType, DeviceService } from '../types';
 import CameraGroupModal from './CameraGroupModal';
-import STHMIntrusionModal from './STHMIntrusionModal';
+import IntrusionModal from './IntrusionModal';
 import EntryDelayModal from './EntryDelayModal';
 import ExitDelayModal from './ExitDelayModal';
 import { startSiren, stopSiren } from '../services/alarmTones';
@@ -22,7 +22,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 
 const Dashboard = () => {
-  const { panels, deviceMap, loading, isDeviceLoading, devices, sthmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider } = useDashboard();
+  const { panels, deviceMap, loading, isDeviceLoading, devices, alarmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider } = useDashboard();
   const { panelId } = useParams<{ panelId: string }>();
   const location = useLocation();
   const [enlargedCamera, setEnlargedCamera] = useState<Device | null>(null);
@@ -68,9 +68,9 @@ const Dashboard = () => {
   //   triggered -> full intrusion modal + siren
   // Alarmo owns the delay timers (we anchor countdowns on its delay/last_changed
   // and never run our own escalation timer — pending->triggered is Alarmo's call).
-  const phase = sthmState?.phase ?? 'idle';
+  const phase = alarmState?.phase ?? 'idle';
   // Identifies one alarm "episode" so dismissals/announcements reset per event.
-  const episodeKey = `${phase}:${sthmState?.trigger?.name ?? ''}:${sthmState?.haDelayStartedAt ?? ''}`;
+  const episodeKey = `${phase}:${alarmState?.trigger?.name ?? ''}:${alarmState?.haDelayStartedAt ?? ''}`;
   const [entryDismissedKey, setEntryDismissedKey] = useState<string | null>(null);
 
   // Per-panel WebAudio siren while triggered, so EVERY panel sounds — not only
@@ -91,13 +91,13 @@ const Dashboard = () => {
     if (phase === 'triggered') {
       if (announcedRef.current !== episodeKey) {
         announcedRef.current = episodeKey;
-        const name = sthmState?.trigger?.name || sthmState?.violatingSensors?.[0]?.name || 'Unknown sensor';
+        const name = alarmState?.trigger?.name || alarmState?.violatingSensors?.[0]?.name || 'Unknown sensor';
         addNotification(`INTRUSION: ${name} triggered the alarm!`, 'error');
       }
     } else if (phase === 'idle') {
       announcedRef.current = null;
     }
-  }, [phase, episodeKey, sthmState, addNotification]);
+  }, [phase, episodeKey, alarmState, addNotification]);
 
   // PIN-validated disarm shared by every alarm modal. Validates against the
   // dashboard users, then routes the disarm (with code) to HA/Alarmo.
@@ -252,18 +252,18 @@ const Dashboard = () => {
   return (
     <div className="relative h-full flex flex-col">
       {/* Alarm flow — driven by the panel phase, shown on every panel. */}
-      {phase === 'arming' && sthmState && (
-          <ExitDelayModal sthmState={sthmState} onCancel={cancelArming} />
+      {phase === 'arming' && alarmState && (
+          <ExitDelayModal alarmState={alarmState} onCancel={cancelArming} />
       )}
-      {phase === 'pending' && sthmState && entryDismissedKey !== episodeKey && (
+      {phase === 'pending' && alarmState && entryDismissedKey !== episodeKey && (
           <EntryDelayModal
-            sthmState={sthmState}
+            alarmState={alarmState}
             onDisarm={handleDisarmAttempt}
             onCancel={() => setEntryDismissedKey(episodeKey)}
           />
       )}
-      {phase === 'triggered' && sthmState && (
-          <STHMIntrusionModal sthmState={sthmState} onDisarm={handleDisarmAttempt} />
+      {phase === 'triggered' && alarmState && (
+          <IntrusionModal alarmState={alarmState} onDisarm={handleDisarmAttempt} />
       )}
 
       {/* Connection Status Banner - shows after sustained disconnection or on error */}
@@ -429,13 +429,13 @@ const Dashboard = () => {
 
           // Special handling for the STHM tile, which is not a regular device
           if (tile.deviceId === 'hometile-sthm-panel') {
-              if (sthmState) {
+              if (alarmState) {
                   device = {
                       id: 'hometile-sthm-panel',
-                      name: sthmState.locationName ? `${sthmState.locationName} Monitor` : 'STHM Monitor',
+                      name: alarmState.locationName ? `${alarmState.locationName} Monitor` : 'STHM Monitor',
                       type: DeviceType.AlarmPanel,
                       service: DeviceService.Virtual,
-                      state: sthmState,
+                      state: alarmState,
                       location: 'SmartThings',
                   };
               } else {

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, STHMState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -543,7 +543,7 @@ const parseRelayState = (type: DeviceType, relayState: Record<string, any>): Par
     return updates;
 };
 
-const normalizeArmState = (raw?: string): STHMState['armState'] => {
+const normalizeArmState = (raw?: string): AlarmState['armState'] => {
     const a = String(raw || '').toLowerCase();
     // Alarmo / HA-specific modes
     if (a === 'armed_home' || a === 'armed_night' || a === 'armed_custom_bypass') return 'armedStay';
@@ -873,7 +873,7 @@ interface DashboardContextType {
   loading: boolean;
   isConfigLoading: boolean;
   isDeviceLoading: boolean;
-  sthmState: STHMState | null;
+  alarmState: AlarmState | null;
   armingState: ArmingState;
   isAudioUnlocked: boolean;
   activePanelId: string | null;
@@ -1007,16 +1007,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // control to a no-op demo service so toggles never reached Home Assistant).
   const useDemoMode = false;
   const [isDeviceLoading, setIsDeviceLoading] = useState(true);
-  const [sthmState, setSthmState] = useState<STHMState | null>(null);
+  const [alarmState, setAlarmState] = useState<AlarmState | null>(null);
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
   /// to sthmHistory. The local setSTHMStatus() path already pushes
   /// to history for THIS panel's button presses, but every external
-  /// trigger arrived via WebSocket → setSthmState() and silently
+  /// trigger arrived via WebSocket → setAlarmState() and silently
   /// updated the display without recording history, leaving the
   /// AlarmHistoryTile stuck on the last button press.
-  const prevArmStateRef = useRef<STHMState['armState'] | undefined>(undefined);
+  const prevArmStateRef = useRef<AlarmState['armState'] | undefined>(undefined);
   const [armingState, setArmingState] = useState<ArmingState>('no_sensors');
   const [isAudioUnlocked, setAudioUnlocked] = useState(false);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -1430,7 +1430,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         return;
                     }
 
-                    setSthmState(current => {
+                    setAlarmState(current => {
                         // Additional check: verify locationId matches current STHM state
                         if (current && current.locationId && message.locationId !== current.locationId) {
                             console.log(`[WebSocket] Ignoring alarm-trigger - locationId mismatch (got: ${message.locationId}, expected: ${current.locationId})`);
@@ -2368,7 +2368,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         // without a disarm), so that disarming in time prevents it. This path
         // only flips state to VIOLATION below to bring up the warning modal.
 
-        setSthmState(current => {
+        setAlarmState(current => {
             const oldArmState = current?.armState;
             const newArmState = normalizeArmState(message.armState);
 
@@ -2581,7 +2581,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
                     // Phase straight from the alarm_control_panel state machine.
                     // 'arming' = exit delay, 'pending' = entry delay, 'triggered' = siren.
-                    const phase: STHMState['phase'] =
+                    const phase: AlarmState['phase'] =
                         haState === 'arming' ? 'arming'
                         : haState === 'pending' ? 'pending'
                         : haState === 'triggered' ? 'triggered'
@@ -2610,11 +2610,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     const delayTotal = (isTransient && typeof attrs.delay === 'number') ? attrs.delay : null;
                     const delayStartedAt = isTransient ? (new_state.last_changed || null) : null;
 
-                    setSthmState(current => {
+                    setAlarmState(current => {
                         const prev = current;
                         const isTriggered = haState === 'triggered';
                         const isEntryOrTrigger = haState === 'pending' || isTriggered;
-                        const newState: STHMState = {
+                        const newState: AlarmState = {
                             locationId: 'ha-default',
                             locationName: 'Home Assistant',
                             armState: targetArmState,
@@ -2656,7 +2656,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         escalateToFullAlarm(triggerName);
                     }
 
-                    // On 'disarmed': clear native siren (entry-delay modal cleared by Dashboard watching sthmState)
+                    // On 'disarmed': clear native siren (entry-delay modal cleared by Dashboard watching alarmState)
                     if (haState === 'disarmed') {
                         try {
                             const f = (window as any).fully;
@@ -2709,19 +2709,19 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
             } else if (eventType === 'alarmo_failed_to_arm') {
                 const { reason, sensors } = eventData || {};
-                setSthmState(current => current ? {
+                setAlarmState(current => current ? {
                     ...current,
                     haArmError: { reason: reason || 'unknown', sensors: sensors || [] }
                 } : current);
                 // Auto-clear after 10 seconds
                 setTimeout(() => {
-                    setSthmState(current => current ? { ...current, haArmError: null } : current);
+                    setAlarmState(current => current ? { ...current, haArmError: null } : current);
                 }, 10000);
 
             } else if (eventType === 'alarmo_ready_to_arm_modes_updated') {
                 const { modes } = eventData || {};
                 if (Array.isArray(modes)) {
-                    setSthmState(current => current ? { ...current, haAvailableModes: modes } : current);
+                    setAlarmState(current => current ? { ...current, haAvailableModes: modes } : current);
                 }
             }
     };
@@ -2859,7 +2859,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     }
 
     setArmingState(isReady ? 'ready' : 'not_ready');
-  }, [devices, deviceMap, armingStatusDeviceId, config.primaryAlarmProvider, sthmState?.haOpenSensors, haAlarmoSensors]);
+  }, [devices, deviceMap, armingStatusDeviceId, config.primaryAlarmProvider, alarmState?.haOpenSensors, haAlarmoSensors]);
 
   // Record arm-state transitions from ANY source (external SmartThings
   // app / hub / schedule / voice / a different panel) into sthmHistory
@@ -2876,7 +2876,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   //     coming back and trying to push again
   useEffect(() => {
     const prev = prevArmStateRef.current;
-    const curr = sthmState?.armState;
+    const curr = alarmState?.armState;
     if (prev !== undefined && curr && prev !== curr) {
       setConfig(produce(draft => {
         if (!draft.sthmHistory) draft.sthmHistory = [];
@@ -2896,7 +2896,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }));
     }
     prevArmStateRef.current = curr;
-  }, [sthmState?.armState]);
+  }, [alarmState?.armState]);
 
   useEffect(() => {
     const newDeviceMap = new Map<string, Device>();
@@ -3665,7 +3665,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           if (!result.ok) {
               setServiceError(`[Home Assistant] Alarm command failed: ${result.error || 'Unknown error'}`);
           }
-          // State will update via HA WebSocket state_changed event — no local setSthmState needed here
+          // State will update via HA WebSocket state_changed event — no local setAlarmState needed here
       } catch (e) {
           setServiceError(`[Home Assistant] Alarm command failed: ${(e as Error).message}`);
       }
@@ -3778,7 +3778,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
   // Helper to manually dismiss intrusion alerts by clearing the violation state
   const dismissIntrusion = useCallback(() => {
-      setSthmState(current => {
+      setAlarmState(current => {
           if (!current) return null;
           return {
               ...current,
@@ -3807,7 +3807,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       loading: isConfigLoading, // ONLY block UI for initial config load
       isConfigLoading,
       isDeviceLoading,
-      sthmState,
+      alarmState,
       armingState,
       isAudioUnlocked,
       activePanelId,

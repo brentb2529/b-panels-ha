@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { STHMState } from '../types';
+import { AlarmState } from '../types';
 import { IconShieldAlert, IconX } from './icons';
 import { useAlarmCountdown } from '../hooks/useAlarmCountdown';
 import { playDelayBeep } from '../services/alarmTones';
@@ -17,7 +17,7 @@ import AlarmPinPad from './AlarmPinPad';
 // body text inherits --text; amber is the semantic "entry delay" accent in all
 // themes. Security audio bypasses the panel Mute schedule by design.
 interface EntryDelayModalProps {
-  sthmState: STHMState;
+  alarmState: AlarmState;
   onDisarm: (pin: string) => Promise<boolean>;
   onCancel: () => void;
 }
@@ -26,8 +26,8 @@ const RADIUS = 45;
 const CIRC = 2 * Math.PI * RADIUS;
 const AMBER = '#f59e0b';
 
-const EntryDelayModal = ({ sthmState, onDisarm, onCancel }: EntryDelayModalProps) => {
-  const { remaining, total } = useAlarmCountdown(sthmState);
+const EntryDelayModal = ({ alarmState, onDisarm, onCancel }: EntryDelayModalProps) => {
+  const { remaining, total } = useAlarmCountdown(alarmState);
 
   // Beep on each whole-second change (rising pitch in the final 5s). With no
   // countdown anchor (generic panel without `delay`), fall back to a 1s beep.
@@ -47,7 +47,7 @@ const EntryDelayModal = ({ sthmState, onDisarm, onCancel }: EntryDelayModalProps
   const urgent = remaining != null && remaining <= 5;
   const progress = (remaining != null && total) ? remaining / total : 1;
   const dashoffset = CIRC - progress * CIRC;
-  const triggerName = sthmState.trigger?.name || sthmState.violatingSensors?.[0]?.name || 'a sensor';
+  const triggerName = alarmState.trigger?.name || alarmState.violatingSensors?.[0]?.name || 'a sensor';
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm"

@@ -9,13 +9,13 @@ import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from './i
 // configured "status device" required. Renders nothing until an
 // alarm_control_panel is present.
 const ArmingStatusIndicator = () => {
-  const { sthmState, armingState } = useDashboard();
+  const { alarmState, armingState } = useDashboard();
 
-  if (!sthmState || typeof sthmState.armState === 'undefined') {
+  if (!alarmState || typeof alarmState.armState === 'undefined') {
     return null;
   }
 
-  const isViolation = sthmState.securityState === 'VIOLATION';
+  const isViolation = alarmState.securityState === 'VIOLATION';
 
   const badge = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium';
 
@@ -33,11 +33,11 @@ const ArmingStatusIndicator = () => {
     disarmed: { text: 'Disarmed', icon: <IconShieldCheck className="w-5 h-5" />, className: 'bg-green-500/20 text-green-300' },
     armedStay: { text: 'Armed Stay', icon: <IconShield className="w-5 h-5" />, className: 'bg-orange-500/20 text-orange-300' },
     armedAway: { text: 'Armed Away', icon: <IconShieldAlert className="w-5 h-5" />, className: 'bg-red-500/20 text-red-300' },
-  }[sthmState.armState] || { text: 'Unknown', icon: <IconShield className="w-5 h-5" />, className: 'bg-gray-600/50 text-gray-300' };
+  }[alarmState.armState] || { text: 'Unknown', icon: <IconShield className="w-5 h-5" />, className: 'bg-gray-600/50 text-gray-300' };
 
   // Readiness is only meaningful while disarmed and when the alarm reports a
   // sensor list (armingState is 'no_sensors' otherwise — show nothing then).
-  const showReadiness = sthmState.armState === 'disarmed' && (armingState === 'ready' || armingState === 'not_ready');
+  const showReadiness = alarmState.armState === 'disarmed' && (armingState === 'ready' || armingState === 'not_ready');
   const readyConfig = armingState === 'ready'
     ? { text: 'Ready', icon: <IconShieldCheck className="w-5 h-5" />, className: 'bg-green-500/20 text-green-300' }
     : { text: 'Not Ready', icon: <IconShieldOff className="w-5 h-5" />, className: 'bg-orange-500/20 text-orange-300' };
