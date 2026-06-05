@@ -996,7 +996,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return () => { cancelled = true; };
   }, []);
   const [syntheticVirtualDevices, setSyntheticVirtualDevices] = useState<Device[]>([]);
-  const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, alarmHistory, internetMonitorConfig, fishingReportConfig } = config;
@@ -1310,6 +1309,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
+
+  // id -> Device lookup, derived directly from `devices`. Memoized (not a
+  // useState + effect) so it updates in the same render as `devices` — no extra
+  // render pass, and no transient window where the map lags the device list.
+  const deviceMap = useMemo(() => new Map(devices.map(d => [d.id, d])), [devices]);
 
   // Diagnostic: report composite grouping so issues are visible in the console.
   useEffect(() => {
@@ -2941,12 +2945,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     prevArmStateRef.current = curr;
   }, [alarmState?.armState]);
 
-  useEffect(() => {
-    const newDeviceMap = new Map<string, Device>();
-    devices.forEach(d => newDeviceMap.set(d.id, d));
-    setDeviceMap(newDeviceMap);
-  }, [devices])
-
   const unlockAudio = useCallback(() => {
       console.log("[Audio] Unlocking audio context via user interaction.");
       setAudioUnlocked(true);
@@ -3331,19 +3329,32 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 }
             }
         } else if (device.service === DeviceService.HomeAssistant) {
-            const haConnection = connections.find(c => c.id === DeviceService.HomeAssistant && c.enabled);
-            if (haConnection) {
-                try {
-                    await homeAssistantService.setDeviceState(deviceId, newState, haConnection);
-                    setServiceDevices(current => produce(current, draft => {
-                        const dev = draft.find(d => d.id === deviceId);
-                        if (dev) dev.state = newState;
-                    }));
-                } catch (error) {
-                    console.error("Failed to set Home Assistant device state:", error);
-                    const errorMessage = (error as Error).message;
-                    setServiceError(`[Home Assistant] ${errorMessage}`);
-                }
+            // HA-only build: never gate control on a persisted `enabled` flag —
+            // stale saved config could leave the HA connection "disabled" and
+            // silently swallow every tap. The service talks to the live WS
+            // connection directly (the connection arg is unused).
+            // Optimistic: apply the new state immediately so the tile responds
+            // on tap, then reconcile/roll back from the WS echo or on error.
+            const prevState = device.state;
+            const mergedState = (prevState && typeof prevState === 'object' && newState && typeof newState === 'object')
+                ? { ...(prevState as any), ...(newState as any) }
+                : newState;
+            setServiceDevices(current => produce(current, draft => {
+                const dev = draft.find(d => d.id === deviceId);
+                if (dev) dev.state = mergedState;
+            }));
+            try {
+                await homeAssistantService.setDeviceState(deviceId, newState);
+            } catch (error) {
+                console.error("Failed to set Home Assistant device state:", error);
+                const errorMessage = (error as Error).message;
+                setServiceError(`[Home Assistant] ${errorMessage}`);
+                // Roll back the optimistic change; the real state will also be
+                // re-asserted by the next subscribeEntities push.
+                setServiceDevices(current => produce(current, draft => {
+                    const dev = draft.find(d => d.id === deviceId);
+                    if (dev) dev.state = prevState;
+                }));
             }
         } else if (device.service === DeviceService.Lutron) {
             try {

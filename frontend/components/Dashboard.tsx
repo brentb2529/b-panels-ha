@@ -10,6 +10,7 @@ import CameraGroupModal from './CameraGroupModal';
 import IntrusionModal from './IntrusionModal';
 import EntryDelayModal from './EntryDelayModal';
 import ExitDelayModal from './ExitDelayModal';
+import TileErrorBoundary from './TileErrorBoundary';
 import { startSiren, stopSiren } from '../services/alarmTones';
 
 // Helper to convert hex to rgba for glow effects
@@ -242,7 +243,9 @@ const Dashboard = () => {
       );
   }
   
-  const handleEnlarge = (device: Device) => {
+  // Stable identity so React.memo'd tiles aren't re-rendered by a new callback
+  // on every parent render.
+  const handleEnlarge = useCallback((device: Device) => {
       if (device.type === DeviceType.Camera) {
         setEnlargedCamera(device);
       } else if (device.type === DeviceType.CameraGroup) {
@@ -250,7 +253,7 @@ const Dashboard = () => {
       } else if (device.type === DeviceType.SonosPlayer) {
         setEnlargedSonosPlayer(device);
       }
-  };
+  }, []);
 
   if (activePanel.tiles.length === 0 && !parentPanel) {
     return (
@@ -473,7 +476,9 @@ const Dashboard = () => {
                 containerType: 'size',
               }}
             >
-              <Tile tile={tile} device={device} onEnlarge={handleEnlarge} cornerClassName={cornerClassName} />
+              <TileErrorBoundary label={tile.label || device?.name} cornerClassName={cornerClassName}>
+                <Tile tile={tile} device={device} onEnlarge={handleEnlarge} cornerClassName={cornerClassName} />
+              </TileErrorBoundary>
             </div>
           );
         })}

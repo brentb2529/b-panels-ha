@@ -1,11 +1,13 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { DashboardProvider, useDashboard } from './hooks/useDashboard';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useWeather } from './hooks/useWeather';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
-import Admin from './components/Admin';
+// Admin is the heavy settings UI and never renders on the kiosk dashboard path.
+// Lazy-load it so the first-paint bundle the iPad downloads stays small.
+const Admin = React.lazy(() => import('./components/Admin'));
 import AudioUnlockModal from './components/AudioUnlockModal';
 import AccessDenied from './components/AccessDenied';
 import NotificationHost from './components/NotificationHost';
@@ -121,6 +123,12 @@ const AppRoutes = () => {
   const firstPanelId = panels.length > 0 ? panels[0].id : null;
 
   return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center h-full text-gray-500">
+        <IconRefreshCw className="w-10 h-10 animate-spin mb-4" />
+        <p className="text-lg">Loading…</p>
+      </div>
+    }>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route 
@@ -139,9 +147,10 @@ const AppRoutes = () => {
             <ProtectedRoute>
                 <Admin />
             </ProtectedRoute>
-        )} 
+        )}
       />
     </Routes>
+    </Suspense>
   );
 };
 
