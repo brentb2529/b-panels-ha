@@ -21,8 +21,10 @@ from urllib.parse import urlparse
 
 import aiohttp
 import voluptuous as vol
+from aiohttp import web
 
 from homeassistant.components import frontend, websocket_api
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -56,7 +58,45 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_save_config)
     websocket_api.async_register_command(hass, websocket_rss)
     websocket_api.async_register_command(hass, websocket_generator)
+    # HTTP endpoint the native iPad kiosk app polls for its idle/kiosk config.
+    # The native app has no HA token, so this is unauthenticated — it therefore
+    # exposes ONLY the non-sensitive per-panel idle settings (screen timeout,
+    # screen-saver, dim/mute schedules, motion-wake), never connections/tokens/users.
+    hass.http.register_view(BPanelsIdleConfigView)
     return True
+
+
+class BPanelsIdleConfigView(HomeAssistantView):
+    """Serve per-panel idle/kiosk config for the native iPad app (HA-only).
+
+    Replaces the old api-server `GET /api/config` the kiosk used to poll. Returns
+    only `{ panels: [{ id, name, parentId, idleConfig }] }` from the dashboard
+    Store — deliberately a minimal, non-sensitive subset so it's safe to serve
+    without auth (the kiosk app holds no HA credentials).
+    """
+
+    url = "/api/b_panels/idle_config"
+    name = "api:b_panels:idle_config"
+    requires_auth = False
+
+    async def get(self, request: web.Request) -> web.Response:
+        hass: HomeAssistant = request.app["hass"]
+        store: Store | None = hass.data.get(DOMAIN, {}).get("store")
+        data = await store.async_load() if store else None
+        panels = []
+        if isinstance(data, dict):
+            for p in data.get("panels", []) or []:
+                if not isinstance(p, dict):
+                    continue
+                panels.append(
+                    {
+                        "id": p.get("id"),
+                        "name": p.get("name"),
+                        "parentId": p.get("parentId"),
+                        "idleConfig": p.get("idleConfig"),
+                    }
+                )
+        return self.json({"panels": panels})
 
 
 def _is_blocked_rss_host(host: str) -> bool:
