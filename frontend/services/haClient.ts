@@ -134,6 +134,27 @@ export async function callService(
     await haCallService(conn, domain, service, data, target as any);
 }
 
+// --- Weather forecast ---------------------------------------------------------
+// Daily forecast for a HA `weather.*` entity via the get_forecasts service
+// (response-returning). Returns [] if unavailable.
+export async function getWeatherForecast(entityId: string): Promise<any[]> {
+    try {
+        const conn = await getConnection();
+        const res: any = await conn.sendMessagePromise({
+            type: 'call_service',
+            domain: 'weather',
+            service: 'get_forecasts',
+            service_data: { type: 'daily' },
+            target: { entity_id: entityId },
+            return_response: true,
+        });
+        const fc = res?.response?.[entityId]?.forecast;
+        return Array.isArray(fc) ? fc : [];
+    } catch {
+        return [];
+    }
+}
+
 // --- Entity → device grouping -------------------------------------------------
 // Map each entity_id to the HA device it belongs to, so the UI can group an
 // integration's split entities back into one tile (e.g. a Litter-Robot's
