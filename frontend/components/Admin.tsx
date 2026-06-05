@@ -300,64 +300,10 @@ const SecuritySettings = () => {
     return (
         <AdminSection title="Security & Alarm" description="Configure the active alarm system provider, arming mappings, sensor triggers, and notification settings.">
 
-            {/* Section A — Provider selector */}
-            <h4 className="font-semibold text-white mb-2">Alarm Provider</h4>
-            <p className="text-xs text-gray-400 mb-3">Select which alarm backend drives the Security tile, arming state, and sensor TTS announcements. Only one provider is active at a time.</p>
-            <div className="flex gap-3">
-                <button
-                    onClick={() => updatePrimaryAlarmProvider('st')}
-                    className={`flex-1 py-2 px-4 rounded-lg font-semibold text-sm border transition-colors ${primaryAlarmProvider === 'st' ? 'bg-brand-blue border-brand-blue text-white' : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-gray-400'}`}
-                >
-                    SmartThings (STHM)
-                </button>
-                <button
-                    onClick={() => updatePrimaryAlarmProvider('ha')}
-                    className={`flex-1 py-2 px-4 rounded-lg font-semibold text-sm border transition-colors ${primaryAlarmProvider === 'ha' ? 'bg-brand-blue border-brand-blue text-white' : 'bg-gray-800 border-gray-600 text-gray-300 hover:border-gray-400'}`}
-                >
-                    Home Assistant (Alarmo)
-                </button>
-            </div>
-
-            {/* Section B — Provider-specific config */}
+            {/* Alarm system — Home Assistant / Alarmo. This build is HA-only;
+                SmartThings is no longer a supported provider. */}
             <div className="border-t border-gray-700 mt-6 pt-6">
-                {primaryAlarmProvider === 'st' ? (
-                    <>
-                        <h4 className="font-semibold text-white mb-1">STHM Control Mapping</h4>
-                        <p className="text-xs text-gray-400 mb-3">Map each arm state to a device or scene that SmartThings will activate.</p>
-                        <div className="space-y-2">
-                            {(['armedStay', 'armedAway', 'disarmed'] as const).map(status => (
-                                <div key={status} className="flex items-center gap-3">
-                                    <span className="w-28 text-sm text-gray-300">{formatArmLabel(status)}</span>
-                                    <select
-                                        value={stConn?.sthmMappings?.[status] || ''}
-                                        onChange={e => updateConnectionConfig(DeviceService.SmartThings, 'sthmMappings', { ...stConn?.sthmMappings, [status]: e.target.value || null })}
-                                        className="flex-1 bg-gray-700 border border-gray-600 rounded-md p-2 text-sm text-white focus:ring-brand-blue focus:border-brand-blue"
-                                    >
-                                        <option value="">No Action</option>
-                                        {triggerableDevices.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="border-t border-gray-700 mt-6 pt-6">
-                            <h4 className="font-semibold text-white mb-1">Arming Status Source</h4>
-                            <p className="text-xs text-gray-400 mb-3">Select a device that indicates whether all sensors are closed and the system is ready to arm. Used to show the 'Sensors Open' warning on the Security tile.</p>
-                            <select
-                                value={armingStatusDeviceId || ''}
-                                onChange={e => updateArmingStatusDeviceId(e.target.value || null)}
-                                className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-brand-blue focus:border-brand-blue"
-                            >
-                                <option value="">-- None (always ready) --</option>
-                                {potentialArmingDevices.map(d => (
-                                    <option key={d.id} value={d.id}>{d.name} ({d.type})</option>
-                                ))}
-                            </select>
-                        </div>
-                    </>
-                ) : (
+                {(
                     <>
                         <h4 className="font-semibold text-white mb-3">Alarmo Integration</h4>
                         <AdminInput

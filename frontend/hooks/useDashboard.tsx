@@ -138,7 +138,6 @@ const getDefaultConfig = (): StoredConfig => ({
   panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showSTHMAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
   connections: [
       {id: DeviceService.Lutron, cloudEndpoint: '', enabled: false},
-      {id: DeviceService.SmartThings, cloudEndpoint: 'http://localhost:8080', enabled: false, selectedLocations: [], sthmMappings: { armedStay: null, armedAway: null, disarmed: null }},
       {id: DeviceService.Sonos, cloudEndpoint: 'http://localhost:5005', enabled: false},
       {id: DeviceService.HomeAssistant, cloudEndpoint: 'http://homeassistant.local:8123', apiKey: '', enabled: false},
       {id: DeviceService.Noonlight, cloudEndpoint: 'https://api-sandbox.noonlight.com/dispatch/v1/alarms', enabled: false, apiToken: '', address: '', city: '', state: '', zip: '', name: '', phone: ''},
@@ -1921,7 +1920,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         return defaultConn ? { ...defaultConn, ...loadedConn } : loadedConn;
                     });
                     draft.connections = [...mergedConnections, ...newConnections];
-                    
+
+                    // HA-only build: SmartThings is no longer a supported integration.
+                    // Force the alarm provider to Home Assistant regardless of any
+                    // stale saved value (older configs persisted 'st'), and drop a
+                    // persisted SmartThings connection so it never surfaces in Admin
+                    // or gates anything. (Inert legacy ST code paths are guarded by
+                    // service === SmartThings, which can no longer be true.)
+                    draft.primaryAlarmProvider = 'ha';
+                    draft.connections = draft.connections.filter(c => c.id !== DeviceService.SmartThings);
+
                     if (draft.panels) {
                         draft.panels.forEach(panel => {
                             if (!panel.tiles) panel.tiles = [];
