@@ -104,6 +104,66 @@ export const apiHomeAssistantArm = async (
     }
 };
 
+// Create an Alarmo user (name + code) via Alarmo's own write API
+// (POST /api/alarmo/users — the same endpoint the Alarmo panel uses). Lets a
+// dashboard PIN double as an Alarmo disarm code without manual duplication.
+// Alarmo hashes the code and rejects duplicate names/codes. Returns
+// { ok:false, error:'not_installed' } when Alarmo isn't present (404).
+export const apiAlarmoCreateUser = async (
+    name: string,
+    pin: string,
+): Promise<{ ok: boolean; error?: string }> => {
+    try {
+        const res = await haClient.haFetch('/api/alarmo/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                code: pin,
+                enabled: true,
+                can_arm: true,
+                can_disarm: true,
+                is_override_code: false,
+                area_limit: [],
+            }),
+        });
+        if (res.status === 404) return { ok: false, error: 'not_installed' };
+        if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+        const data = await res.json().catch(() => ({} as any));
+        if (data && data.success === false) return { ok: false, error: data.error || 'rejected' };
+        return { ok: true };
+    } catch (e: any) {
+        return { ok: false, error: e?.message ?? String(e) };
+    }
+};
+
+// Delete the Alarmo user matching a dashboard user's name (best-effort mirror of
+// a dashboard user removal). Alarmo keys users by an internal id, so we look it
+// up by name via the alarmo/users WS command, then POST a remove. No-op (ok) if
+// there's no matching Alarmo user. NOTE: matches by name — if an unrelated Alarmo
+// user happens to share the name, it would be removed too.
+export const apiAlarmoDeleteUserByName = async (
+    name: string,
+): Promise<{ ok: boolean; error?: string }> => {
+    try {
+        const users = await haClient.haSendMessage({ type: 'alarmo/users' });
+        const match: any = users && Object.values(users).find((u: any) => u && u.name === name);
+        if (!match) return { ok: true };
+        const res = await haClient.haFetch('/api/alarmo/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: match.user_id, remove: true }),
+        });
+        if (res.status === 404) return { ok: false, error: 'not_installed' };
+        if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+        const data = await res.json().catch(() => ({} as any));
+        if (data && data.success === false) return { ok: false, error: data.error || 'rejected' };
+        return { ok: true };
+    } catch (e: any) {
+        return { ok: false, error: e?.message ?? String(e) };
+    }
+};
+
 // Panic / emergency dispatch via the Noonlight HACS integration
 // (konnected-io/noonlight-hass). Its `noonlight.create_alarm` service dispatches
 // emergency services using the lat/long configured in the integration. Requires

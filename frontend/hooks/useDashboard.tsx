@@ -10,7 +10,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
 import { apiGetConfig, apiSaveConfig } from '../services/api';
 import { playTextToSpeech, getFully } from '../services/audioPlayer';
-import { apiHomeAssistantArm, apiNoonlightCreateAlarm } from '../services/api';
+import { apiHomeAssistantArm, apiNoonlightCreateAlarm, apiAlarmoCreateUser, apiAlarmoDeleteUserByName } from '../services/api';
 
 // --- HA-only stubs for removed non-HA integrations ---------------------------
 // This dashboard was ported from a multi-integration app. SmartThings, Sonos,
@@ -1057,6 +1057,15 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           }
       }
   }, [localTtsEnabled]);
+
+  // The HA websocket event handler is created once (stable useCallback) and
+  // captures these flags in its closure — which goes stale when the user later
+  // unlocks audio / toggles TTS. Read them through refs so arm/disarm/sensor TTS
+  // actually fires after the unlock instead of being gated on the mount-time value.
+  const isAudioUnlockedRef = useRef(isAudioUnlocked);
+  useEffect(() => { isAudioUnlockedRef.current = isAudioUnlocked; }, [isAudioUnlocked]);
+  const localTtsEnabledRef = useRef(localTtsEnabled);
+  useEffect(() => { localTtsEnabledRef.current = localTtsEnabled; }, [localTtsEnabled]);
 
   const toggleTtsNotifications = useCallback(() => {
     setLocalTtsEnabled(prev => !prev);
@@ -2199,7 +2208,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         if (message.message) {
             const text = message.message;
             addNotification(text);
-            if (isAudioUnlocked) {
+            if (isAudioUnlockedRef.current) {
                 // Play TTS if the user has interacted with the page to unlock audio
                 playTextToSpeech(text);
             }
@@ -2270,7 +2279,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                              const msg = `${nameToSpeak} Motion Detected`;
                              console.log(`[Dashboard] Triggering notification: ${msg}`);
                              addNotification(msg);
-                             if (localTtsEnabled && isAudioUnlocked) {
+                             if (localTtsEnabledRef.current && isAudioUnlockedRef.current) {
                                  playTextToSpeech(msg);
                              }
                         }
@@ -2284,7 +2293,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                             const notificationMessage = `${nameToSpeak} ${isOpen ? 'Opened' : 'Closed'}`;
                             console.log(`[Dashboard] Triggering notification: ${notificationMessage}`);
                             addNotification(notificationMessage);
-                            if (localTtsEnabled && isAudioUnlocked) {
+                            if (localTtsEnabledRef.current && isAudioUnlockedRef.current) {
                                 playTextToSpeech(notificationMessage);
                             }
                         }
@@ -2302,7 +2311,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                              const msg = `${nameToSpeak} Leak Detected`;
                              console.log(`[Dashboard] Triggering notification: ${msg}`);
                              addNotification(msg, 'error');
-                             if (localTtsEnabled && isAudioUnlocked) {
+                             if (localTtsEnabledRef.current && isAudioUnlockedRef.current) {
                                  playTextToSpeech(msg);
                              }
                          }
@@ -2621,12 +2630,21 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
                     // open_sensors (entity_id -> state) is the authoritative, reconnect-safe
                     // source for the triggering sensor during pending/triggered. Resolve
-                    // friendly names via deviceMap (a ref-stable memo keyed by entity_id).
+                    // Resolve a human label for each triggering sensor. Use the
+                    // live devices ref (NOT the closure's deviceMap, which is stale
+                    // here) and the user's sensor aliases; if the entity has no
+                    // friendly_name (its device name is just the entity_id, common
+                    // for some integrations), humanize the entity_id so the modal
+                    // shows "Front Door" rather than "binary_sensor.konnected_..._front_door".
+                    const aliasMap = config.sensorAliases || {};
+                    const humanizeEntity = (eid: string) => {
+                        const d = allDevicesForUpdate.current.find(x => x.id === eid);
+                        if (aliasMap[eid]) return aliasMap[eid];
+                        if (d?.name && d.name !== eid) return d.name;
+                        return (eid.split('.').pop() || eid).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    };
                     const openSensors: Record<string, string> = attrs.open_sensors || {};
-                    const enrichedViolators = Object.keys(openSensors).map(eid => {
-                        const d = deviceMap.get(eid);
-                        return { name: d?.name || eid };
-                    });
+                    const enrichedViolators = Object.keys(openSensors).map(eid => ({ name: humanizeEntity(eid) }));
 
                     // Absolute-time countdown anchor: total delay + when the phase began
                     // (the entity's last_changed). The UI computes remaining from these
@@ -2665,7 +2683,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     });
 
                     // TTS on arm state transitions
-                    if (isAudioUnlocked) {
+                    if (isAudioUnlockedRef.current) {
                         if (haState === 'disarmed') {
                             playTextToSpeech('Alarm disarmed');
                         } else if (haState === 'armed_away' || haState === 'armed_home' || haState === 'armed_night') {
@@ -2702,7 +2720,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // Notifications admin tab), independent from Alarmo's alarm-trigger
                     // sensor list. Both providers use this for spoken sensor announcements.
                     const notifyingSensors = notifyingSensorIdsRef.current;
-                    if (notifyingSensors.includes(entity_id) && isAudioUnlocked && localTtsEnabled) {
+                    if (notifyingSensors.includes(entity_id) && isAudioUnlockedRef.current && localTtsEnabledRef.current) {
                         if (updatedDevice.type === DeviceType.ContactSensor) {
                             // Announce both open and close, matching the ST SSE path.
                             playTextToSpeech(`${nameToSpeak} ${updatedDevice.state === true ? 'opened' : 'closed'}`);
@@ -3446,7 +3464,18 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     setConfig(produce(draft => {
         draft.users.push(newUser);
     }));
-  }, []);
+    // Mirror into Alarmo so this PIN also works as an alarm disarm code (the
+    // alarm validates against Alarmo, not the dashboard Users — see the alarm
+    // flow). Best-effort: silent when Alarmo isn't installed; surfaces a clear
+    // notice on success or if Alarmo rejected it (e.g. duplicate name/code).
+    apiAlarmoCreateUser(name, pin).then(r => {
+        if (r.ok) {
+            addNotification(`Added "${name}" as an Alarmo code too.`, 'success');
+        } else if (r.error && r.error !== 'not_installed') {
+            addNotification(`Added to dashboard, but Alarmo sync failed: ${r.error}`, 'warning');
+        }
+    });
+  }, [addNotification]);
 
   const removeUser = useCallback((userId: string) => {
     if (config.users.length <= 1) {
@@ -3454,10 +3483,19 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         addNotification("You cannot remove the last user.", 'warning');
         return;
     }
+    const removed = config.users.find(u => u.id === userId);
     setConfig(produce(draft => {
         draft.users = draft.users.filter(u => u.id !== userId);
     }));
-  }, [config.users.length, addNotification]);
+    // Mirror the removal into Alarmo (delete the matching code). Best-effort;
+    // silent when Alarmo isn't installed or there's no matching Alarmo user.
+    if (removed?.name) {
+        apiAlarmoDeleteUserByName(removed.name).then(r => {
+            if (r.ok || r.error === 'not_installed') return;
+            addNotification(`Removed from dashboard, but Alarmo removal failed: ${r.error}`, 'warning');
+        });
+    }
+  }, [config.users, addNotification]);
 
   const addVirtualDevice = useCallback((device: Omit<Device, 'id' | 'service'>) => {
     setConfig(produce(draft => {
@@ -3683,16 +3721,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY',
       options?: { skipDelay?: boolean; force?: boolean; pin?: string }
   ) => {
-      const haConn = connections.find(c => c.id === DeviceService.HomeAssistant && c.enabled);
-      if (!haConn) {
-          setServiceError('[Home Assistant] Connection not enabled.');
-          return;
-      }
+      // HA-only build: the dashboard runs inside Home Assistant and talks to it
+      // directly over the signed-in session, so arm/disarm is ALWAYS available.
+      // (The old `HomeAssistant connection enabled` config flag was a
+      // SmartThings-era gate that, when false in saved config, wrongly blocked
+      // disarm — never gate HA actions on it.)
       const armState = status === 'ARMED_STAY' ? 'armedStay' : status === 'ARMED_AWAY' ? 'armedAway' : 'disarmed';
       try {
-          // Routed through the api-server proxy — a direct browser → HA REST call
-          // is CORS-blocked (HA sends no CORS headers for REST). The PIN entered
-          // by the user is forwarded server-side as the Alarmo code.
+          // The entered PIN is forwarded as the Alarmo code; Alarmo validates it.
           const result = await apiHomeAssistantArm(armState, options);
           if (!result.ok) {
               setServiceError(`[Home Assistant] Alarm command failed: ${result.error || 'Unknown error'}`);

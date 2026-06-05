@@ -34,6 +34,8 @@ const hassUrl = (): string => {
 };
 
 let connectionPromise: Promise<Connection> | null = null;
+// The active Auth, captured on connect, for authenticated HTTP calls (haFetch).
+let currentAuth: Auth | null = null;
 
 const loadTokens = () => {
     // Prefer HA's own session (panel mode = no redirect); fall back to our
@@ -89,6 +91,7 @@ async function connect(): Promise<Connection> {
         }
     }
 
+    currentAuth = auth;
     const connection = await createConnection({ auth });
 
     // If we obtained fresh tokens via the redirect flow, strip the auth
@@ -115,6 +118,30 @@ export async function getStates(): Promise<any[]> {
     const conn = await getConnection();
     const states = await haGetStates(conn);
     return Array.isArray(states) ? states : Object.values(states ?? {});
+}
+
+// Send a raw websocket command and return its result (for integration WS
+// commands without a dedicated wrapper, e.g. Alarmo's read-only `alarmo/users`).
+export async function haSendMessage(msg: Record<string, any>): Promise<any> {
+    const conn = await getConnection();
+    return (conn as any).sendMessagePromise(msg);
+}
+
+// Authenticated fetch to an HA HTTP endpoint (for integration HTTP APIs that
+// aren't exposed over the websocket — e.g. Alarmo's `/api/alarmo/users` write
+// view). Uses the session's bearer token + the configured HA base URL, so it
+// works both in the same-origin panel and in standalone dev.
+export async function haFetch(path: string, init?: RequestInit): Promise<Response> {
+    await getConnection();
+    const token: string | undefined = currentAuth?.accessToken;
+    const base: string = (currentAuth?.data?.hassUrl as string) || hassUrl();
+    return fetch(`${base}${path}`, {
+        ...init,
+        headers: {
+            ...(init?.headers || {}),
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+    });
 }
 
 export async function subscribeEntities(
