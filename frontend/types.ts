@@ -33,6 +33,7 @@ export enum DeviceType {
   Generator = 'GENERATOR',
   LitterRobot = 'LITTER_ROBOT',
   Vacuum = 'VACUUM',
+  Pet = 'PET',
   InternetMonitor = 'INTERNET_MONITOR',
   FishingReport = 'FISHING_REPORT',
   HaywardPool = 'HAYWARD_POOL',
