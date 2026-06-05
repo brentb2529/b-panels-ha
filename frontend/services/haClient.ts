@@ -64,6 +64,26 @@ const saveTokens = (tokens: unknown) => {
 };
 
 async function connect(): Promise<Connection> {
+    // Preferred path when running as an HA iframe panel (same-origin): reuse the
+    // host HA frontend's live, already-authenticated connection. HA exposes it
+    // as `window.hassConnection` (a Promise<{conn, auth}>); from our iframe that
+    // is `window.parent.hassConnection`. This avoids our own OAuth redirect
+    // entirely — the redirect is what fails with HA's "Invalid redirect URI"
+    // when this frame has no readable session token. Cross-origin access throws,
+    // so we guard and fall through to the standalone getAuth flow below.
+    try {
+        const parent = window.parent as any;
+        if (parent && parent !== window && parent.hassConnection) {
+            const { conn, auth: parentAuth } = await parent.hassConnection;
+            if (conn) {
+                if (parentAuth) currentAuth = parentAuth as Auth;
+                return conn as Connection;
+            }
+        }
+    } catch {
+        /* parent is cross-origin or has no hassConnection — use getAuth below */
+    }
+
     let auth: Auth;
     try {
         auth = await getAuth({

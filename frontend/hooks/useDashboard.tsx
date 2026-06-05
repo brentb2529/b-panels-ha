@@ -1406,8 +1406,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     setTimeout(() => removeNotification(id), 5000);
   }, [removeNotification]);
 
-  // WebSocket for local real-time updates (Lutron)
+  // WebSocket for local real-time updates (Lutron) via the legacy api-server.
+  // HA-only build: the api-server is gone, so this socket only exists if a
+  // Lutron connection is explicitly enabled. Otherwise skip it entirely —
+  // connecting to a dead :3001 just spams ERR_CONNECTION_REFUSED + reconnect
+  // loops in the console of every panel.
   useEffect(() => {
+    const lutronEnabled = connections.some(c => c.id === DeviceService.Lutron && c.enabled);
+    if (!lutronEnabled) return;
     // Use same port detection logic as api.ts - dev dashboard on 8080 uses API on 8081
     const apiPort = window.location.port === '8080' ? '8081' : '3001';
     const wsUrl = `ws://${window.location.hostname}:${apiPort}`;
@@ -1549,7 +1555,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         clearTimeout(reconnectTimeout);
         if (ws) ws.close();
     };
-  }, []);
+  }, [connections]);
 
   const refreshDeviceStatus = useCallback(async (device: Device) => {
       if (device.service !== DeviceService.SmartThings || !device.locationId) return;
@@ -1986,6 +1992,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // service === SmartThings, which can no longer be true.)
                     draft.primaryAlarmProvider = 'ha';
                     draft.connections = draft.connections.filter(c => c.id !== DeviceService.SmartThings);
+
+                    // HA-only: the api-server is gone, so its dead client paths
+                    // (EnergyTrak generator SSE, RTSP/MediaMTX camera relay) must
+                    // never connect. Older saved configs left these `enabled`, which
+                    // spammed ERR_CONNECTION_REFUSED / SSE errors on every panel.
+                    // Generator telemetry now comes via the b_panels/generator WS,
+                    // and cameras stream natively from HA — so force them off.
+                    draft.connections.forEach(c => {
+                        if (c.id === DeviceService.EnergyTrak || c.id === DeviceService.RTSP) c.enabled = false;
+                    });
 
                     // Migrate legacy STHM-named storage keys to the generic Alarm
                     // names, back-compat so saved alarm history / per-panel toggle
