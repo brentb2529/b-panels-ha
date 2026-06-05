@@ -3760,6 +3760,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       setConfig(produce(draft => { draft.entryDelaySound = sound; }));
   }, []);
 
+
   const updateAlarmDebug = useCallback((enabled: boolean) => {
       setConfig(produce(draft => { draft.alarmDebug = enabled; }));
   }, []);

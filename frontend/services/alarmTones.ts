@@ -30,27 +30,35 @@ const getCtx = (): AudioContext | null => {
     }
 };
 
-// A short delay beep. `urgent` (final seconds of a countdown) raises the pitch.
-export const playDelayBeep = (urgent = false): void => {
+// A delay beep. `urgent` (final seconds of a countdown) raises the pitch; `style`
+// controls the pattern: a single beep, a double beep, or a fast triple pulse.
+export const playDelayBeep = (urgent = false, style: 'single' | 'double' | 'pulse' = 'single'): void => {
     const c = getCtx();
     if (!c) return;
-    try {
-        const osc = c.createOscillator();
-        const gain = c.createGain();
-        osc.connect(gain);
-        gain.connect(c.destination);
-        osc.type = 'sine';
-        osc.frequency.value = urgent ? 880 : 440;
-        // Quick attack/decay envelope so it reads as a clean "beep" not a click.
-        const t = c.currentTime;
-        gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.35, t + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + (urgent ? 0.18 : 0.12));
-        osc.start(t);
-        osc.stop(t + (urgent ? 0.2 : 0.14));
-    } catch {
-        /* non-fatal */
-    }
+    const freq = urgent ? 880 : 440;
+    const dur = urgent ? 0.16 : 0.11;
+    const beepAt = (offset: number) => {
+        try {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            // Quick attack/decay envelope so it reads as a clean "beep" not a click.
+            const t = c.currentTime + offset;
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.35, t + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            osc.start(t);
+            osc.stop(t + dur + 0.02);
+        } catch {
+            /* non-fatal */
+        }
+    };
+    if (style === 'pulse') { beepAt(0); beepAt(0.09); beepAt(0.18); }
+    else if (style === 'double') { beepAt(0); beepAt(0.16); }
+    else beepAt(0);
 };
 
 // --- WebAudio siren (looping until stopped) -------------------------------

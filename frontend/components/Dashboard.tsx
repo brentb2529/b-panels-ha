@@ -22,7 +22,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 
 const Dashboard = () => {
-  const { panels, deviceMap, loading, isDeviceLoading, devices, alarmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider } = useDashboard();
+  const { panels, deviceMap, loading, isDeviceLoading, devices, alarmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider, entryDelaySound } = useDashboard();
   const { panelId } = useParams<{ panelId: string }>();
   const location = useLocation();
   const [enlargedCamera, setEnlargedCamera] = useState<Device | null>(null);
@@ -270,6 +270,7 @@ const Dashboard = () => {
       {phase === 'pending' && alarmState && entryDismissedKey !== episodeKey && (
           <EntryDelayModal
             alarmState={alarmState}
+            sound={entryDelaySound}
             onDisarm={handleDisarmAttempt}
             onCancel={() => setEntryDismissedKey(episodeKey)}
           />

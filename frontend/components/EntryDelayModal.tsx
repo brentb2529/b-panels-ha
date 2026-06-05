@@ -4,6 +4,7 @@ import { AlarmState } from '../types';
 import { IconShieldAlert, IconX } from './icons';
 import { useAlarmCountdown } from '../hooks/useAlarmCountdown';
 import { playDelayBeep } from '../services/alarmTones';
+import { playTextToSpeech } from '../services/audioPlayer';
 import AlarmPinPad from './AlarmPinPad';
 
 // Entry-delay "disarm now" modal. Shown while the alarm panel is in `pending`
@@ -18,6 +19,9 @@ import AlarmPinPad from './AlarmPinPad';
 // themes. Security audio bypasses the panel Mute schedule by design.
 interface EntryDelayModalProps {
   alarmState: AlarmState;
+  // Warning-sound preference from Admin → Security. 'beep' uses the chosen beep
+  // style; 'countdown' speaks the remaining seconds via TTS.
+  sound?: { mode: 'beep' | 'countdown'; beepStyle?: 'single' | 'double' | 'pulse' };
   onDisarm: (pin: string) => Promise<boolean>;
   onCancel: () => void;
 }
@@ -26,23 +30,30 @@ const RADIUS = 45;
 const CIRC = 2 * Math.PI * RADIUS;
 const AMBER = '#f59e0b';
 
-const EntryDelayModal = ({ alarmState, onDisarm, onCancel }: EntryDelayModalProps) => {
+const EntryDelayModal = ({ alarmState, sound, onDisarm, onCancel }: EntryDelayModalProps) => {
   const { remaining, total } = useAlarmCountdown(alarmState);
+  const mode = sound?.mode || 'beep';
+  const beepStyle = sound?.beepStyle || 'single';
 
-  // Beep on each whole-second change (rising pitch in the final 5s). With no
-  // countdown anchor (generic panel without `delay`), fall back to a 1s beep.
+  // Warn on each whole-second change. 'beep' → chosen style, rising pitch in the
+  // final 5s; 'countdown' → speak the remaining seconds. With no countdown anchor
+  // (generic panel without `delay`) fall back to a plain 1s beep.
   const prevSecRef = useRef<number | null>(null);
   useEffect(() => {
+    const announce = (sec: number) => {
+      if (mode === 'countdown') playTextToSpeech(String(sec));
+      else playDelayBeep(sec <= 5, beepStyle);
+    };
     if (remaining == null) {
-      const id = window.setInterval(() => playDelayBeep(false), 1000);
-      playDelayBeep(false);
+      const id = window.setInterval(() => playDelayBeep(false, beepStyle), 1000);
+      playDelayBeep(false, beepStyle);
       return () => window.clearInterval(id);
     }
     if (remaining > 0 && remaining !== prevSecRef.current) {
       prevSecRef.current = remaining;
-      playDelayBeep(remaining <= 5);
+      announce(remaining);
     }
-  }, [remaining]);
+  }, [remaining, mode, beepStyle]);
 
   const urgent = remaining != null && remaining <= 5;
   const progress = (remaining != null && total) ? remaining / total : 1;
