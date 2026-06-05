@@ -128,14 +128,14 @@ export interface StoredConfig {
     monitoringEnabled?: boolean;
     monitoringWebhookUrl?: string;
     mediamtxConfig?: Record<string, any>;
-    sthmHistory?: ArmingEvent[];
+    alarmHistory?: ArmingEvent[];
     internetMonitorConfig?: InternetMonitorConfig;
     fishingReportConfig?: FishingReportConfig;
     primaryAlarmProvider?: 'st' | 'ha';
 }
 
 const getDefaultConfig = (): StoredConfig => ({
-  panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showSTHMAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
+  panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showAlarmAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
   connections: [
       {id: DeviceService.Lutron, cloudEndpoint: '', enabled: false},
       {id: DeviceService.Sonos, cloudEndpoint: 'http://localhost:5005', enabled: false},
@@ -184,7 +184,7 @@ const getDefaultConfig = (): StoredConfig => ({
     // Paths
     paths: {},
   },
-  sthmHistory: [],
+  alarmHistory: [],
   internetMonitorConfig: {
     enabled: false,
     checkIntervalSeconds: 60,
@@ -895,7 +895,7 @@ interface DashboardContextType {
   monitoringEnabled: boolean;
   monitoringWebhookUrl: string;
   mediamtxConfig: Record<string, any> | undefined;
-  sthmHistory: ArmingEvent[];
+  alarmHistory: ArmingEvent[];
   setActivePanelId: (panelId: string | null) => void;
   unlockAudio: () => void;
   requestPin: (onConfirm: (pin: string) => void, opts?: { validate?: boolean }) => void;
@@ -1000,7 +1000,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [deviceMap, setDeviceMap] = useState<Map<string, Device>>(new Map());
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
-  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, sthmHistory, internetMonitorConfig, fishingReportConfig } = config;
+  const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, alarmHistory, internetMonitorConfig, fishingReportConfig } = config;
   // HA-only: demo mode is never used. Force it off regardless of any stale
   // saved config (older builds persisted useDemoMode:true, which routed device
   // control to a no-op demo service so toggles never reached Home Assistant).
@@ -1010,7 +1010,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
-  /// to sthmHistory. The local setSTHMStatus() path already pushes
+  /// to alarmHistory. The local setSTHMStatus() path already pushes
   /// to history for THIS panel's button presses, but every external
   /// trigger arrived via WebSocket → setAlarmState() and silently
   /// updated the display without recording history, leaving the
@@ -1930,6 +1930,24 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     draft.primaryAlarmProvider = 'ha';
                     draft.connections = draft.connections.filter(c => c.id !== DeviceService.SmartThings);
 
+                    // Migrate legacy STHM-named storage keys to the generic Alarm
+                    // names, back-compat so saved alarm history / per-panel toggle
+                    // survive the rename. Old configs persisted `sthmHistory` and
+                    // per-panel `showSTHMAlerts` — Object.assign above copied them
+                    // onto draft, so read+drop them here.
+                    const legacyHistory = (draft as any).sthmHistory;
+                    if (draft.alarmHistory === undefined && legacyHistory !== undefined) {
+                        draft.alarmHistory = legacyHistory;
+                    }
+                    delete (draft as any).sthmHistory;
+                    (draft.panels || []).forEach(p => {
+                        const lp = p as any;
+                        if (lp.showAlarmAlerts === undefined && lp.showSTHMAlerts !== undefined) {
+                            lp.showAlarmAlerts = lp.showSTHMAlerts;
+                        }
+                        delete lp.showSTHMAlerts;
+                    });
+
                     if (draft.panels) {
                         draft.panels.forEach(panel => {
                             if (!panel.tiles) panel.tiles = [];
@@ -2069,24 +2087,24 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       if (typeof f?.alarmOn === 'function') f.alarmOn();
     } catch (e) { /* non-fatal */ }
 
-    // Append a 'triggered' entry to sthmHistory (dedupe same-sensor re-triggers
+    // Append a 'triggered' entry to alarmHistory (dedupe same-sensor re-triggers
     // within 60s so a flapping door doesn't spam history).
     setConfig(produce(draft => {
-      if (!draft.sthmHistory) draft.sthmHistory = [];
-      const last = draft.sthmHistory[0];
+      if (!draft.alarmHistory) draft.alarmHistory = [];
+      const last = draft.alarmHistory[0];
       const nowMs = Date.now();
       const sameTrigger = last && last.status === 'triggered' && last.triggerName === name;
       if (sameTrigger) {
         const lastMs = new Date(last.timestamp).getTime();
         if (!Number.isNaN(lastMs) && nowMs - lastMs < 60_000) return;
       }
-      draft.sthmHistory.unshift({
+      draft.alarmHistory.unshift({
         timestamp: new Date().toISOString(),
         status: 'triggered',
         triggerName: name,
       });
-      if (draft.sthmHistory.length > 10) {
-        draft.sthmHistory = draft.sthmHistory.slice(0, 10);
+      if (draft.alarmHistory.length > 10) {
+        draft.alarmHistory = draft.alarmHistory.slice(0, 10);
       }
     }));
 
@@ -2870,7 +2888,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, [devices, deviceMap, armingStatusDeviceId, config.primaryAlarmProvider, alarmState?.haOpenSensors, haAlarmoSensors]);
 
   // Record arm-state transitions from ANY source (external SmartThings
-  // app / hub / schedule / voice / a different panel) into sthmHistory
+  // app / hub / schedule / voice / a different panel) into alarmHistory
   // so the AlarmHistoryTile keeps growing. The local setSTHMStatus
   // path already pushes for THIS panel's button presses; this effect
   // covers everything else.
@@ -2887,19 +2905,19 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     const curr = alarmState?.armState;
     if (prev !== undefined && curr && prev !== curr) {
       setConfig(produce(draft => {
-        if (!draft.sthmHistory) draft.sthmHistory = [];
-        const last = draft.sthmHistory[0];
+        if (!draft.alarmHistory) draft.alarmHistory = [];
+        const last = draft.alarmHistory[0];
         const nowMs = Date.now();
         if (last && last.status === curr) {
           const lastMs = new Date(last.timestamp).getTime();
           if (!Number.isNaN(lastMs) && nowMs - lastMs < 10_000) return;
         }
-        draft.sthmHistory.unshift({
+        draft.alarmHistory.unshift({
           timestamp: new Date().toISOString(),
           status: curr,
         });
-        if (draft.sthmHistory.length > 10) {
-          draft.sthmHistory = draft.sthmHistory.slice(0, 10);
+        if (draft.alarmHistory.length > 10) {
+          draft.alarmHistory = draft.alarmHistory.slice(0, 10);
         }
       }));
     }
@@ -2979,7 +2997,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
   const addPanel = useCallback((name: string) => {
     const newPanelId = `panel-${Date.now()}`;
-    const newPanel: DashboardPanel = { id: newPanelId, name, tiles: [], highlights: [], columns: 8, rowHeight: 120, showSTHMAlerts: false, showArmingStatus: false, themeMode: 'dark' };
+    const newPanel: DashboardPanel = { id: newPanelId, name, tiles: [], highlights: [], columns: 8, rowHeight: 120, showAlarmAlerts: false, showArmingStatus: false, themeMode: 'dark' };
     setConfig(current => produce(current, draft => {
         draft.panels.push(newPanel);
     }));
@@ -3059,7 +3077,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         highlights: sourcePanel.highlights?.map(h => ({ ...h, id: `highlight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` })),
         columns: sourcePanel.columns,
         rowHeight: sourcePanel.rowHeight,
-        showSTHMAlerts: sourcePanel.showSTHMAlerts,
+        showAlarmAlerts: sourcePanel.showAlarmAlerts,
         themeMode: sourcePanel.themeMode,
     };
 
@@ -3571,7 +3589,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             highlights: [], 
             columns: 8, 
             rowHeight: 120, 
-            showSTHMAlerts: false, 
+            showAlarmAlerts: false, 
             showArmingStatus: false,
             parentId: panelId,
             themeMode: 'dark'
@@ -3845,7 +3863,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       monitoringEnabled: monitoringEnabled || false,
       monitoringWebhookUrl: monitoringWebhookUrl || '',
       mediamtxConfig,
-      sthmHistory: sthmHistory || [],
+      alarmHistory: alarmHistory || [],
       setActivePanelId,
       unlockAudio,
       requestPin,

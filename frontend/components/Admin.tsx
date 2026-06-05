@@ -1506,8 +1506,8 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                      <AdminToggle
                                         label="Show Intrusion Alerts"
                                         description="Shows the configured alarm's status in the header and displays a full-screen alert on intrusion."
-                                        enabled={!!panel.showSTHMAlerts}
-                                        onToggle={() => updatePanelConfig(panelId, { showSTHMAlerts: !panel.showSTHMAlerts })}
+                                        enabled={!!panel.showAlarmAlerts}
+                                        onToggle={() => updatePanelConfig(panelId, { showAlarmAlerts: !panel.showAlarmAlerts })}
                                      />
                                       <AdminToggle
                                         label="Show Arming Status Indicator"

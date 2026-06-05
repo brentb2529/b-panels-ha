@@ -209,7 +209,7 @@ export interface DashboardPanel {
   parentId?: string;
   columns?: number;
   rowHeight?: number;
-  showSTHMAlerts?: boolean;
+  showAlarmAlerts?: boolean;
   showArmingStatus?: boolean;
   themeMode?: ThemeMode;
   showTileBorders?: boolean;
@@ -225,11 +225,6 @@ export interface ServiceConnection {
     enabled: boolean;
     selectedLocations?: string[];
     webSocketUrl?: string;
-    sthmMappings?: {
-        armedStay: string | null;
-        armedAway: string | null;
-        disarmed: string | null;
-    };
     // Noonlight Specific
     apiToken?: string;
     address?: string;
