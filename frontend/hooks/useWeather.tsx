@@ -87,7 +87,7 @@ export const useWeather = () => {
   // transient refresh failures instead of flashing "Weather unavailable".
   const hasDataRef = useRef(false);
   const [isTempest, setIsTempest] = useState(false);
-  const { weatherZipCode } = useDashboard();
+  const { weatherZipCode, weatherEntityId } = useDashboard();
 
   // Prefer a Home Assistant weather entity (e.g. a Tempest station) — the
   // user's real local weather — over the Open-Meteo fallback.
@@ -96,11 +96,33 @@ export const useWeather = () => {
     try { states = await haClient.getStates(); } catch { return null; }
     const weatherEnts = (states || []).filter(s => s.entity_id.startsWith('weather.'));
     if (!weatherEnts.length) return null;
-    // Prefer a Tempest/WeatherFlow station, else the first weather entity.
-    const w = weatherEnts.find(s => /tempest|weatherflow/i.test(s.attributes?.attribution || '')) || weatherEnts[0];
+    // Honor an explicitly-selected entity (Admin → General Settings). Fall back
+    // to a Tempest/WeatherFlow station, else the first weather entity.
+    const w =
+      (weatherEntityId && weatherEnts.find(s => s.entity_id === weatherEntityId)) ||
+      weatherEnts.find(s => /tempest|weatherflow/i.test(s.attributes?.attribution || '')) ||
+      weatherEnts[0];
     const a = w.attributes || {};
     const cond = String(w.state || '');
     const tempest = /tempest|weatherflow/i.test(a.attribution || '');
+
+    // Day/night for the `auto` theme. HA weather entities (incl. Tempest) carry
+    // no sunrise/sunset, so the canonical source is the `sun.sun` entity:
+    //   state === 'above_horizon' → daytime. Its next_rising / next_setting
+    // attributes give the upcoming transitions, which we also surface so the
+    // forecast popover / theme can show approximate sun times.
+    const sun = (states || []).find(s => s.entity_id === 'sun.sun');
+    let isDaytime: boolean | undefined;
+    let sunrise: string | undefined;
+    let sunset: string | undefined;
+    if (sun) {
+      isDaytime = sun.state === 'above_horizon';
+      // next_setting is today's sunset while it's day; next_rising is today's
+      // sunrise while it's night. The other bound is the next day's, which is
+      // close enough for display.
+      sunset = sun.attributes?.next_setting;
+      sunrise = sun.attributes?.next_rising;
+    }
 
     let forecast: ForecastDay[] = [];
     try {
@@ -126,6 +148,9 @@ export const useWeather = () => {
       description: m.description,
       icon: m.icon,
       forecast,
+      isDaytime,
+      sunrise,
+      sunset,
       windSpeed: a.wind_speed,
       windGust: a.wind_gust_speed,
       windDirection: a.wind_bearing,
@@ -133,7 +158,7 @@ export const useWeather = () => {
       uvIndex: a.uv_index,
       stationName: a.friendly_name,
     };
-  }, []);
+  }, [weatherEntityId]);
 
   // Fetch from Open-Meteo
   const fetchFromOpenMeteo = useCallback(async () => {

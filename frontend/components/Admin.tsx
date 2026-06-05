@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import AdminUserManager from './AdminUserManager';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
-import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts } from '../services/api';
+import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
 import yaml from 'js-yaml';
 import { playTextToSpeech } from '../services/audioPlayer';
 
@@ -174,7 +174,31 @@ const GeneralSettings = () => {
     const {
         dashboardTitle, updateDashboardTitle,
         weatherZipCode, updateWeatherZipCode,
+        weatherEntityId, updateWeatherEntityId,
     } = useDashboard();
+
+    // Discover the HA `weather.*` entities so the source station is selectable
+    // (e.g. choosing Arlington over a second Tempest site). Best-effort — if the
+    // states call fails we still allow the ZIP-based Open-Meteo fallback.
+    const [weatherEntities, setWeatherEntities] = useState<{ id: string; label: string }[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const states = await apiGetHomeAssistantStates();
+                if (cancelled) return;
+                const ents = (states || [])
+                    .filter((s: any) => typeof s.entity_id === 'string' && s.entity_id.startsWith('weather.'))
+                    .map((s: any) => {
+                        const attr = s.attributes || {};
+                        const src = /tempest|weatherflow/i.test(attr.attribution || '') ? ' — Tempest' : '';
+                        return { id: s.entity_id, label: `${attr.friendly_name || s.entity_id}${src}` };
+                    });
+                setWeatherEntities(ents);
+            } catch { /* selector falls back to free-text ZIP only */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     return (
         <AdminSection title="General Settings" description="Basic dashboard configuration.">
@@ -185,8 +209,23 @@ const GeneralSettings = () => {
                     value={dashboardTitle}
                     onChange={e => updateDashboardTitle(e.target.value)}
                 />
+                <AdminSelect
+                    label="Weather Source (HA entity)"
+                    id="weather-entity"
+                    value={weatherEntityId}
+                    onChange={e => updateWeatherEntityId(e.target.value)}
+                >
+                    <option value="">Auto (prefer Tempest station)</option>
+                    {weatherEntities.map(e => (
+                        <option key={e.id} value={e.id}>{e.label}</option>
+                    ))}
+                    {/* Preserve a previously-saved id even if states haven't loaded yet */}
+                    {weatherEntityId && !weatherEntities.some(e => e.id === weatherEntityId) && (
+                        <option value={weatherEntityId}>{weatherEntityId}</option>
+                    )}
+                </AdminSelect>
                 <AdminInput
-                    label="Weather Zip Code"
+                    label="Weather Zip Code (Open-Meteo fallback)"
                     id="zip-code"
                     value={weatherZipCode}
                     onChange={e => updateWeatherZipCode(e.target.value)}
@@ -2343,8 +2382,8 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                      />
 
                                      <AdminToggle
-                                        label="Show SmartThings Intrusion Alerts"
-                                        description="Shows the STHM status in the header and displays a full-screen alert on intrusion."
+                                        label="Show Intrusion Alerts"
+                                        description="Shows the configured alarm's status in the header and displays a full-screen alert on intrusion."
                                         enabled={!!panel.showSTHMAlerts}
                                         onToggle={() => updatePanelConfig(panelId, { showSTHMAlerts: !panel.showSTHMAlerts })}
                                      />

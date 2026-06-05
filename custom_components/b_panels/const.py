@@ -22,3 +22,8 @@ WS_CONFIG_GET = "b_panels/config/get"
 WS_CONFIG_SAVE = "b_panels/config/save"
 # Server-side RSS/Atom fetch proxy (CORS-safe; SSRF-guarded) for the News tile.
 WS_RSS = "b_panels/rss"
+# Server-side JSON fetch proxy for the Generator tile. Unlike WS_RSS this
+# deliberately allows LAN/private hosts, because generator/local-device APIs
+# (e.g. an EnergyTrak/genmon poller) live on the local network. It is gated by
+# Home Assistant auth (admin-only) and restricted to http(s).
+WS_GENERATOR = "b_panels/generator"

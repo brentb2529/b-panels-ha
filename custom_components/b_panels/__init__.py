@@ -41,6 +41,7 @@ from .const import (
     STORAGE_VERSION,
     WS_CONFIG_GET,
     WS_CONFIG_SAVE,
+    WS_GENERATOR,
     WS_RSS,
 )
 
@@ -54,6 +55,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_save_config)
     websocket_api.async_register_command(hass, websocket_rss)
+    websocket_api.async_register_command(hass, websocket_generator)
     return True
 
 
@@ -107,6 +109,45 @@ async def websocket_rss(
                 return
             body = await resp.text()
         connection.send_result(msg["id"], {"body": body})
+    except Exception as err:  # noqa: BLE001 - surface any fetch error to the UI
+        connection.send_error(msg["id"], "fetch_error", str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): WS_GENERATOR, vol.Required("url"): str}
+)
+@websocket_api.async_response
+async def websocket_generator(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Fetch a generator/local-device JSON document server-side for the tile.
+
+    The endpoint URL is supplied by (and stored in) the dashboard config, not
+    hardcoded — so this ships clean in a public repo. Unlike the RSS proxy this
+    deliberately permits LAN/private hosts, because generator pollers (e.g. an
+    EnergyTrak/genmon site-details API) live on the local network. Admin-only
+    and http(s)-only to bound the SSRF surface. Read-only: GET, no body sent.
+    """
+    url = msg["url"]
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        connection.send_error(msg["id"], "invalid_url", "Only http(s) URLs are allowed.")
+        return
+    try:
+        session = async_get_clientsession(hass)
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=12),
+            headers={"User-Agent": "B-Panels/1.0 (+home-assistant)"},
+        ) as resp:
+            if resp.status != 200:
+                connection.send_error(msg["id"], "fetch_failed", f"Endpoint returned HTTP {resp.status}")
+                return
+            data = await resp.json(content_type=None)
+        connection.send_result(msg["id"], {"data": data})
     except Exception as err:  # noqa: BLE001 - surface any fetch error to the UI
         connection.send_error(msg["id"], "fetch_error", str(err))
 

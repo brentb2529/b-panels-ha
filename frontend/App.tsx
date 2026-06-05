@@ -179,13 +179,20 @@ const ThemeManager = ({ activePanelId }: { activePanelId: string | null }) => {
         if (mode === 'light') return 'light';
         if (mode === 'dark') return 'dark';
 
-        // Auto Mode
-        if (mode === 'auto' && weather?.sunrise && weather?.sunset) {
-            const now = new Date();
-            const sunrise = new Date(weather.sunrise);
-            const sunset = new Date(weather.sunset);
-            // Day (light) between sunrise and sunset; otherwise ambient night.
-            return now >= sunrise && now < sunset ? 'light' : 'night';
+        // Auto Mode. Prefer the explicit day/night flag (sourced from HA's
+        // sun.sun entity) — the HA/Tempest weather path carries no
+        // sunrise/sunset, so without this auto always fell through to dark.
+        if (mode === 'auto') {
+            if (typeof weather?.isDaytime === 'boolean') {
+                return weather.isDaytime ? 'light' : 'night';
+            }
+            if (weather?.sunrise && weather?.sunset) {
+                const now = new Date();
+                const sunrise = new Date(weather.sunrise);
+                const sunset = new Date(weather.sunset);
+                // Day (light) between sunrise and sunset; otherwise ambient night.
+                return now >= sunrise && now < sunset ? 'light' : 'night';
+            }
         }
 
         return 'dark'; // Default to dark if auto fails or no weather

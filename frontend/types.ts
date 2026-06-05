@@ -465,6 +465,10 @@ export interface WeatherData {
   forecast: ForecastDay[];
   sunrise?: string; // ISO String
   sunset?: string; // ISO String
+  // Resolved day/night flag, preferred for `auto` theme. Sourced from HA's
+  // `sun.sun` entity when available (the HA weather/Tempest path carries no
+  // sunrise/sunset), else derived from sunrise/sunset in the Open-Meteo path.
+  isDaytime?: boolean;
   // Tempest-specific extended data
   windSpeed?: number;
   windGust?: number;
