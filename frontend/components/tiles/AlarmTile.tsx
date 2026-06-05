@@ -6,6 +6,7 @@ import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from '../
 import TileWrapper from './TileWrapper';
 import UnknownTile from './UnknownTile';
 import { fluidIcon, fluidText2xl, fluidTextXs, fluidGap } from './tileScale';
+import { useAlarmCountdown } from '../../hooks/useAlarmCountdown';
 
 // Hero shield treatment: the arm-state icon sits in a dimensional disc with a
 // top-lit sheen and a colored glow keyed to the state (green = disarmed/ready,
@@ -41,6 +42,11 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
         (deviceState && typeof deviceState === 'object' && 'armState' in (deviceState as any))
             ? (deviceState as STHMState)
             : globalSthmState;
+
+    // Live exit/entry-delay countdown for the inline tile indicator (same
+    // reconnect-safe anchor the modals use). Hook must run before any early return.
+    const { remaining: delayRemaining } = useAlarmCountdown(sthmState);
+    const phase = sthmState?.phase ?? 'idle';
 
     // No alarm state yet (panel still connecting, or no alarm_control_panel) —
     // show a neutral "connecting" placeholder rather than an error tile.
@@ -214,8 +220,15 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                 </ShieldHalo>
 
                 <p className="font-black !text-white tracking-tight" style={{ ...fluidText2xl, textShadow: '0 1px 4px rgba(0,0,0,0.6), 0 0 2px rgba(0,0,0,0.5)' }}>
-                    {statusConfig.text}
+                    {phase === 'arming' ? 'Arming' : phase === 'pending' ? 'Entry Delay' : statusConfig.text}
                 </p>
+
+                {/* Inline exit/entry-delay countdown (the modals carry the full UI). */}
+                {(phase === 'arming' || phase === 'pending') && (
+                    <p className="!text-white font-bold uppercase tracking-widest tabular-nums animate-pulse" style={{ ...fluidTextXs, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+                        {delayRemaining != null ? `${delayRemaining}s` : '…'}
+                    </p>
+                )}
 
                 {/* Arm error (e.g. open sensor blocked arming) */}
                 {armError && (

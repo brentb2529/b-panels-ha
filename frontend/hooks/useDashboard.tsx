@@ -2579,57 +2579,62 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     const haState = new_state.state as string;
                     const attrs = new_state.attributes || {};
 
-                    // 'arming' and 'pending' are transient — map to their destination arm state
-                    // but keep special delay fields so the UI can show countdowns
+                    // Phase straight from the alarm_control_panel state machine.
+                    // 'arming' = exit delay, 'pending' = entry delay, 'triggered' = siren.
+                    const phase: STHMState['phase'] =
+                        haState === 'arming' ? 'arming'
+                        : haState === 'pending' ? 'pending'
+                        : haState === 'triggered' ? 'triggered'
+                        : 'idle';
+
+                    // 'arming'/'pending' are transient — resolve the destination armed
+                    // mode for display from the arm_mode attribute.
                     const isTransient = haState === 'arming' || haState === 'pending';
                     const targetArmState = isTransient
                         ? normalizeArmState(attrs.arm_mode || haState)
                         : normalizeArmState(haState);
 
-                    // Build violating sensors from open_sensors attribute
+                    // open_sensors (entity_id -> state) is the authoritative, reconnect-safe
+                    // source for the triggering sensor during pending/triggered. Resolve
+                    // friendly names via deviceMap (a ref-stable memo keyed by entity_id).
                     const openSensors: Record<string, string> = attrs.open_sensors || {};
-                    const violatingSensors = Object.keys(openSensors).map(entityId => {
-                        // Try to resolve entity_id to a friendly name from the loaded devices
-                        return { name: entityId }; // will be enriched below via deviceMap
-                    });
-
-                    setServiceDevices(current => {
-                        // Enrich violating sensor names using current device list
-                        const enriched = Object.keys(openSensors).map(eid => {
-                            const d = current.find(dev => dev.id === eid);
-                            return { name: d?.name || eid };
-                        });
-                        return current; // state update happens below via setSthmState
-                        void enriched; // used below
-                    });
-
-                    // Enrich violating sensor names (synchronous — deviceMap is a ref-stable memo)
                     const enrichedViolators = Object.keys(openSensors).map(eid => {
                         const d = deviceMap.get(eid);
                         return { name: d?.name || eid };
                     });
 
+                    // Absolute-time countdown anchor: total delay + when the phase began
+                    // (the entity's last_changed). The UI computes remaining from these
+                    // each tick, so it never drifts and re-anchors correctly on reconnect.
+                    // `delay` is Alarmo-specific; absent on generic panels (no countdown then).
+                    const delayTotal = (isTransient && typeof attrs.delay === 'number') ? attrs.delay : null;
+                    const delayStartedAt = isTransient ? (new_state.last_changed || null) : null;
+
                     setSthmState(current => {
                         const prev = current;
-                        // Both 'pending' (entry delay) and 'triggered' show the disarm modal
-                        const isViolation = haState === 'triggered' || haState === 'pending';
+                        const isTriggered = haState === 'triggered';
+                        const isEntryOrTrigger = haState === 'pending' || isTriggered;
                         const newState: STHMState = {
                             locationId: 'ha-default',
                             locationName: 'Home Assistant',
                             armState: targetArmState,
-                            securityState: isViolation
-                                ? 'VIOLATION'
-                                : (haState === 'disarmed' ? 'OK' : (prev?.securityState ?? 'OK')),
-                            violatingSensors: isViolation ? enrichedViolators : (haState === 'disarmed' ? [] : (prev?.violatingSensors ?? [])),
-                            trigger: isViolation && enrichedViolators.length > 0
+                            // VIOLATION is reserved for the actual siren (triggered). Exit
+                            // and entry delay are surfaced via `phase`, not VIOLATION, so
+                            // the entry modal is a calm "disarm now" rather than a full alarm.
+                            securityState: isTriggered ? 'VIOLATION' : 'OK',
+                            violatingSensors: isEntryOrTrigger ? enrichedViolators : (haState === 'disarmed' ? [] : (prev?.violatingSensors ?? [])),
+                            trigger: isEntryOrTrigger && enrichedViolators.length > 0
                                 ? { name: enrichedViolators[0].name, type: 'sensor' }
                                 : (haState === 'disarmed' ? null : prev?.trigger),
                             source: 'ha',
                             haOpenSensors: Object.keys(openSensors).length > 0 ? openSensors : null,
                             haAvailableModes: prev?.haAvailableModes,
                             haArmError: prev?.haArmError,
-                            haExitDelay: haState === 'arming' ? (typeof attrs.delay === 'number' ? attrs.delay : null) : null,
-                            haEntryDelay: haState === 'pending' ? (typeof attrs.delay === 'number' ? attrs.delay : null) : null,
+                            haExitDelay: haState === 'arming' ? delayTotal : null,
+                            haEntryDelay: haState === 'pending' ? delayTotal : null,
+                            phase,
+                            haDelayTotal: delayTotal,
+                            haDelayStartedAt: delayStartedAt,
                         };
                         return newState;
                     });
