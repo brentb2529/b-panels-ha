@@ -878,6 +878,9 @@ export interface SonosSources {
 interface DashboardContextType {
   devices: Device[];
   deviceMap: Map<string, Device>;
+  // entity_id -> HA device_id (registry-based grouping; used to assemble a
+  // camera's sibling control/status entities into one detail view).
+  entityDeviceMap: Record<string, string>;
   panels: DashboardPanel[];
   connections: ServiceConnection[];
   users: User[];
@@ -3928,6 +3931,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const value = {
       devices,
       deviceMap,
+      entityDeviceMap,
       panels,
       connections,
       users,
