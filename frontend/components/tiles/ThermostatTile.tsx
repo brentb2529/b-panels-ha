@@ -1,13 +1,13 @@
 
 import React from 'react';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import { IconThermometer, IconFlame, IconSnowflake, IconPower, IconPlus, IconTrash2 } from '../icons';
 import TileWrapper, { TileAccent } from './TileWrapper';
 import { fluidTextXs, fluidText4xl, fluidTextLg, fluidIcon } from './tileScale';
 
 const ThermostatTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { updateDeviceState, requestPin } = useDashboard();
+    const { updateDeviceState, requestPin } = useDashboardActions();
     const state = device.state as { mode: 'cool' | 'heat' | 'off', currentTemp: number, setpoint: number };
     const isLocked = !!tile.isLocked;
     

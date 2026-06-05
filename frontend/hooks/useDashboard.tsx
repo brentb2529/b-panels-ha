@@ -985,6 +985,31 @@ export const useDashboard = () => {
     return context;
 };
 
+// Stable actions slice. These functions never change identity across device/
+// state churn (all useCallback with non-frequent deps), so a component that
+// only needs to *do* things — not read changing state — can subscribe here and
+// avoid re-rendering on every entity push. Interactive tiles (Dimmer, Switch,
+// Scene, …) use this so the React.memo on Tile actually holds: a tile now
+// re-renders only when its own device object changes, not on every WS event.
+export interface DashboardActions {
+  updateDeviceState: DashboardContextType['updateDeviceState'];
+  triggerScene: DashboardContextType['triggerScene'];
+  triggerPanicAlarm: DashboardContextType['triggerPanicAlarm'];
+  openDevicePanel: DashboardContextType['openDevicePanel'];
+  requestPin: DashboardContextType['requestPin'];
+  addNotification: DashboardContextType['addNotification'];
+}
+
+const DashboardActionsContext = createContext<DashboardActions | undefined>(undefined);
+
+export const useDashboardActions = () => {
+    const context = useContext(DashboardActionsContext);
+    if (!context) {
+        throw new Error('useDashboardActions must be used within a DashboardProvider');
+    }
+    return context;
+};
+
 export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [serviceDevices, setServiceDevices] = useState<Device[]>([]);
   // entity_id -> HA device_id, used to group an integration's split entities
@@ -2558,6 +2583,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
   const haUnsubsRef = useRef<Array<() => void>>([]);
   const haSensorRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Throttle the "last event" heartbeat: it only feeds a >5min staleness check,
+  // so updating it (and re-rendering the whole provider) on every entity push is
+  // pure churn. Refresh at most every 15s.
+  const lastHaEventStampRef = useRef<number>(0);
   // HA-only: Home Assistant is always the alarm provider.
   const primaryAlarmProviderRef = useRef<'st' | 'ha'>('ha');
 
@@ -2602,7 +2631,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             if (eventType === 'state_changed') {
                 const { entity_id, new_state } = eventData;
                 if (!new_state) return;
-                setLastHaEventAt(new Date());
+                // Heartbeat, throttled to 15s — see lastHaEventStampRef.
+                const nowMs = Date.now();
+                if (nowMs - lastHaEventStampRef.current > 15000) {
+                    lastHaEventStampRef.current = nowMs;
+                    setLastHaEventAt(new Date());
+                }
 
                 // HA-only: match the alarm panel by configured entity if set,
                 // otherwise treat any alarm_control_panel entity as the panel
@@ -3988,12 +4022,27 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       entryDelaySound: config.entryDelaySound || { mode: 'beep', beepStyle: 'single' },
   };
 
+  // Stable actions slice — see DashboardActions above. Memoized over the
+  // (stable) callbacks so its identity only changes if one of those changes
+  // identity; in steady state it never does, so action-only consumers don't
+  // re-render on device/alarm churn.
+  const actions = useMemo<DashboardActions>(() => ({
+      updateDeviceState,
+      triggerScene,
+      triggerPanicAlarm,
+      openDevicePanel,
+      requestPin,
+      addNotification,
+  }), [updateDeviceState, triggerScene, triggerPanicAlarm, openDevicePanel, requestPin, addNotification]);
+
   return (
     <DashboardContext.Provider value={value}>
+      <DashboardActionsContext.Provider value={actions}>
         {children}
         {pinRequest && <PinPadModal onClose={() => setPinRequest(null)} onConfirm={handlePinConfirm} />}
         {confirmRequest && <ConfirmModal message={confirmRequest.message} onConfirm={() => handleConfirmModalClose(true)} onCancel={() => handleConfirmModalClose(false)} />}
         {inputRequest && <InputModal message={inputRequest.message} initialValue={inputRequest.initialValue} type={inputRequest.type} onConfirm={(val) => handleInputModalClose(val)} onCancel={() => handleInputModalClose(null)} />}
+      </DashboardActionsContext.Provider>
     </DashboardContext.Provider>
   );
 };

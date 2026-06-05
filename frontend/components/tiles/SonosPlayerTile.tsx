@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import * as haClient from '../../services/haClient';
 import { IconMusic, IconPlay, IconPause, IconSkipBack, IconSkipForward, IconVolume2 } from '../icons';
 import TileWrapper from './TileWrapper';
@@ -19,7 +19,7 @@ interface SonosPlayerTileProps {
 // media_player services; album art uses HA's media_player_proxy URL (relative,
 // same-origin in the panel).
 const SonosPlayerTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: SonosPlayerTileProps) => {
-    const { requestPin } = useDashboard();
+    const { requestPin } = useDashboardActions();
 
     const state = device.state as any;
     const isPlaying = state.playbackState === 'PLAYING';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Device, TileConfig } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
 import { IconZap, IconSettings, IconCheck, IconAlertTriangle, IconX } from '../icons';
 import { fluidTextSm, fluidTextXs, fluidTextLg, fluidGap } from './tileScale';
@@ -319,7 +319,7 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
 };
 
 const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { addNotification } = useDashboard();
+    const { addNotification } = useDashboardActions();
     const [showDetails, setShowDetails] = useState(false);
     const isLocked = !!tile.isLocked;
 

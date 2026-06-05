@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Device, DeviceService, TileConfig, ColorTempRange } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboardActions } from '../../hooks/useDashboard';
 import { IconLightbulb } from '../icons';
 import TileWrapper from './TileWrapper';
 import TileSlider from './TileSlider';
@@ -135,7 +135,7 @@ const parseLutronState = (device: Device): LutronLightState => {
 
 // Simple dimmer tile for non-Lutron devices
 const SimpleDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { updateDeviceState, requestPin } = useDashboard();
+    const { updateDeviceState, requestPin } = useDashboardActions();
     const [level, setLevel] = useState(device.state as number);
     const isActive = level > 0;
     const isLocked = !!tile.isLocked;
@@ -210,7 +210,7 @@ const SimpleDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
 
 // Lutron dimmer tile with color and color temperature support
 const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { updateDeviceState, requestPin } = useDashboard();
+    const { updateDeviceState, requestPin } = useDashboardActions();
     const parsedState = useMemo(() => parseLutronState(device), [device]);
 
     const [level, setLevel] = useState(parsedState.level);
