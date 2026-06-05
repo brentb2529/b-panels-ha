@@ -161,6 +161,7 @@ const LitterRobotDetailModal = ({ device, onClose, onCommand }: {
 
     detailItems.push(
         { label: 'Settings', value: null, isHeader: true },
+        { label: 'Wait Time', value: state.cleanCycleWaitTime != null ? `${state.cleanCycleWaitTime} min` : 'N/A' },
         { label: 'Night Light', value: state.isNightLightModeEnabled ? 'On' : 'Off' },
         { label: 'Panel Lock', value: state.isPanelLockEnabled ? 'Locked' : 'Unlocked' },
         { label: 'Sleep Mode', value: state.sleepModeEnabled ? 'On' : 'Off' },
@@ -343,10 +344,19 @@ const LitterRobotTile = ({ device, tile, isEditor, cornerClassName }: {
     // entity_ids the composite captured for this robot.
     const handleCommand = async (cmd: string) => {
         const e = state.haEntities || {};
+        // Night light may be a switch or, on LR4, a select (globe light: off/on/auto).
+        const setNightLight = async (on: boolean) => {
+            if (!e.nightLight) throw new Error('no light entity');
+            if (e.nightLight.startsWith('select.')) {
+                await haClient.callService('select', 'select_option', { entity_id: e.nightLight, option: on ? 'on' : 'off' });
+            } else {
+                await haClient.callService('switch', on ? 'turn_on' : 'turn_off', { entity_id: e.nightLight });
+            }
+        };
         try {
             if (cmd === 'cycle' && e.vacuum) await haClient.callService('vacuum', 'start', { entity_id: e.vacuum });
-            else if (cmd === 'nightlight_on' && e.nightLight) await haClient.callService('switch', 'turn_on', { entity_id: e.nightLight });
-            else if (cmd === 'nightlight_off' && e.nightLight) await haClient.callService('switch', 'turn_off', { entity_id: e.nightLight });
+            else if (cmd === 'nightlight_on' && e.nightLight) await setNightLight(true);
+            else if (cmd === 'nightlight_off' && e.nightLight) await setNightLight(false);
             else if (cmd === 'panellock_on' && e.panelLock) await haClient.callService('switch', 'turn_on', { entity_id: e.panelLock });
             else if (cmd === 'panellock_off' && e.panelLock) await haClient.callService('switch', 'turn_off', { entity_id: e.panelLock });
             else if (cmd === 'reset' && e.reset) await haClient.callService('button', 'press', { entity_id: e.reset });
