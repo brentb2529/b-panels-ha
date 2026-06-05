@@ -134,6 +134,15 @@ export async function callService(
     await haCallService(conn, domain, service, data, target as any);
 }
 
+// --- RSS/Atom feed proxy ------------------------------------------------------
+// Fetch a feed via the b_panels integration (server-side, CORS-safe). Returns
+// the raw feed body; the News tile parses it client-side.
+export async function fetchRssFeed(url: string): Promise<string> {
+    const conn = await getConnection();
+    const res: any = await conn.sendMessagePromise({ type: 'b_panels/rss', url });
+    return res?.body ?? '';
+}
+
 // --- Weather forecast ---------------------------------------------------------
 // Daily forecast for a HA `weather.*` entity via the get_forecasts service
 // (response-returning). Returns [] if unavailable.

@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import urlparse
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant.components import frontend, websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -38,6 +41,7 @@ from .const import (
     STORAGE_VERSION,
     WS_CONFIG_GET,
     WS_CONFIG_SAVE,
+    WS_RSS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,7 +53,62 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up shared resources (websocket commands) once for the integration."""
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_save_config)
+    websocket_api.async_register_command(hass, websocket_rss)
     return True
+
+
+def _is_blocked_rss_host(host: str) -> bool:
+    """Block loopback / link-local / private hosts to prevent SSRF."""
+    h = (host or "").lower()
+    if h in ("", "localhost", "::1") or h.endswith(".local"):
+        return True
+    if h.startswith(("127.", "10.", "192.168.", "169.254.", "0.")):
+        return True
+    # 172.16.0.0 – 172.31.255.255
+    if h.startswith("172."):
+        try:
+            return 16 <= int(h.split(".")[1]) <= 31
+        except (IndexError, ValueError):
+            return False
+    return False
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): WS_RSS, vol.Required("url"): str}
+)
+@websocket_api.async_response
+async def websocket_rss(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Fetch an RSS/Atom feed server-side (CORS-safe) for the News tile.
+
+    Returns the raw feed body; the SPA parses it client-side. SSRF-guarded to
+    public http(s) hosts only.
+    """
+    url = msg["url"]
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        connection.send_error(msg["id"], "invalid_url", "Only http(s) URLs are allowed.")
+        return
+    if _is_blocked_rss_host(parsed.hostname or ""):
+        connection.send_error(msg["id"], "blocked_target", "Internal hosts are not allowed.")
+        return
+    try:
+        session = async_get_clientsession(hass)
+        async with session.get(
+            url,
+            timeout=aiohttp.ClientTimeout(total=12),
+            headers={"User-Agent": "B-Panels/1.0 (+home-assistant)"},
+        ) as resp:
+            if resp.status != 200:
+                connection.send_error(msg["id"], "fetch_failed", f"Feed returned HTTP {resp.status}")
+                return
+            body = await resp.text()
+        connection.send_result(msg["id"], {"body": body})
+    except Exception as err:  # noqa: BLE001 - surface any fetch error to the UI
+        connection.send_error(msg["id"], "fetch_error", str(err))
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

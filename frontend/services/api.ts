@@ -118,8 +118,10 @@ export const apiPairLutron = async (_processorIp: string): Promise<{ ok: boolean
 
 export const apiReportSTHMState = async (_locationId: string, _armState: string): Promise<void> => Promise.resolve();
 
-export const apiFetchRssFeed = async (_feedUrl: string): Promise<string> => {
-    throw new Error('RSS proxy is not available in HA-only mode.');
+export const apiFetchRssFeed = async (feedUrl: string): Promise<string> => {
+    // Served by the b_panels integration's b_panels/rss websocket command
+    // (server-side fetch, CORS-safe, SSRF-guarded). Returns the raw feed body.
+    return haClient.fetchRssFeed(feedUrl);
 };
 
 export const apiWhiskerLogin = async (_email: string, _password: string): Promise<any> => ({ access_token: '' });
