@@ -96,11 +96,24 @@ export const useWeather = () => {
     try { states = await haClient.getStates(); } catch { return null; }
     const weatherEnts = (states || []).filter(s => s.entity_id.startsWith('weather.'));
     if (!weatherEnts.length) return null;
-    // Honor an explicitly-selected entity (Admin → General Settings). Fall back
-    // to a Tempest/WeatherFlow station, else the first weather entity.
+    // A weather entity is only usable if it's actually reporting — a station that
+    // has gone 'unavailable'/'unknown' (e.g. a Tempest that dropped offline) has
+    // no temperature, which previously surfaced as a bogus 0°. So we prefer
+    // usable entities and gracefully fall back, instead of blindly using the
+    // selected one. Order of preference:
+    //   1) the explicitly-selected entity, IF usable
+    //   2) a usable Tempest/WeatherFlow station
+    //   3) any usable weather entity
+    //   4) last resort: the selected/first entity even if not usable
+    const isUsable = (s: any) =>
+      s && s.state !== 'unavailable' && s.state !== 'unknown' &&
+      typeof s.attributes?.temperature === 'number';
+    const selected = weatherEntityId ? weatherEnts.find(s => s.entity_id === weatherEntityId) : undefined;
     const w =
-      (weatherEntityId && weatherEnts.find(s => s.entity_id === weatherEntityId)) ||
-      weatherEnts.find(s => /tempest|weatherflow/i.test(s.attributes?.attribution || '')) ||
+      (selected && isUsable(selected) ? selected : undefined) ||
+      weatherEnts.find(s => isUsable(s) && /tempest|weatherflow/i.test(s.attributes?.attribution || '')) ||
+      weatherEnts.find(isUsable) ||
+      selected ||
       weatherEnts[0];
     const a = w.attributes || {};
     const cond = String(w.state || '');
