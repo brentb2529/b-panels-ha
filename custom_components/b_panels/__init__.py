@@ -434,6 +434,7 @@ async def websocket_get_config(
     {
         vol.Required("type"): WS_CONFIG_SAVE,
         vol.Required("config"): dict,
+        vol.Optional("source"): vol.Any(str, None),
     }
 )
 @websocket_api.async_response
@@ -442,10 +443,38 @@ async def websocket_save_config(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Persist the dashboard config. Admin-only."""
+    """Persist the dashboard config. Admin-only.
+
+    Hardened against the config-clobber wipe: a stale panel can otherwise
+    overwrite the whole config (worst case, to empty). We (1) refuse a save that
+    would blank a populated config, (2) stamp a monotonic `_rev`, and (3) fire
+    `b_panels_config_updated` so other open panels live-refresh instead of
+    holding a stale copy that they later save back.
+    """
     store: Store | None = hass.data.get(DOMAIN, {}).get("store")
     if store is None:
         connection.send_error(msg["id"], "not_ready", "Storage not initialized")
         return
-    await store.async_save(msg["config"])
-    connection.send_result(msg["id"], {"success": True})
+
+    new_cfg = msg["config"]
+    current = await store.async_load() or {}
+
+    # Safety net: never let a panel wipe a populated config to empty.
+    if not new_cfg.get("panels") and current.get("panels"):
+        connection.send_error(
+            msg["id"],
+            "stale_empty",
+            "Refused: incoming config has no panels but the stored config does.",
+        )
+        return
+
+    new_cfg["_rev"] = (current.get("_rev") or 0) + 1
+    await store.async_save(new_cfg)
+    connection.send_result(msg["id"], {"success": True, "rev": new_cfg["_rev"]})
+
+    # Notify other panels so they re-fetch and live-apply (no reload). `source`
+    # lets the saving panel ignore its own broadcast.
+    hass.bus.async_fire(
+        "b_panels_config_updated",
+        {"rev": new_cfg["_rev"], "source": msg.get("source")},
+    )
