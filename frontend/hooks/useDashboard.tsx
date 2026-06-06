@@ -1050,6 +1050,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const useDemoMode = false;
   const [isDeviceLoading, setIsDeviceLoading] = useState(true);
   const [alarmState, setAlarmState] = useState<AlarmState | null>(null);
+  // Current alarm state for non-React-render reads (e.g. the build auto-reload
+  // guard, which must not reload mid-alarm).
+  const alarmStateRef = useRef<AlarmState | null>(null);
+  useEffect(() => { alarmStateRef.current = alarmState; }, [alarmState]);
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
@@ -2127,6 +2131,52 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
       loadConfig();
   }, [loadConfig]);
+
+  // Live config sync: when ANOTHER panel saves the config, re-fetch + apply it
+  // (React state, no page reload, no flash). This keeps every open panel current
+  // so none holds a stale copy it later saves back over the newer one — the
+  // cause of the config-clobber wipe.
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    haClient.subscribeConfigUpdates(() => { loadConfig(true); })
+      .then(u => { if (cancelled) u(); else unsub = u; })
+      .catch(() => {});
+    return () => { cancelled = true; if (unsub) try { unsub(); } catch { /* ignore */ } };
+  }, [loadConfig]);
+
+  // Unobtrusive build auto-reload: if a NEW frontend build is deployed (the
+  // hashed bundle filename changes), reload to pick it up — but ONLY when the
+  // panel is idle (no recent interaction) and no alarm/modal is active, so the
+  // user never sees a flash mid-use. Reloads at most once per real deploy.
+  const lastInteractionRef = useRef<number>(Date.now());
+  useEffect(() => {
+    const bump = () => { lastInteractionRef.current = Date.now(); };
+    for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, bump, { passive: true });
+    return () => { for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.removeEventListener(ev, bump); };
+  }, []);
+  useEffect(() => {
+    const IDLE_MS = 60_000;
+    const check = async () => {
+      try {
+        const deployed = await haClient.getDeployedBundle();
+        const loaded = haClient.getLoadedBundle();
+        if (!deployed || !loaded || deployed === loaded) return;
+        // New build available — only reload when idle and nothing is happening.
+        const idle = Date.now() - lastInteractionRef.current > IDLE_MS;
+        const phase = alarmStateRef.current?.phase;
+        const alarmBusy = phase === 'arming' || phase === 'pending' || phase === 'triggered'
+          || alarmStateRef.current?.securityState === 'VIOLATION';
+        const modalOpen = !!document.querySelector('[data-bp-modal], .fixed.z-\\[100\\]');
+        if (idle && !alarmBusy && !modalOpen) {
+          console.log('[B-Panels] New build deployed — reloading panel.');
+          window.location.reload();
+        }
+      } catch { /* ignore */ }
+    };
+    const id = window.setInterval(check, 5 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (isConfigLoading || configLoadError) return;

@@ -356,12 +356,18 @@ export async function getDashboardConfig(): Promise<any | null> {
     }
 }
 
+// Stable per-tab id so a panel can ignore the config-updated broadcast it
+// caused itself (only react to saves from OTHER panels).
+export const PANEL_SOURCE_ID =
+    Math.random().toString(36).slice(2) + Date.now().toString(36);
+
 export async function saveDashboardConfig(config: any): Promise<void> {
     try {
         const conn = await getConnection();
         await conn.sendMessagePromise({
             type: 'b_panels/config/save',
             config,
+            source: PANEL_SOURCE_ID,
         });
     } catch {
         try {
@@ -369,5 +375,42 @@ export async function saveDashboardConfig(config: any): Promise<void> {
         } catch {
             /* ignore */
         }
+    }
+}
+
+// Live config sync: fire `cb` when ANOTHER panel saves the config, so this panel
+// can re-fetch + apply it (React state, no reload) instead of holding a stale
+// copy it might later save back over the newer one (the clobber/wipe cause).
+export async function subscribeConfigUpdates(
+    cb: (ev: { rev?: number; source?: string }) => void
+): Promise<() => void> {
+    const conn = await getConnection();
+    return conn.subscribeEvents((ev: any) => {
+        const data = ev?.data || {};
+        if (data.source !== PANEL_SOURCE_ID) cb(data);
+    }, 'b_panels_config_updated');
+}
+
+// --- Frontend version (build) detection, for unobtrusive auto-reload ---------
+// Vite hashes the main bundle filename on every build, so a changed
+// `assets/index-<hash>.js` means a new frontend was deployed.
+const BUNDLE_RE = /assets\/index-[A-Za-z0-9_-]+\.js/;
+let loadedBundle: string | null = null;
+export function getLoadedBundle(): string | null {
+    if (loadedBundle) return loadedBundle;
+    const src = Array.from(document.scripts).map((s) => s.src).find((s) => BUNDLE_RE.test(s));
+    const m = src?.match(BUNDLE_RE);
+    loadedBundle = m ? m[0] : null;
+    return loadedBundle;
+}
+export async function getDeployedBundle(): Promise<string | null> {
+    try {
+        const url = new URL('index.html', document.baseURI).toString();
+        const r = await fetch(url + (url.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) return null;
+        const m = (await r.text()).match(BUNDLE_RE);
+        return m ? m[0] : null;
+    } catch {
+        return null;
     }
 }
