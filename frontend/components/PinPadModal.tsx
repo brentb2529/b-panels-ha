@@ -88,12 +88,14 @@ const PinPadModal = ({ onClose, onConfirm }: PinPadModalProps) => {
         {keypadButtons.map(key => (
           <button
             key={key}
-            onClick={() => {
+            // onPointerDown for instant touch response (no click delay on kiosks).
+            onPointerDown={() => {
               if (key === 'C') handleClear();
               else if (key === '⌫') handleBackspace();
               else handleKeyPress(key);
             }}
-            className="text-2xl font-semibold bg-gray-700 rounded-control p-4 aspect-square flex items-center justify-center hover:bg-gray-600 active:scale-95 transition-all disabled:opacity-50"
+            className="text-2xl font-semibold bg-gray-700 rounded-control p-4 aspect-square flex items-center justify-center hover:bg-gray-600 active:scale-95 transition-transform disabled:opacity-50"
+            style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent', userSelect: 'none' }}
             disabled={isSubmitting}
           >
             {key}
