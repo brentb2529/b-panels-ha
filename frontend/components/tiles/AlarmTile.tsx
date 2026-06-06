@@ -82,7 +82,14 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
         // (the same source the Ready/Not-Ready readiness uses).
         if (haAlarmoSensors && haAlarmoSensors.length > 0) {
             return haAlarmoSensors
-                .filter(id => { const d = devices.find(dev => dev.id === id); return d ? isOpenState(d.state) : false; })
+                .filter(id => {
+                    const d = devices.find(dev => dev.id === id);
+                    if (!d) return false;
+                    // Motion/occupancy don't count toward "Sensors Open" while
+                    // disarmed (they trip constantly) — matches the readiness calc.
+                    if (d.type === DeviceType.MotionSensor || d.type === DeviceType.OccupancySensor) return false;
+                    return isOpenState(d.state);
+                })
                 .map(labelFor)
                 .filter(Boolean)
                 .sort((a, b) => a.localeCompare(b));
