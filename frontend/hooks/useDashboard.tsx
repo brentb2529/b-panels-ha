@@ -2677,7 +2677,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     };
 
     // Process an HA event payload that mirrors the legacy raw-socket shape.
-    const handleEvent = (eventType: string | undefined, eventData: any) => {
+    const handleEvent = (eventType: string | undefined, eventData: any, opts: { announce?: boolean } = {}) => {
+        // `announce` gates audible output (sensor TTS, arm-state TTS). It's false
+        // for non-transition updates (restart re-sync, recovery from unavailable,
+        // timestamp-only refresh) so device state still updates silently. Defaults
+        // true for callers that aren't the entity diff (e.g. alarmo events).
+        const announce = opts.announce !== false;
             if (eventType === 'state_changed') {
                 const { entity_id, new_state } = eventData;
                 if (!new_state) return;
@@ -2770,9 +2775,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         return newState;
                     });
 
-                    // TTS on arm state transitions (suppressed during reconnect
-                    // re-sync so an HA restart doesn't announce the current state).
-                    if (isAudioUnlockedRef.current && Date.now() >= announceSuppressUntilRef.current) {
+                    // TTS on arm state transitions (only on a real transition, and
+                    // not during the reconnect re-sync window).
+                    if (announce && isAudioUnlockedRef.current && Date.now() >= announceSuppressUntilRef.current) {
                         if (haState === 'disarmed') {
                             playTextToSpeech('Alarm disarmed');
                         } else if (haState === 'armed_away' || haState === 'armed_home' || haState === 'armed_night') {
@@ -2811,7 +2816,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // Notifications admin tab), independent from Alarmo's alarm-trigger
                     // sensor list. Both providers use this for spoken sensor announcements.
                     const notifyingSensors = notifyingSensorIdsRef.current;
-                    if (notifyingSensors.includes(entity_id) && isAudioUnlockedRef.current && localTtsEnabledRef.current && Date.now() >= announceSuppressUntilRef.current) {
+                    if (announce && notifyingSensors.includes(entity_id) && isAudioUnlockedRef.current && localTtsEnabledRef.current && Date.now() >= announceSuppressUntilRef.current) {
                         if (updatedDevice.type === DeviceType.ContactSensor) {
                             // Announce both open and close, matching the ST SSE path.
                             playTextToSpeech(`${nameToSpeak} ${updatedDevice.state === true ? 'opened' : 'closed'}`);
@@ -2884,12 +2889,22 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             // It emits the full entity collection on each change; we synthesize
             // per-entity state_changed events by diffing against the prior snapshot.
             let prevEntities: Record<string, any> = {};
+            const UNREAL = new Set(['unavailable', 'unknown', '', undefined, null]);
             const unsubEntities = await haClient.subscribeEntities((entities: any) => {
                 for (const entityId of Object.keys(entities)) {
                     const newEnt = entities[entityId];
                     const oldEnt = prevEntities[entityId];
                     if (!oldEnt || oldEnt.state !== newEnt.state || oldEnt.last_updated !== newEnt.last_updated) {
-                        handleEvent('state_changed', { entity_id: entityId, new_state: newEnt });
+                        // Announce ONLY on a genuine state transition: a prior real
+                        // state, a new real state, and they differ. This excludes
+                        // HA-restart artifacts — coming back from unavailable/unknown,
+                        // the initial snapshot (no oldEnt), and timestamp-only
+                        // refreshes (same state) — which otherwise fired stale TTS
+                        // ("basement door closed", etc.) on every restart.
+                        const realTransition = !!oldEnt
+                            && !UNREAL.has(oldEnt.state) && !UNREAL.has(newEnt.state)
+                            && oldEnt.state !== newEnt.state;
+                        handleEvent('state_changed', { entity_id: entityId, new_state: newEnt }, { announce: realTransition });
                     }
                 }
                 prevEntities = entities;
