@@ -2815,8 +2815,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         if (updatedDevice.type === DeviceType.ContactSensor) {
                             // Announce both open and close, matching the ST SSE path.
                             playTextToSpeech(`${nameToSpeak} ${updatedDevice.state === true ? 'opened' : 'closed'}`);
-                        } else if (updatedDevice.type === DeviceType.MotionSensor && updatedDevice.state === true) {
-                            playTextToSpeech(`Motion detected at ${nameToSpeak}`);
+                        // Motion/occupancy are intentionally NOT announced: interior
+                        // sensors trip constantly and are only relevant once armed
+                        // (Alarmo drives the alarm flow then). Doors + water still speak.
                         } else if (updatedDevice.type === DeviceType.WaterSensor && updatedDevice.state === true) {
                             playTextToSpeech(`Water detected at ${nameToSpeak}`);
                         }
@@ -2962,9 +2963,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             s === true ||
             (typeof s === 'number' && s > 0) ||
             (typeof s === 'string' && ['on', 'open', 'unlocked', 'detected', 'wet'].includes(s.toLowerCase()));
+        // Motion/occupancy sensors are interior and essentially always tripping
+        // while you're home/disarmed, so they must NOT make the system read
+        // "Not Ready". They only matter once armed, which Alarmo handles.
         const anyOpen = haAlarmoSensors.some(id => {
             const d = deviceMap.get(id);
-            return d ? isOpen(d.state) : false;
+            if (!d) return false;
+            if (d.type === DeviceType.MotionSensor || d.type === DeviceType.OccupancySensor) return false;
+            return isOpen(d.state);
         });
         setArmingState(anyOpen ? 'not_ready' : 'ready');
         return;
