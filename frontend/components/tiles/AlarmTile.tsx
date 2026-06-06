@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Device, TileConfig, AlarmState, DeviceType } from '../../types';
-import { useDashboard } from '../../hooks/useDashboard';
+import { useDashboard, isMovementSensor } from '../../hooks/useDashboard';
 import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from '../icons';
 import TileWrapper from './TileWrapper';
 import UnknownTile from './UnknownTile';
@@ -85,9 +85,10 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                 .filter(id => {
                     const d = devices.find(dev => dev.id === id);
                     if (!d) return false;
-                    // Motion/occupancy don't count toward "Sensors Open" while
-                    // disarmed (they trip constantly) — matches the readiness calc.
-                    if (d.type === DeviceType.MotionSensor || d.type === DeviceType.OccupancySensor) return false;
+                    // Movement sensors (motion/occupancy/presence + 'moving'
+                    // accelerations) don't count toward "Sensors Open" while
+                    // disarmed — they trip constantly. Matches the readiness calc.
+                    if (isMovementSensor(d)) return false;
                     return isOpenState(d.state);
                 })
                 .map(labelFor)

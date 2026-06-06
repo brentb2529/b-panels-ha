@@ -559,6 +559,17 @@ const getMessageLocationId = (message: any): string | undefined => {
         ?? message?.data?.deviceEvent?.locationId;
 };
 
+// Movement-type sensors (interior motion, occupancy, presence, and 'moving'
+// acceleration sensors) trip constantly while you're home, so they're excluded
+// from the disarmed "Ready / Sensors Open" readiness. Detect by device_class
+// (robust) AND the mapped type — 'moving' accelerations map to a generic type, so
+// a type-only check missed them.
+const MOVEMENT_DEVICE_CLASSES = new Set(['motion', 'occupancy', 'presence', 'moving', 'vibration']);
+export const isMovementSensor = (d: Device): boolean =>
+    d.type === DeviceType.MotionSensor ||
+    d.type === DeviceType.OccupancySensor ||
+    MOVEMENT_DEVICE_CLASSES.has(String((d.capabilityData as any)?.deviceClass || '').toLowerCase());
+
 const mapHaEntityToInternalDevice = (entity: any): Device | null => {
     const { entity_id, state, attributes } = entity;
     if (!entity_id || !attributes || attributes.hidden) return null;
@@ -3028,13 +3039,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             s === true ||
             (typeof s === 'number' && s > 0) ||
             (typeof s === 'string' && ['on', 'open', 'unlocked', 'detected', 'wet'].includes(s.toLowerCase()));
-        // Motion/occupancy sensors are interior and essentially always tripping
-        // while you're home/disarmed, so they must NOT make the system read
-        // "Not Ready". They only matter once armed, which Alarmo handles.
+        // Motion/movement sensors trip constantly while you're home/disarmed, so
+        // they must NOT make the system read "Not Ready" or show on the badge.
+        // Exclude by device_class (covers motion, occupancy, presence, AND the
+        // 'moving' acceleration sensors — which map to a generic type, so a
+        // type-only check missed them) plus the typed motion/occupancy. They only
+        // matter once armed, which Alarmo handles.
         const anyOpen = haAlarmoSensors.some(id => {
             const d = deviceMap.get(id);
             if (!d) return false;
-            if (d.type === DeviceType.MotionSensor || d.type === DeviceType.OccupancySensor) return false;
+            if (isMovementSensor(d)) return false;
             return isOpen(d.state);
         });
         setArmingState(anyOpen ? 'not_ready' : 'ready');
