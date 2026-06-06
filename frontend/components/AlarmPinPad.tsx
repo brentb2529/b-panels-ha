@@ -67,10 +67,13 @@ const AlarmPinPad = ({ accent, onDisarm }: AlarmPinPadProps) => {
         {['1','2','3','4','5','6','7','8','9','CLR','0','DEL'].map(key => (
           <button
             key={key}
-            onClick={() => { if (key === 'CLR') handleClear(); else if (key === 'DEL') handleBackspace(); else handleDigit(key); }}
+            // onPointerDown (not onClick): fires the instant a finger touches,
+            // bypassing the touch "click" delay that made the pad feel laggy on
+            // kiosks. touch-action:manipulation kills the double-tap-zoom wait.
+            onPointerDown={() => { if (key === 'CLR') handleClear(); else if (key === 'DEL') handleBackspace(); else handleDigit(key); }}
             disabled={isVerifying}
-            className={`h-14 rounded-control font-bold text-xl transition active:scale-95 disabled:opacity-50 ${key === 'CLR' || key === 'DEL' ? 'bg-gray-600 text-sm' : 'bg-gray-700'}`}
-            style={{ color: 'rgb(var(--text))' }}
+            className={`h-14 rounded-control font-bold text-xl transition-transform active:scale-95 disabled:opacity-50 ${key === 'CLR' || key === 'DEL' ? 'bg-gray-600 text-sm' : 'bg-gray-700'}`}
+            style={{ color: 'rgb(var(--text))', touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent', userSelect: 'none' }}
           >
             {key === 'DEL' ? <IconBackspace className="w-6 h-6 mx-auto" /> : key}
           </button>
