@@ -170,9 +170,15 @@ export const apiAlarmoDeleteUserByName = async (
 // the integration to be set up in HA first (Settings → Devices & Services →
 // Noonlight) — otherwise the `noonlight` service domain won't exist and this
 // rejects, which the caller surfaces to the user.
-export const apiNoonlightCreateAlarm = async (): Promise<{ ok: boolean; error?: string }> => {
+export const apiNoonlightCreateAlarm = async (
+    service: 'police' | 'fire' | 'medical' = 'police'
+): Promise<{ ok: boolean; error?: string }> => {
     try {
-        await haClient.callService('noonlight', 'create_alarm', {});
+        // The Noonlight HACS integration's create_alarm service REQUIRES a
+        // `service` field (police|fire|medical). The dashboard panic button is a
+        // police dispatch — the same Noonlight path the Alarmo bridge uses, so it
+        // reaches the same monitoring center.
+        await haClient.callService('noonlight', 'create_alarm', { service });
         return { ok: true };
     } catch (e: any) {
         return { ok: false, error: e?.message ?? String(e) };

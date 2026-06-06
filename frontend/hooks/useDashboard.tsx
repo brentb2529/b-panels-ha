@@ -1375,6 +1375,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // api-server applies the same filter at the source).
   const notifyingSensorIdsRef = useRef<string[]>([]);
   const alarmTriggerSensorIdsRef = useRef<string[]>([]);
+  // entity_id -> spoken alias. Read by the WS event handler for TTS + the alarm
+  // open-sensor labels. MUST be a ref: the handler closure is created when the
+  // socket connects, so reading `config.sensorAliases` directly there goes stale
+  // (aliases added after connect were spoken with the raw device name).
+  const sensorAliasesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    sensorAliasesRef.current = config.sensorAliases || {};
+  }, [config.sensorAliases]);
   useEffect(() => {
     allDevicesForUpdate.current = devices;
   }, [devices]);
@@ -2710,7 +2718,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // friendly_name (its device name is just the entity_id, common
                     // for some integrations), humanize the entity_id so the modal
                     // shows "Front Door" rather than "binary_sensor.konnected_..._front_door".
-                    const aliasMap = config.sensorAliases || {};
+                    const aliasMap = sensorAliasesRef.current || {};
                     const humanizeEntity = (eid: string) => {
                         const d = allDevicesForUpdate.current.find(x => x.id === eid);
                         if (aliasMap[eid]) return aliasMap[eid];
@@ -2787,8 +2795,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 // Regular device state update
                 const updatedDevice = mapHaEntityToInternalDevice(new_state);
                 if (updatedDevice) {
-                    // Sensor TTS notifications (same logic as ST SSE path)
-                    const alias = config.sensorAliases?.[entity_id];
+                    // Sensor TTS notifications (same logic as ST SSE path).
+                    // Read aliases from the ref (current value), not the closure's
+                    // stale `config` snapshot.
+                    const alias = sensorAliasesRef.current?.[entity_id];
                     const nameToSpeak = (alias || updatedDevice.name).trim();
                     // notifyingSensorIds is the user-managed TTS list (configured on the
                     // Notifications admin tab), independent from Alarmo's alarm-trigger
@@ -2932,9 +2942,18 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             setArmingState('no_sensors');
             return;
         }
+        // Open-detection MUST match AlarmTile's isOpenState. Using `!!d.state`
+        // was a bug: a sensor whose state is the *string* "off"/"closed" (any
+        // device_class that maps to a string instead of a boolean) is truthy in
+        // JS, so it counted as permanently open — the "Sensors Open" badge stuck
+        // on while the open-sensor list was empty.
+        const isOpen = (s: Device['state']) =>
+            s === true ||
+            (typeof s === 'number' && s > 0) ||
+            (typeof s === 'string' && ['on', 'open', 'unlocked', 'detected', 'wet'].includes(s.toLowerCase()));
         const anyOpen = haAlarmoSensors.some(id => {
             const d = deviceMap.get(id);
-            return d ? !!d.state : false;
+            return d ? isOpen(d.state) : false;
         });
         setArmingState(anyOpen ? 'not_ready' : 'ready');
         return;
