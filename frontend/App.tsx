@@ -12,7 +12,6 @@ import AudioUnlockModal from './components/AudioUnlockModal';
 import AccessDenied from './components/AccessDenied';
 import NotificationHost from './components/NotificationHost';
 import VersionFooter from './components/VersionFooter';
-import FitToWindow from './components/FitToWindow';
 import LoginPage from './components/LoginPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { apiValidateDeviceToken, bootstrapDeviceToken } from './services/api';
@@ -442,25 +441,23 @@ const AppContent = () => {
       return <AccessDenied clientIp={clientIp} />;
   }
   
-  // Dynamic resize: the dashboard is a fixed landscape design that we uniformly
-  // scale to fit ANY viewport — browser, phone, iPad, and the HA sidebar panel.
-  // This is on for every dashboard view EXCEPT the native iPad shell (it does
-  // its own SwiftUI scaling and sets window.__bpanelsNative). Admin/login are
-  // not dashboards, so they keep the normal scrolling layout. No longer gated on
-  // ?headless — the panel resizes correctly everywhere by default.
+  // Dynamic resize: fill the screen edge-to-edge with NO scrolling and NO
+  // letterbox bands. The dashboard grid stretches to fit the viewport (fluid
+  // columns + rows that divide the available height), so the whole panel is
+  // always visible and uses the full screen on browser, phone, iPad, and the HA
+  // sidebar panel. The native iPad shell (window.__bpanelsNative) scales itself;
+  // Admin/login are not dashboards and keep the normal scrolling layout.
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
-  const fitEnabled = isDashboardRoute && !isNativeShell;
+  const fillScreen = isDashboardRoute && !isNativeShell;
 
-  // In fit mode the chrome is shrink-to-fit (intrinsic design size) so
-  // FitToWindow can measure it and scale the whole block. Otherwise (Admin, or
-  // the native shell which scales itself) it's a normal full-height column.
-  const chromeClass = fitEnabled
-    ? "inline-flex flex-col antialiased"
-    : "flex flex-col h-screen antialiased";
+  // A DEFINITE viewport height (h-screen) gives the grid's `1fr` rows a fixed
+  // box to divide, so the panel fills the screen exactly and content-heavy tiles
+  // (News, etc.) stay constrained and scroll internally instead of ballooning.
+  const chromeClass = "flex flex-col h-screen antialiased";
 
-  const mainContainerClass = fitEnabled
-    ? "p-2" // intrinsic; the Dashboard grid defines the design width/height
-    : (isHeadless
+  const mainContainerClass = fillScreen
+    ? "flex-1 overflow-hidden p-2" // fill the viewport; grid stretches, no scroll
+    : (isNativeShell
         ? "flex-1 overflow-y-auto p-2" // native iPad kiosk: native scaling handles fit
         : "flex-1 overflow-y-auto container mx-auto p-6 md:p-8"); // Admin/etc.
 
@@ -473,14 +470,12 @@ const AppContent = () => {
           its full-screen overlay over /admin or /login, where it would sit on top
           (z-100) and silently swallow the first click on every control. */}
       {!isAudioUnlocked && isDashboardRoute && <AudioUnlockModal onUnlock={unlockAudio} />}
-       <FitToWindow enabled={fitEnabled}>
-         <div className={chromeClass}>
+       <div className={chromeClass}>
           <Header />
           <main className={mainContainerClass}>
               <AppRoutes />
           </main>
-         </div>
-       </FitToWindow>
+       </div>
        <VersionFooter />
     </>
   )

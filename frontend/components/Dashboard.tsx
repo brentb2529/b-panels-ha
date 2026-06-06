@@ -140,14 +140,12 @@ const Dashboard = () => {
   const activePanel = panels.find(p => p.id === panelId);
   const parentPanel = activePanel?.parentId ? panels.find(p => p.id === activePanel.parentId) : null;
 
-  // Dynamic resize: render the grid at a fixed *design* size — square cells
-  // (column width == row height) so the panel has a locked landscape aspect —
-  // and let FitToWindow (App.tsx) uniformly scale that whole block to fit any
-  // viewport. This is on everywhere EXCEPT the native iPad shell, which scales
-  // itself. (Previously this only ran for ?headless URLs and used fluid 1fr
-  // columns, which squished cells tall-and-skinny on narrow/portrait screens.)
+  // Dynamic resize: fill the screen edge-to-edge with no scroll and no bands —
+  // fluid columns + rows that divide the available height (minmax(0,1fr)), so
+  // the whole panel stretches to fit the viewport. On everywhere EXCEPT the
+  // native iPad shell (which scales itself with fixed rowHeight rows).
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
-  const fitEnabled = !isNativeShell;
+  const fillScreen = !isNativeShell;
 
 
   // Precompute rounded-corner classes for tiles inside highlight regions.
@@ -265,7 +263,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className={`relative flex flex-col ${fitEnabled ? '' : 'h-full'}`}>
+    <div className="relative h-full flex flex-col">
       {/* Alarm flow — driven by the panel phase, shown on every panel. */}
       {phase === 'arming' && alarmState && (
           <ExitDelayModal alarmState={alarmState} onCancel={cancelArming} />
@@ -364,19 +362,16 @@ const Dashboard = () => {
       )}
 
       {!activeDevicePanel && <div
-        className={`grid gap-2.5 ${fitEnabled ? '' : 'flex-1 min-h-0 overflow-y-auto'}`}
+        className={`grid gap-2.5 flex-1 min-h-0 ${fillScreen ? 'overflow-hidden' : 'overflow-y-auto'}`}
         style={{
-            // Fit mode: fixed *square* design cells (cellW == cellH == rowHeight)
-            // give the grid a locked landscape aspect at an intrinsic pixel size;
-            // FitToWindow then uniformly scales the whole panel to fit the
-            // viewport. This is what keeps tile proportions correct in every mode
-            // (browser/phone/iPad/sidebar) instead of squishing on narrow widths.
-            //
-            // Native shell: fluid columns + fixed rowHeight rows (SwiftUI scales).
-            gridTemplateColumns: fitEnabled
-                ? `repeat(${activePanel.columns || 8}, ${activePanel.rowHeight || 120}px)`
-                : `repeat(${activePanel.columns || 8}, minmax(0, 1fr))`,
-            gridAutoRows: `${activePanel.rowHeight || 120}px`,
+            // Fill the screen: fluid columns always. Rows divide the available
+            // height (minmax(0,1fr)) so the panel stretches edge-to-edge with no
+            // scroll and no letterbox bands. Native shell keeps fixed-rowHeight
+            // rows (it does its own scaling) and scrolls if taller than the view.
+            gridTemplateColumns: `repeat(${activePanel.columns || 8}, minmax(0, 1fr))`,
+            gridAutoRows: fillScreen
+                ? 'minmax(0, 1fr)'
+                : `${activePanel.rowHeight || 120}px`,
         }}
       >
         {/* Render Highlight Sections */}
