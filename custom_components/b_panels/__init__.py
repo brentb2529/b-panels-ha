@@ -472,9 +472,8 @@ async def websocket_save_config(
     await store.async_save(new_cfg)
     connection.send_result(msg["id"], {"success": True, "rev": new_cfg["_rev"]})
 
-    # Notify other panels so they re-fetch and live-apply (no reload). `source`
-    # lets the saving panel ignore its own broadcast.
-    hass.bus.async_fire(
-        "b_panels_config_updated",
-        {"rev": new_cfg["_rev"], "source": msg.get("source")},
-    )
+    # NOTE: deliberately NOT firing a `b_panels_config_updated` broadcast. It
+    # created a save feedback loop (panel saves -> broadcast -> other panels
+    # re-fetch -> their setConfig auto-saves -> broadcast -> ...). Clobber
+    # protection is now the empty-save guard above + the client only saving on
+    # real user edits (never on a load).
