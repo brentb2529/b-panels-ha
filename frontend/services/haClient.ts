@@ -8,6 +8,7 @@
 import {
     getAuth,
     createConnection,
+    createLongLivedTokenAuth,
     getStates as haGetStates,
     subscribeEntities as haSubscribeEntities,
     callService as haCallService,
@@ -32,6 +33,46 @@ const hassUrl = (): string => {
     if (envUrl) return envUrl as string;
     return window.location.origin;
 };
+
+// Headless/kiosk auth: an HA Long-Lived Access Token lets a standalone panel
+// (Fully Kiosk, wall tablet, any non-sidebar load) connect with NO login.
+// Provision it once by opening the panel with ?access_token=<LLAT> (also accepts
+// ?token=, in the normal query OR inside the hash route); we persist it here and
+// strip it from the URL so it isn't left visible or re-read.
+const LLAT_KEY = 'bPanelsHAToken';
+function getProvisionedToken(): string | null {
+    const readFrom = (qs: string) => {
+        const p = new URLSearchParams(qs);
+        return p.get('access_token') || p.get('token');
+    };
+    let urlTok: string | null = null;
+    try {
+        urlTok = readFrom(window.location.search);
+        if (!urlTok && window.location.hash.includes('?')) {
+            urlTok = readFrom(window.location.hash.split('?')[1]);
+        }
+    } catch { /* ignore */ }
+    if (urlTok) {
+        try { localStorage.setItem(LLAT_KEY, urlTok); } catch { /* ignore */ }
+        // Strip the token from both the query and the hash route.
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('access_token');
+            url.searchParams.delete('token');
+            let hash = url.hash;
+            if (hash.includes('?')) {
+                const [hpath, hq] = hash.split('?');
+                const hp = new URLSearchParams(hq);
+                hp.delete('access_token');
+                hp.delete('token');
+                hash = hp.toString() ? `${hpath}?${hp.toString()}` : hpath;
+            }
+            history.replaceState(null, '', url.pathname + url.search + hash);
+        } catch { /* ignore */ }
+        return urlTok;
+    }
+    try { return localStorage.getItem(LLAT_KEY); } catch { return null; }
+}
 
 let connectionPromise: Promise<Connection> | null = null;
 // The active Auth, captured on connect, for authenticated HTTP calls (haFetch).
@@ -82,6 +123,21 @@ async function connect(): Promise<Connection> {
         }
     } catch {
         /* parent is cross-origin or has no hassConnection — use getAuth below */
+    }
+
+    // Headless/kiosk: a provisioned Long-Lived Access Token connects with no
+    // login and no OAuth redirect. This is the standalone-panel path (the
+    // sidebar uses the parent connection above; dev/desktop falls through to the
+    // interactive getAuth below).
+    const llat = getProvisionedToken();
+    if (llat) {
+        try {
+            const auth = createLongLivedTokenAuth(hassUrl(), llat);
+            currentAuth = auth;
+            return await createConnection({ auth });
+        } catch (e) {
+            console.warn('[HA] Long-lived token connect failed; falling back to interactive auth.', e);
+        }
     }
 
     let auth: Auth;
