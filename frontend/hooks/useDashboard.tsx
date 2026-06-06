@@ -1970,6 +1970,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, [useDemoMode]);
 
   const saveTimeoutRef = useRef<number | null>(null);
+  // Set whenever config is applied from a LOAD (initial, reconnect, or another
+  // panel's update) so the auto-save effect skips that change. Without this, a
+  // load triggers a save -> which (with the broadcast) made other panels reload
+  // -> save -> a config-save feedback LOOP across panels (and a reconnect clobber).
+  const justLoadedRef = useRef(false);
 
   // FIX: Added loadConfig function definition and initial load effect.
   const loadConfig = useCallback((silent: boolean = false) => {
@@ -2117,11 +2122,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     if (JSON.stringify(currentConfig) === JSON.stringify(mergedConfig)) {
                         return currentConfig;
                     }
+                    justLoadedRef.current = true; // this change came from a load — don't auto-save it back
                     return mergedConfig;
                 });
             } else {
                 // Loaded config is null (empty database, first run).
                 // Initialize with default config.
+                justLoadedRef.current = true;
                 setConfig(defaultConfig);
                 apiSaveConfig(defaultConfig).catch(err => {
                     console.warn("Could not save initial default config (likely read-only access):", err);
@@ -2143,18 +2150,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       loadConfig();
   }, [loadConfig]);
 
-  // Live config sync: when ANOTHER panel saves the config, re-fetch + apply it
-  // (React state, no page reload, no flash). This keeps every open panel current
-  // so none holds a stale copy it later saves back over the newer one — the
-  // cause of the config-clobber wipe.
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
-    let cancelled = false;
-    haClient.subscribeConfigUpdates(() => { loadConfig(true); })
-      .then(u => { if (cancelled) u(); else unsub = u; })
-      .catch(() => {});
-    return () => { cancelled = true; if (unsub) try { unsub(); } catch { /* ignore */ } };
-  }, [loadConfig]);
+  // (Removed) the live-config-sync broadcast subscription — it created a save
+  // feedback loop (broadcast -> reload -> auto-save -> broadcast -> ...). The
+  // clobber it was meant to prevent is now handled at the source by justLoadedRef
+  // (a load never triggers a save) plus the integration's empty-save guard.
 
   // Unobtrusive build auto-reload: if a NEW frontend build is deployed (the
   // hashed bundle filename changes), reload to pick it up — but ONLY when the
@@ -2191,8 +2190,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
   useEffect(() => {
     if (isConfigLoading || configLoadError) return;
+    // Don't persist a config that came straight from a load — it's identical to
+    // what's stored, and saving it would (with the broadcast) ping-pong into a
+    // save loop across panels. Only USER edits should auto-save.
+    if (justLoadedRef.current) { justLoadedRef.current = false; return; }
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    
+
     saveTimeoutRef.current = window.setTimeout(async () => {
         try {
             await apiSaveConfig(config);
