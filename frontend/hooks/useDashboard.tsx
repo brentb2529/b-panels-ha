@@ -1383,6 +1383,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     sensorAliasesRef.current = config.sensorAliases || {};
   }, [config.sensorAliases]);
+  // Suppress audible announcements (sensor TTS, arm-state TTS) during the
+  // initial entity snapshot and any reconnect re-sync. On (re)connect — e.g.
+  // after an HA restart — the WS re-emits EVERY entity at once; without this the
+  // handler would announce every currently-open notifying sensor ("front door
+  // opened", etc.) as if it just changed. Set to now+window on connect/ready.
+  const announceSuppressUntilRef = useRef<number>(0);
   useEffect(() => {
     allDevicesForUpdate.current = devices;
   }, [devices]);
@@ -2764,8 +2770,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         return newState;
                     });
 
-                    // TTS on arm state transitions
-                    if (isAudioUnlockedRef.current) {
+                    // TTS on arm state transitions (suppressed during reconnect
+                    // re-sync so an HA restart doesn't announce the current state).
+                    if (isAudioUnlockedRef.current && Date.now() >= announceSuppressUntilRef.current) {
                         if (haState === 'disarmed') {
                             playTextToSpeech('Alarm disarmed');
                         } else if (haState === 'armed_away' || haState === 'armed_home' || haState === 'armed_night') {
@@ -2804,7 +2811,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // Notifications admin tab), independent from Alarmo's alarm-trigger
                     // sensor list. Both providers use this for spoken sensor announcements.
                     const notifyingSensors = notifyingSensorIdsRef.current;
-                    if (notifyingSensors.includes(entity_id) && isAudioUnlockedRef.current && localTtsEnabledRef.current) {
+                    if (notifyingSensors.includes(entity_id) && isAudioUnlockedRef.current && localTtsEnabledRef.current && Date.now() >= announceSuppressUntilRef.current) {
                         if (updatedDevice.type === DeviceType.ContactSensor) {
                             // Announce both open and close, matching the ST SSE path.
                             playTextToSpeech(`${nameToSpeak} ${updatedDevice.state === true ? 'opened' : 'closed'}`);
@@ -2859,7 +2866,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             // Reflect the real socket state and keep it accurate as the library
             // auto-reconnects, rather than latching a single value.
             setHaWsState(conn.connected ? 'connected' : 'connecting');
-            const onReady = () => setHaWsState('connected');
+            // Silence announcements through the initial snapshot and any reconnect
+            // re-sync (HA restart re-emits every entity at once — see ref above).
+            const SUPPRESS_MS = 6000;
+            announceSuppressUntilRef.current = Date.now() + SUPPRESS_MS;
+            const onReady = () => { announceSuppressUntilRef.current = Date.now() + SUPPRESS_MS; setHaWsState('connected'); };
             const onDisc = () => setHaWsState('connecting');
             conn.addEventListener('ready', onReady);
             conn.addEventListener('disconnected', onDisc);
