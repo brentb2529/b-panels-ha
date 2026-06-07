@@ -23,3 +23,7 @@ __pycache__/
 # Internal dev handoff notes — references the private upstream; never publish.
 RESUME.md
 NATIVE_KIOSK_HA_PARITY.md
+
+# Private HA ops backups — home layout, Noonlight/alarm wiring, panel config.
+# NEVER publish (this repo is public).
+ops-private/
