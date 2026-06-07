@@ -27,3 +27,8 @@ NATIVE_KIOSK_HA_PARITY.md
 # Private HA ops backups — home layout, Noonlight/alarm wiring, panel config.
 # NEVER publish (this repo is public).
 ops-private/
+
+# Claude Code project tooling / local config — internal, not for the public repo
+.claude/
+# Claude Code session continuation dumps
+*-this-session-is-being-continued-from-a-previous-c.txt
