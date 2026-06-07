@@ -25,6 +25,38 @@ const mapHaCondition = (cond: string): { description: string; icon: React.ReactN
 const WEATHER_CACHE_KEY = 'homeTileWeatherCache';
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
+// WeatherFlow/Tempest LOCAL (UDP) devices expose NO weather entity — only sensors
+// named sensor.<st|sk|ar>_<serial>_<measure> (st = Tempest, sk = Sky, ar = Air).
+// To show hyperlocal CURRENT conditions in the header (temp + real-time activity
+// like lightning/rain that a cloud forecast can't see), we read those sensors
+// directly. Returns null when no local station is present (then we keep the cloud
+// weather entity's current). Detected by the serial-named air_temperature sensor
+// (device_class temperature) — no attribution exists on local UDP sensors.
+export const readLocalTempest = (states: any[]) => {
+  const tempSensor = (states || []).find(s =>
+    /^sensor\.(st|sk|ar)_\d+_air_temperature$/.test(s.entity_id) &&
+    s.attributes?.device_class === 'temperature' &&
+    s.state !== 'unavailable' && s.state !== 'unknown');
+  if (!tempSensor) return null;
+  const prefix = tempSensor.entity_id.replace(/air_temperature$/, ''); // sensor.st_<serial>_
+  const byId: Record<string, any> = {};
+  for (const s of states) if (s.entity_id.startsWith(prefix)) byId[s.entity_id] = s;
+  const num = (m: string) => { const v = parseFloat(byId[prefix + m]?.state); return Number.isFinite(v) ? v : undefined; };
+  const raw = (m: string) => byId[prefix + m]?.state;
+  const temperature = num('air_temperature');
+  if (temperature === undefined) return null;
+  return {
+    temperature,
+    humidity: num('relative_humidity'),
+    windSpeed: num('wind_speed'),
+    windGust: num('wind_gust'),
+    uvIndex: num('uv_index'),
+    lightningCount: num('lightning_count'),
+    precipType: raw('precipitation_type'),          // 'none' | 'rain' | 'hail'
+    precipIntensity: num('precipitation_intensity'),
+  };
+};
+
 // WMO Weather interpretation codes mapping (for Open-Meteo fallback)
 const mapWeatherCode = (code: number): { description: string; icon: React.ReactNode } => {
   const iconProps = { className: "w-6 h-6 text-white" };
@@ -87,6 +119,9 @@ export const useWeather = () => {
   // transient refresh failures instead of flashing "Weather unavailable".
   const hasDataRef = useRef(false);
   const [isTempest, setIsTempest] = useState(false);
+  // lightning_count is cumulative; remember the last count + when it last rose so
+  // we only show "lightning" for a window after a real strike, not all day.
+  const lightningRef = useRef<{ count: number; since: number } | null>(null);
   const { weatherZipCode, weatherEntityId } = useDashboard();
 
   // Prefer a Home Assistant weather entity (e.g. a Tempest station) — the
@@ -153,8 +188,7 @@ export const useWeather = () => {
     } catch { /* forecast best-effort */ }
 
     const m = mapHaCondition(cond);
-    setIsTempest(tempest);
-    return {
+    const result: WeatherData = {
       temperature: Math.round(a.temperature ?? 0),
       feelsLike: a.apparent_temperature,
       humidity: a.humidity,
@@ -171,6 +205,40 @@ export const useWeather = () => {
       uvIndex: a.uv_index,
       stationName: a.friendly_name,
     };
+    setIsTempest(tempest);
+
+    // Hyperlocal overlay: if a LOCAL Tempest station is present, use its live
+    // sensors for the CURRENT temp + activity (lightning/rain), while keeping the
+    // selected entity's FORECAST (local UDP has no forecast). This is what makes
+    // the header read the user's own station, not the regional cloud forecast.
+    const local = readLocalTempest(states);
+    if (local) {
+      const now = Date.now();
+      const prev = lightningRef.current;
+      const cnt = local.lightningCount ?? 0;
+      if (prev == null) lightningRef.current = { count: cnt, since: 0 };           // first read: don't fire
+      else if (cnt > prev.count) lightningRef.current = { count: cnt, since: now }; // new strike(s)
+      else lightningRef.current = { count: cnt, since: prev.since };
+      const lightningActive = lightningRef.current.since > 0 && (now - lightningRef.current.since) < 30 * 60 * 1000;
+      const raining = (local.precipType && local.precipType !== 'none') || (local.precipIntensity ?? 0) > 0;
+
+      // Activity overrides the sky condition; otherwise keep the forecast's sky icon.
+      let act = m;
+      if (lightningActive) act = mapHaCondition('lightning');
+      else if (raining) act = mapHaCondition(local.precipType === 'hail' ? 'snowy-rainy' : 'rainy');
+
+      result.temperature = Math.round(local.temperature);
+      if (local.humidity !== undefined) result.humidity = local.humidity;
+      if (local.windSpeed !== undefined) result.windSpeed = local.windSpeed;
+      if (local.windGust !== undefined) result.windGust = local.windGust;
+      if (local.uvIndex !== undefined) result.uvIndex = local.uvIndex;
+      result.description = act.description;
+      result.icon = act.icon;
+      result.stationName = 'Tempest (local)';
+      setIsTempest(true);
+    }
+
+    return result;
   }, [weatherEntityId]);
 
   // Fetch from Open-Meteo
