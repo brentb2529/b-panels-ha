@@ -212,7 +212,12 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
     // highlight that flips to an inset on press (matches TileButton's feel) for
     // secondary actions; a solid white raised key for the primary disarm.
     const btnSecondary = "!text-white border border-white/35 bg-white/15 backdrop-blur-sm shadow-[inset_0_1px_0_rgb(255_255_255/0.30),0_2px_5px_-1px_rgb(0_0_0/0.3)] hover:bg-white/25 active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.3)]";
-    const btnPrimary = "bg-white text-gray-900 border border-white/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.6),0_3px_8px_-1px_rgb(0_0_0/0.45)] hover:bg-gray-100 active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.25)]";
+    // NOTE: text is a HARD dark hex, not `text-gray-900`. The Tailwind config
+    // remaps gray-900 -> the theme `--bg` token, which flips LIGHT in the
+    // light/ambient themes — so `text-gray-900` on this always-white button made
+    // the "Disarm" label vanish (looked washed-out/transparent). The button is
+    // always white, so the label must always be dark regardless of theme.
+    const btnPrimary = "!bg-white !text-[#0f172a] border border-black/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.6),0_3px_8px_-1px_rgb(0_0_0/0.45)] hover:!bg-gray-100 active:shadow-[inset_0_2px_5px_rgb(0_0_0/0.25)]";
 
     const armError = alarmState.haArmError ?? null;
 
