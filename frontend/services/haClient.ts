@@ -310,6 +310,64 @@ export async function getEntityDeviceMap(): Promise<Record<string, string>> {
     return map;
 }
 
+// --- Airzone climate-zone topology id map -------------------------------------
+// Resolve each `climate.*` entity_id to its Airzone "system:zone" id (e.g.
+// "1:2"), so the Air Control surface can correlate a master's `slave_zones` /
+// a slave's `master_zone` attribute (both "system:zone" strings) back to the
+// concrete entity_ids it renders.
+//
+// The Airzone integration names each zone's HA device with identifier
+// `f"{entry_id}_{system_zone_id}"` where system_zone_id = "{system}:{zone}".
+// We join entity_registry (entity_id → device_id) with device_registry
+// (device_id → identifiers) and extract the "<digits>:<digits>" suffix.
+//
+// device_registry/list is admin-gated; if it's unavailable (non-admin user) or
+// the integration predates the topology attrs, this returns {} and the surface
+// degrades to flat/standalone grouping. Never throws.
+export async function getClimateZoneIdMap(): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    try {
+        const conn = await getConnection();
+
+        // device_id → "system:zone" from the device registry identifiers.
+        const deviceZoneId: Record<string, string> = {};
+        let devices: any[] = [];
+        try {
+            const res: any = await conn.sendMessagePromise({ type: 'config/device_registry/list' });
+            devices = Array.isArray(res) ? res : Array.isArray(res?.devices) ? res.devices : [];
+        } catch (e) {
+            console.warn('[B-Panels] device_registry/list unavailable (non-admin?); climate topology grouping disabled.', e);
+            return out;
+        }
+        // HA identifiers are [[domain, id], ...]. Match the trailing
+        // "<system>:<zone>" (digits:digits) regardless of the entry_id prefix.
+        const ZONE_RE = /(\d+:\d+)$/;
+        for (const d of devices) {
+            const ids: any[] = Array.isArray(d?.identifiers) ? d.identifiers : [];
+            for (const tuple of ids) {
+                const idStr = Array.isArray(tuple) ? String(tuple[1] ?? '') : String(tuple ?? '');
+                const m = idStr.match(ZONE_RE);
+                if (m && d.id) {
+                    deviceZoneId[d.id] = m[1];
+                    break;
+                }
+            }
+        }
+        if (Object.keys(deviceZoneId).length === 0) return out;
+
+        // entity_id → device_id, then join to "system:zone".
+        const entityDevice = await getEntityDeviceMap();
+        for (const [eid, did] of Object.entries(entityDevice)) {
+            if (!eid.startsWith('climate.')) continue;
+            const zoneId = deviceZoneId[did];
+            if (zoneId) out[eid] = zoneId;
+        }
+    } catch (e) {
+        console.warn('[B-Panels] climate zone-id map failed; topology grouping disabled.', e);
+    }
+    return out;
+}
+
 // --- Camera streams -----------------------------------------------------------
 // Resolve a live HLS stream URL for a Home Assistant `camera` entity via HA's
 // stream component (the `camera/stream` WS command). HA replies with a

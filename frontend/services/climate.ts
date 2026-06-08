@@ -82,6 +82,14 @@ export interface ClimateZone {
     supportsTargetTemp: boolean;
     supportsFanMode: boolean;
     supportsTargetRange: boolean;
+
+    // --- Airzone master/slave topology (LOCKED contract row, ENTITY_CONTRACT
+    // v0.2). Read-only; all optional so older firmware / pre-merge instances
+    // (no attrs) degrade to standalone zones. The "system:zone" ids are
+    // correlated to entity_ids at grouping time via the zone-id map.
+    isMaster: boolean | null;                 // is_master attr; null when absent
+    masterZoneId: string | null;              // master_zone "system:zone" (slaves only)
+    slaveZoneIds: string[];                    // slave_zones "system:zone"[] (masters only)
 }
 
 // climate.* ids we never surface on the AIR surface: pool/spa heaters belong to
@@ -157,6 +165,15 @@ export function toClimateZone(entity: HassEntity, entities: HassEntities): Clima
     const currentTemperature =
         num(a.current_temperature) ?? pairedSensorValue(entities, entity.entity_id, 'temperature');
 
+    // Airzone master/slave topology attrs (LOCKED contract). All optional —
+    // absent on older firmware / non-Airzone climates, in which case the zone
+    // renders standalone.
+    const isMaster = typeof a.is_master === 'boolean' ? a.is_master : null;
+    const masterZoneId = typeof a.master_zone === 'string' ? a.master_zone : null;
+    const slaveZoneIds: string[] = Array.isArray(a.slave_zones)
+        ? a.slave_zones.filter((z: unknown): z is string => typeof z === 'string')
+        : [];
+
     return {
         entityId: entity.entity_id,
         name: (a.friendly_name as string) || humanizeSlug(entity.entity_id),
@@ -178,6 +195,9 @@ export function toClimateZone(entity: HassEntity, entities: HassEntities): Clima
         supportsTargetTemp,
         supportsFanMode,
         supportsTargetRange,
+        isMaster,
+        masterZoneId,
+        slaveZoneIds,
     };
 }
 
@@ -194,6 +214,133 @@ export function discoverClimateZones(entities: HassEntities): ClimateZone[] {
     }
     zones.sort((x, y) => x.name.localeCompare(y.name));
     return zones;
+}
+
+// --- Master/slave grouping ----------------------------------------------------
+// A rendered cluster: a master zone with its (resolved) slave zones nested
+// beneath, or a standalone zone (no topology / unresolved). The surface renders
+// one of these per group.
+export interface ClimateGroup {
+    // Stable key for React (the master/standalone zone's entity_id).
+    key: string;
+    master: ClimateZone;
+    slaves: ClimateZone[];
+    // True only when `master` is a real Airzone master WITH resolved slaves.
+    // Standalone zones (no topology attrs, or attrs present but no slaves
+    // resolved) render exactly like the pre-topology surface.
+    isCluster: boolean;
+    // For each slave entity_id, the master entity_id its mode command must be
+    // routed to (see resolveModeTarget). Empty for standalone groups.
+    modeTargetByEntity: Record<string, string>;
+}
+
+// The role we display on a tile, independent of whether grouping succeeded.
+export type ZoneRole = 'master' | 'slave' | 'standalone';
+
+export function zoneRole(zone: ClimateZone): ZoneRole {
+    if (zone.isMaster === true && zone.slaveZoneIds.length > 0) return 'master';
+    if (zone.masterZoneId) return 'slave';
+    return 'standalone';
+}
+
+// Group zones into master clusters + standalone zones.
+//
+// `zoneIdByEntity` maps entity_id → "system:zone" (from
+// haClient.getClimateZoneIdMap). When it's empty/missing (non-admin, or older
+// firmware with no topology), EVERY zone falls through to standalone — the
+// surface looks exactly as it did before this change (graceful degradation).
+//
+// A slave whose master cannot be resolved to a concrete entity_id is emitted as
+// a standalone group (we never drop a zone), but still carries masterZoneId so
+// its tile can show "mode follows master".
+export function groupClimateZones(
+    zones: ClimateZone[],
+    zoneIdByEntity: Record<string, string>
+): ClimateGroup[] {
+    const entityByZoneId: Record<string, string> = {};
+    for (const [eid, zid] of Object.entries(zoneIdByEntity)) entityByZoneId[zid] = eid;
+
+    const byEntity: Record<string, ClimateZone> = {};
+    for (const z of zones) byEntity[z.entityId] = z;
+
+    // entity_ids that end up nested under a master, so we don't also emit them
+    // as their own top-level group.
+    const claimedSlaves = new Set<string>();
+    const groups: ClimateGroup[] = [];
+
+    // First pass: build master clusters.
+    for (const z of zones) {
+        if (z.isMaster !== true || z.slaveZoneIds.length === 0) continue;
+        const slaves: ClimateZone[] = [];
+        const modeTargetByEntity: Record<string, string> = {};
+        for (const slaveZoneId of z.slaveZoneIds) {
+            const slaveEntity = entityByZoneId[slaveZoneId];
+            if (!slaveEntity || !byEntity[slaveEntity]) continue; // unresolved → skip nesting
+            if (slaveEntity === z.entityId) continue;
+            slaves.push(byEntity[slaveEntity]);
+            claimedSlaves.add(slaveEntity);
+            modeTargetByEntity[slaveEntity] = z.entityId;
+        }
+        slaves.sort((a, b) => a.name.localeCompare(b.name));
+        groups.push({
+            key: z.entityId,
+            master: z,
+            slaves,
+            isCluster: slaves.length > 0,
+            modeTargetByEntity,
+        });
+    }
+
+    // Second pass: everything not nested under a master becomes a standalone
+    // group (preserving discovery sort order).
+    for (const z of zones) {
+        if (claimedSlaves.has(z.entityId)) continue;
+        if (z.isMaster === true && z.slaveZoneIds.length > 0) continue; // already a cluster master
+        groups.push({
+            key: z.entityId,
+            master: z,
+            slaves: [],
+            isCluster: false,
+            modeTargetByEntity: {},
+        });
+    }
+
+    // Masters first, then standalone, each alphabetical.
+    groups.sort((a, b) => {
+        if (a.isCluster !== b.isCluster) return a.isCluster ? -1 : 1;
+        return a.master.name.localeCompare(b.master.name);
+    });
+    return groups;
+}
+
+// Resolve which entity_id a mode (set_hvac_mode) command must target for a given
+// zone. SLAVE zones hard-fail set_hvac_mode on the integration today, so we
+// route the call to the owning MASTER's entity_id when we can resolve it.
+// Returns:
+//   { entityId, routed: false }                  — command targets the zone itself
+//   { entityId: <master>, routed: true, masterName } — routed to the master
+//   { entityId: null, routed: false, blocked: true } — slave whose master is
+//        unresolved: do NOT call set_hvac_mode (it would fail); disable the control.
+export interface ModeTarget {
+    entityId: string | null;
+    routed: boolean;
+    blocked: boolean;
+    masterName?: string;
+}
+
+export function resolveModeTarget(zone: ClimateZone, group: ClimateGroup): ModeTarget {
+    const role = zoneRole(zone);
+    if (role !== 'slave') {
+        return { entityId: zone.entityId, routed: false, blocked: false };
+    }
+    // Slave: find its master entity within this group (it was nested under it).
+    const masterEntity = group.modeTargetByEntity[zone.entityId];
+    if (masterEntity) {
+        return { entityId: masterEntity, routed: true, blocked: false, masterName: group.master.name };
+    }
+    // Slave whose master could not be resolved to an entity_id. Calling
+    // set_hvac_mode on the slave fails, so block the control rather than try.
+    return { entityId: null, routed: false, blocked: true };
 }
 
 // --- Commands (optimistic; the caller reconciles against subscribeEntities) ---

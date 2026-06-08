@@ -9,12 +9,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HassEntities } from 'home-assistant-js-websocket';
-import { subscribeEntities } from '../services/haClient';
+import { subscribeEntities, getClimateZoneIdMap } from '../services/haClient';
 import {
     discoverClimateZones,
+    groupClimateZones,
+    resolveModeTarget,
     setFanMode as svcSetFanMode,
     setHvacMode as svcSetHvacMode,
     setTargetTemperature as svcSetTargetTemperature,
+    type ClimateGroup,
     type ClimateZone,
 } from '../services/climate';
 
@@ -33,11 +36,18 @@ interface OptimisticPatch {
 
 export interface UseClimateZones {
     zones: ClimateZone[];
+    /** Zones grouped into master/slave clusters + standalone zones. */
+    groups: ClimateGroup[];
     status: ConnStatus;
     /** Optimistically set a zone's setpoint and fire the HA service. */
     setTargetTemperature: (entityId: string, temperature: number) => void;
-    /** Optimistically set a zone's hvac_mode and fire the HA service. */
-    setHvacMode: (entityId: string, hvacMode: string) => void;
+    /**
+     * Set a zone's hvac_mode, routing SLAVE zones to their owning master's
+     * entity_id (calling set_hvac_mode on a slave hard-fails today). Pass the
+     * zone + its group so routing can be resolved. A no-op for slaves whose
+     * master can't be resolved (the UI disables the control in that case).
+     */
+    setHvacMode: (zone: ClimateZone, group: ClimateGroup, hvacMode: string) => void;
     /** Optimistically set a zone's fan_mode and fire the HA service. */
     setFanMode: (entityId: string, fanMode: string) => void;
 }
@@ -58,16 +68,22 @@ function applyPatch(zone: ClimateZone, patch: OptimisticPatch | undefined): Clim
 
 export function useClimateZones(): UseClimateZones {
     const [zones, setZones] = useState<ClimateZone[]>([]);
+    const [groups, setGroups] = useState<ClimateGroup[]>([]);
     const [status, setStatus] = useState<ConnStatus>('connecting');
     // Optimistic overrides, keyed by entity_id. Held in a ref so firing a
     // command doesn't depend on the latest render, plus mirrored into a state
     // bump to trigger re-render.
     const patchesRef = useRef<Record<string, OptimisticPatch>>({});
     const lastEntitiesRef = useRef<HassEntities>({});
+    // entity_id → "system:zone" map for Airzone master/slave correlation. Empty
+    // until resolved (admin-gated device registry); empty → flat/standalone
+    // grouping (graceful degradation).
+    const zoneIdMapRef = useRef<Record<string, string>>({});
     const [, forceRender] = useState(0);
 
     // Recompute zones from the latest entities + current optimistic patches,
-    // pruning patches that real state has caught up to.
+    // pruning patches that real state has caught up to. Then group them by
+    // master/slave topology using the resolved zone-id map.
     const recompute = useCallback(() => {
         const base = discoverClimateZones(lastEntitiesRef.current);
         const patches = patchesRef.current;
@@ -87,6 +103,7 @@ export function useClimateZones(): UseClimateZones {
             return applyPatch(z, patch);
         });
         setZones(merged);
+        setGroups(groupClimateZones(merged, zoneIdMapRef.current));
         if (pruned) forceRender((n) => n + 1);
     }, []);
 
@@ -101,6 +118,22 @@ export function useClimateZones(): UseClimateZones {
             staleTimer = setTimeout(() => setStatus('stale'), 30000);
         };
 
+        // Resolve the Airzone "system:zone" → entity_id correlation map once.
+        // It's static topology, so a single fetch is enough; failure (non-admin
+        // / no topology) leaves the map empty and grouping degrades to flat.
+        let mapLoaded = false;
+        const loadZoneIdMap = () => {
+            if (mapLoaded) return;
+            mapLoaded = true;
+            getClimateZoneIdMap()
+                .then((m) => {
+                    if (cancelled) return;
+                    zoneIdMapRef.current = m;
+                    recompute();
+                })
+                .catch(() => { /* keep empty map → standalone grouping */ });
+        };
+
         const start = async () => {
             try {
                 unsub = await subscribeEntities((entities) => {
@@ -109,6 +142,7 @@ export function useClimateZones(): UseClimateZones {
                     setStatus('live');
                     armStaleTimer();
                     recompute();
+                    loadZoneIdMap();
                 });
             } catch {
                 if (!cancelled) setStatus('stale');
@@ -159,9 +193,16 @@ export function useClimateZones(): UseClimateZones {
     );
 
     const setHvacMode = useCallback(
-        (entityId: string, hvacMode: string) => {
-            patch(entityId, { hvacMode });
-            svcSetHvacMode(entityId, hvacMode).catch(() => recompute());
+        (zone: ClimateZone, group: ClimateGroup, hvacMode: string) => {
+            const target = resolveModeTarget(zone, group);
+            // Slave whose master is unresolved: do NOT call set_hvac_mode (it
+            // hard-fails on the slave). The tile disables the control already;
+            // this is a defensive no-op.
+            if (target.blocked || !target.entityId) return;
+            // Patch the TARGET entity (the master, when routed) — its real
+            // hvac_mode is what changes; slaves follow it via real state.
+            patch(target.entityId, { hvacMode });
+            svcSetHvacMode(target.entityId, hvacMode).catch(() => recompute());
         },
         [patch, recompute]
     );
@@ -174,5 +215,5 @@ export function useClimateZones(): UseClimateZones {
         [patch, recompute]
     );
 
-    return { zones, status, setTargetTemperature, setHvacMode, setFanMode };
+    return { zones, groups, status, setTargetTemperature, setHvacMode, setFanMode };
 }
