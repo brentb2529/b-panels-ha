@@ -88,7 +88,7 @@ the gateway's units.
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
 state + `volume_level` + `media_title`/`media_artist`/`entity_picture` + `shuffle`/`repeat`.
 
-## AKVO Movable Floor (custom `akvo`) — bespoke SAFETY-CRITICAL surface 🟡
+## AKVO Movable Floor (custom `akvo`) — bespoke SAFETY-CRITICAL surface ✅
 
 `DeviceType.AkvoFloor`, one self-driven virtual tile. **Monitor-first**; the
 command region is heavily guarded and issues exactly ONE thing. Discovers AKVO
@@ -97,13 +97,27 @@ each field resolved by id-suffix).
 
 | Field | HA entity | In surface? |
 | --- | --- | --- |
-| main floor / baja position (m, signed; −=above deck) | `sensor.*_main_floor_position` / `*_baja_position` | ✅ position gauges (deck-relative bar) |
-| motor currents (A) | `sensor.*_main_floor_motor_current` / `*_baja_motor_current` | ✅ chips |
+| main floor / baja position (m, signed; −=above deck) | `sensor.*_main_floor_position` / `*_baja_position` | ✅ animated SVG cross-section + numeric readout + deck-relative bar |
+| motor currents (A) | `sensor.*_main_floor_motor_current` / `*_baja_motor_current` | ✅ live current gauges (animated fill bar) + status chips |
 | active configuration | `sensor.*_active_configuration` | ✅ banner + reconcile target |
-| system ready / fault / e-stop / moving / comms / ready-for-cmds | `binary_sensor.*_{system_ready,system_fault,emergency_stop,floors_moving,bad_modbus_comm,ready_for_external_commands}` | ✅ status banner + chips + gate |
-| drive faults (main/baja: vfd, overtravel up/down, motor_overload, direction, no_movement, off_speed, position_ref, relative_position) | `binary_sensor.*` | ✅ faults panel (active-first, severity-ranked) |
+| system ready / fault / e-stop / moving / comms / ready-for-cmds | `binary_sensor.*_{system_ready,system_fault,emergency_stop,floors_moving,bad_modbus_comm,ready_for_external_commands}` | ✅ status banner (pulse on fault/e-stop) + chips + gate |
+| drive faults (main/baja: vfd, overtravel up/down, motor_overload, direction, no_movement, off_speed, position_ref, relative_position) | `binary_sensor.*` | ✅ faults panel (active-first, severity-ranked; safety dots pulse) |
 | 14 top-plate faults | `binary_sensor.*` | ✅ faults panel |
 | configuration request (GATED COMMAND) | `select.*_configuration_request` | ✅ press-and-hold request, sentinel `—` filtered out |
+
+### Animated cross-section visualization (feat/akvo-anim)
+
+The monitor region now contains a live SVG elevation/cross-section:
+
+- **Floor plate** (`MAIN FLOOR`) positioned at actual `mainFloorPosition` metres relative to the deck line, with smooth CSS transition (1.1 s settle, 0.6 s linear while moving).
+- **Water column** fills from deck to pool floor; animated wave pattern at the water surface that drifts faster when `floors_moving` is true.
+- **Baja shelf** rendered as a second lighter plate at `bajaPosition` when data is present.
+- **Deck line** with dashed reference, deck coping, depth ruler (−1 m / 0 / +1 m / +2 m tick marks), and a left-edge depth callout showing the live numeric value.
+- **Motion indicators**: directional chevron arrows pulse above/below the plate while moving; lifting-cable dashed lines animate flow.
+- **State color coding**: green (ready) → amber (moving) → orange (comms fault) → red pulse (fault/e-stop). The plate glow and drop-shadow update live.
+- **Motor current gauges**: animated horizontal fill bars with color ramp (green → amber → red) at 40 %/70 % of a 20 A full-scale.
+- **Live indicator**: ripple-ring dot in the status pill when connection is live.
+- All animations use CSS keyframes injected once at first render (no new CSS files).
 
 ### Safety boundary
 
@@ -113,6 +127,10 @@ control (there is none and none must be added). The single sanctioned write is
 `select.select_option` on the watchdog-protected configuration-request select —
 the gated path the `akvo` integration owns and validates. AKVO is the safety
 authority; HA only sends a request it may accept or reject.
+
+`evaluateGate`, `requestConfiguration`, `HoldToRequest` (including `HOLD_MS = 2000`),
+and the `onComplete` → `requestConfiguration` call chain are byte-for-byte identical
+to the pre-animation implementation.
 
 ### Command gate (fail-closed)
 
@@ -142,7 +160,8 @@ present, an explanatory empty state renders. Absent individual entities show
 "unknown"/"--" and the gate fails closed.
 
 Source: `components/tiles/AkvoFloorSurface.tsx`, `hooks/useAkvoFloor.ts`,
-`services/akvo.ts` (model + gate + the one gated command).
+`services/akvo.ts` (model + gate + the one gated command; `akvo.ts` and
+`useAkvoFloor.ts` are unchanged by feat/akvo-anim).
 
 ---
 
