@@ -83,6 +83,34 @@ per-unit mode/fan/roomTemp/setPoint/errorCode → one `climate.<unit>` per indoo
 unit (`hvac_mode`/`fan_mode`/`current_temperature`/`temperature`). Composite groups
 the gateway's units.
 
+## Air Control surface (per-room climate, e.g. Airzone) — bespoke marquee 🟡
+
+A dedicated multi-zone surface (`DeviceType.AirControl`, one virtual tile) that
+discovers **every** controllable `climate.*` entity live and renders one
+independent control card per zone. Multi-master safe: each zone is read and
+commanded on its own entity — no master↔zone attribute is consulted (that row
+is still `PROPOSED` in the contract).
+
+| Per-room field | HA source | In tile? |
+| --- | --- | --- |
+| room name | `climate.*` `friendly_name` (else humanized entity_id) | ✅ header |
+| current temperature | `climate` `current_temperature` | ✅ |
+| current humidity | `climate` `current_humidity`, else paired `sensor.<zone>_humidity` | ✅ (if present) |
+| target setpoint | `climate` `temperature` (range → midpoint, stepping disabled) | ✅ large |
+| hvac_mode | `climate` state + `hvac_modes` | ✅ tap-to-cycle → `climate.set_hvac_mode` |
+| fan_mode | `climate` `fan_mode` + `fan_modes` (feature-gated) | ✅ tap-to-cycle → `climate.set_fan_mode` |
+| hvac_action / running | `climate` `hvac_action` | ✅ running badge |
+| setpoint ± | `climate` `target_temp_step`/`min_temp`/`max_temp` | ✅ → `climate.set_temperature` |
+
+Discovery: binds generically to `climate.*`, excludes pool/spa heaters by id
+(`/climate\..*(pool|spa)/i`). Controls are optimistic and reconciled against
+`subscribeEntities`; offline zones render disabled. **Verify:** the simulated
+zones (`climate.living_room`, `climate.primary_suite`, `climate.kitchen`,
+`climate.office`) appear as independent cards once created in the dev instance.
+
+Source: `components/tiles/AirControlSurface.tsx` + `RoomClimateTile.tsx`,
+`hooks/useClimateZones.ts`, `services/climate.ts` (model + command wiring).
+
 ## Sonos (core `sonos`) — SonosPlayerTile ⛔
 
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
