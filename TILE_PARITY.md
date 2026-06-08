@@ -86,10 +86,8 @@ the gateway's units.
 ## Air Control surface (per-room climate, e.g. Airzone) — bespoke marquee 🟡
 
 A dedicated multi-zone surface (`DeviceType.AirControl`, one virtual tile) that
-discovers **every** controllable `climate.*` entity live and renders one
-independent control card per zone. Multi-master safe: each zone is read and
-commanded on its own entity — no master↔zone attribute is consulted (that row
-is still `PROPOSED` in the contract).
+discovers **every** controllable `climate.*` entity live and renders one control
+card per zone, grouped by Airzone master/slave topology.
 
 | Per-room field | HA source | In tile? |
 | --- | --- | --- |
@@ -101,15 +99,57 @@ is still `PROPOSED` in the contract).
 | fan_mode | `climate` `fan_mode` + `fan_modes` (feature-gated) | ✅ tap-to-cycle → `climate.set_fan_mode` |
 | hvac_action / running | `climate` `hvac_action` | ✅ running badge |
 | setpoint ± | `climate` `target_temp_step`/`min_temp`/`max_temp` | ✅ → `climate.set_temperature` |
+| master/slave role | `is_master` / `master_zone` / `slave_zones` (LOCKED, contract v0.2) | ✅ badge + grouping |
 
 Discovery: binds generically to `climate.*`, excludes pool/spa heaters by id
 (`/climate\..*(pool|spa)/i`). Controls are optimistic and reconciled against
-`subscribeEntities`; offline zones render disabled. **Verify:** the simulated
-zones (`climate.living_room`, `climate.primary_suite`, `climate.kitchen`,
-`climate.office`) appear as independent cards once created in the dev instance.
+`subscribeEntities`; offline zones render disabled.
+
+### Master/slave grouping (Airzone topology — LOCKED, ENTITY_CONTRACT v0.2)
+
+The read-only climate attributes `is_master` (bool), `master_zone`
+(`"system:zone"`, slaves only), and `slave_zones` (`"system:zone"[]`, masters
+only) are consumed here. The `"system:zone"` ids are correlated to concrete
+`entity_id`s via the device registry: each Airzone zone device carries the
+identifier `{entry_id}_{system_zone_id}`, so we join entity_registry →
+device_registry → identifier suffix (`getClimateZoneIdMap` in `haClient.ts`).
+
+- **Grouping:** a master renders as a card with its resolved slave cards nested
+  beneath in a bordered cluster (full-row, sub-grid). The header shows a
+  **Master** / **Slave** badge.
+- **Standalone:** a zone with no topology attrs, `is_master` true + empty
+  `slave_zones`, or a slave whose master can't be resolved, renders exactly as a
+  plain card (pre-topology behavior).
+
+### Mode-routing UX decision
+
+A SLAVE zone cannot change its own `hvac_mode` (the integration hard-fails
+`set_hvac_mode` on a slave; the routing fix is a separate equipment-gated PR).
+Chosen behavior — **route the slave's mode change to the master's `entity_id`**
+when the master is resolvable (calling the master works today):
+
+- Slave with resolved master → mode control **stays enabled**; pressing it calls
+  `climate.set_hvac_mode` on the **master** entity, with a "via `<master>`" hint.
+  The optimistic patch is applied to the master; slaves follow via real state.
+- Slave whose master is **unresolved** (no device-registry map, e.g. non-admin
+  user, or attrs missing) → mode control is **disabled** and the tile shows
+  "Mode follows `<master>`". We never call `set_hvac_mode` on a slave entity.
+- Setpoint and fan_mode are always per-slave (those work on slave entities).
+
+### Graceful degradation
+
+When the topology attrs are absent (older Airzone firmware / pre-merge
+instances) OR the device-registry map can't be built (non-admin user), every
+zone falls through to **standalone** rendering — identical to the pre-topology
+surface. Nothing crashes; no zone is dropped.
+
+**Verify:** the simulated zones appear as cards; a master shows its slaves
+nested with a Master badge; a slave's mode button either routes "via master" or
+shows "Mode follows master".
 
 Source: `components/tiles/AirControlSurface.tsx` + `RoomClimateTile.tsx`,
-`hooks/useClimateZones.ts`, `services/climate.ts` (model + command wiring).
+`hooks/useClimateZones.ts`, `services/climate.ts` (model + grouping + routing),
+`services/haClient.ts` (`getClimateZoneIdMap`).
 
 ## Sonos (core `sonos`) — SonosPlayerTile ⛔
 

@@ -10,7 +10,7 @@
 // multi-master system has one of these per zone, each independent.
 
 import React from 'react';
-import type { ClimateZone } from '../../services/climate';
+import type { ClimateZone, ZoneRole } from '../../services/climate';
 import {
     IconFlame,
     IconSnowflake,
@@ -108,16 +108,43 @@ function clampStep(value: number, step: number, min: number, max: number): numbe
 interface Props {
     zone: ClimateZone;
     onSetTemperature: (entityId: string, temperature: number) => void;
-    onSetHvacMode: (entityId: string, hvacMode: string) => void;
+    // Cycles this zone's hvac_mode to `next`; the parent handles slave→master
+    // routing, so the tile only asks for the next mode.
+    onCycleHvacMode: (next: string) => void;
     onSetFanMode: (entityId: string, fanMode: string) => void;
+    // Topology role + mode-control state (resolved by the parent surface).
+    role?: ZoneRole;
+    // Display name of the owning master (for "mode follows <name>").
+    masterName?: string;
+    // True when this slave's mode change is routed to the master (control stays
+    // enabled). When false AND role==='slave', the mode control is disabled and
+    // we show "mode follows master".
+    modeRouted?: boolean;
+    // Compact variant for slaves nested under a master card.
+    nested?: boolean;
 }
 
-const RoomClimateTile = ({ zone, onSetTemperature, onSetHvacMode, onSetFanMode }: Props) => {
+const RoomClimateTile = ({
+    zone,
+    onSetTemperature,
+    onCycleHvacMode,
+    onSetFanMode,
+    role = 'standalone',
+    masterName,
+    modeRouted = false,
+    nested = false,
+}: Props) => {
     const { accent, colorVar } = accentFor(zone.hvacMode);
     const isOff = zone.hvacMode === 'off';
     const disabled = !zone.available;
     const action = actionMeta(zone.hvacAction);
     const isRunning = zone.hvacAction === 'heating' || zone.hvacAction === 'cooling' || zone.hvacAction === 'drying' || zone.hvacAction === 'fan';
+
+    // A slave can change its mode ONLY when the parent can route the call to the
+    // master entity (calling set_hvac_mode on a slave hard-fails today). When it
+    // can't be routed, the control is disabled and we show "mode follows master".
+    const isSlave = role === 'slave';
+    const modeControlDisabled = disabled || zone.hvacModes.length === 0 || (isSlave && !modeRouted);
 
     // The displayed setpoint: single target, else the range midpoint.
     const displaySetpoint =
@@ -135,10 +162,10 @@ const RoomClimateTile = ({ zone, onSetTemperature, onSetHvacMode, onSetFanMode }
     };
 
     const cycleMode = () => {
-        if (disabled || zone.hvacModes.length === 0) return;
+        if (modeControlDisabled) return;
         const idx = zone.hvacModes.indexOf(zone.hvacMode);
         const next = zone.hvacModes[(idx + 1) % zone.hvacModes.length];
-        onSetHvacMode(zone.entityId, next);
+        onCycleHvacMode(next);
     };
 
     const cycleFan = () => {
@@ -165,7 +192,7 @@ const RoomClimateTile = ({ zone, onSetTemperature, onSetHvacMode, onSetFanMode }
                         : `rgb(var(--surface) / var(--tile-alpha))`,
                 opacity: disabled ? 0.6 : 1,
                 filter: disabled ? 'grayscale(1)' : undefined,
-                minHeight: '11.5rem',
+                minHeight: nested ? '10.5rem' : '11.5rem',
             }}
         >
             {/* Header: room name + running badge */}
@@ -182,6 +209,28 @@ const RoomClimateTile = ({ zone, onSetTemperature, onSetHvacMode, onSetFanMode }
                         }}
                     />
                     <h3 className="font-bold text-white truncate text-base leading-tight">{zone.name}</h3>
+                    {role === 'master' && (
+                        <span
+                            className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                            style={{
+                                color: 'var(--accent)',
+                                backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
+                                border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
+                            }}
+                            title="Master zone — controls the mode for its slave zones"
+                        >
+                            Master
+                        </span>
+                    )}
+                    {role === 'slave' && (
+                        <span
+                            className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-gray-300"
+                            style={{ backgroundColor: 'rgb(var(--surface-control))', border: '1px solid var(--tile-border)' }}
+                            title={masterName ? `Slave zone of ${masterName}` : 'Slave zone'}
+                        >
+                            Slave
+                        </span>
+                    )}
                 </div>
                 {disabled ? (
                     <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 shrink-0">
@@ -264,18 +313,45 @@ const RoomClimateTile = ({ zone, onSetTemperature, onSetHvacMode, onSetFanMode }
 
             {/* Mode + fan selectors (tap to cycle) */}
             <div className="flex items-stretch gap-2 px-3 pb-3">
-                <button
-                    onClick={cycleMode}
-                    disabled={disabled || zone.hvacModes.length === 0}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-control bg-gray-600 text-white font-semibold py-2.5 active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                        color: isOff || disabled ? undefined : colorVar,
-                        border: `1px solid ${isOff || disabled ? 'transparent' : `color-mix(in srgb, ${colorVar} 40%, transparent)`}`,
-                    }}
-                >
-                    <ModeIcon mode={zone.hvacMode} style={{ width: '1.1rem', height: '1.1rem' }} />
-                    <span className="text-sm">{modeLabel(zone.hvacMode)}</span>
-                </button>
+                {isSlave && !modeRouted ? (
+                    // Slave whose mode can't be routed to a master entity: the
+                    // integration hard-fails set_hvac_mode on a slave, so we show
+                    // a read-only "mode follows master" chip instead of a control.
+                    <div
+                        className="flex-1 flex flex-col items-center justify-center rounded-control py-1.5 px-2"
+                        style={{ backgroundColor: 'rgb(var(--surface-control))', border: '1px solid var(--tile-border)' }}
+                        title={masterName ? `Mode is set by master zone ${masterName}` : 'Mode is set by the master zone'}
+                    >
+                        <span className="flex items-center gap-1.5 text-white font-semibold text-sm">
+                            <ModeIcon mode={zone.hvacMode} style={{ width: '1rem', height: '1rem' }} />
+                            {modeLabel(zone.hvacMode)}
+                        </span>
+                        <span className="text-[9px] text-gray-400 uppercase tracking-wider mt-0.5 truncate max-w-full">
+                            Mode follows {masterName || 'master'}
+                        </span>
+                    </div>
+                ) : (
+                    <button
+                        onClick={cycleMode}
+                        disabled={modeControlDisabled}
+                        className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-control bg-gray-600 text-white font-semibold py-2.5 active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                            color: isOff || disabled ? undefined : colorVar,
+                            border: `1px solid ${isOff || disabled ? 'transparent' : `color-mix(in srgb, ${colorVar} 40%, transparent)`}`,
+                        }}
+                        title={isSlave && modeRouted && masterName ? `Sets the mode on master zone ${masterName}` : undefined}
+                    >
+                        <span className="flex items-center gap-1.5">
+                            <ModeIcon mode={zone.hvacMode} style={{ width: '1.1rem', height: '1.1rem' }} />
+                            <span className="text-sm">{modeLabel(zone.hvacMode)}</span>
+                        </span>
+                        {isSlave && modeRouted && (
+                            <span className="text-[9px] text-gray-300 uppercase tracking-wider truncate max-w-full">
+                                via {masterName || 'master'}
+                            </span>
+                        )}
+                    </button>
+                )}
                 {zone.supportsFanMode && zone.fanModes.length > 0 && (
                     <button
                         onClick={cycleFan}
