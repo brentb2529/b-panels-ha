@@ -216,6 +216,24 @@ export function discoverClimateZones(entities: HassEntities): ClimateZone[] {
     return zones;
 }
 
+// Build the "system:zone" → entity_id correlation map ENTIRELY from climate
+// entity state, using each entity's `zone_id` attribute (string "system:zone").
+// This needs no admin/device-registry call, so master/slave grouping works for
+// non-admin and read-only-token wall-panel kiosks. Returns entity_id → zone_id
+// (the inverse direction the grouper consumes). Entities lacking `zone_id`
+// (older firmware / pre-merge) are simply absent here and fall to the
+// device-registry fallback (or standalone). Never throws.
+export function zoneIdMapFromEntities(entities: HassEntities): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const id of Object.keys(entities)) {
+        if (!isClimateEntity(id)) continue;
+        if (EXCLUDE_ID_RE.test(id)) continue;
+        const zoneId = entities[id]?.attributes?.zone_id;
+        if (typeof zoneId === 'string' && zoneId) out[id] = zoneId;
+    }
+    return out;
+}
+
 // --- Master/slave grouping ----------------------------------------------------
 // A rendered cluster: a master zone with its (resolved) slave zones nested
 // beneath, or a standalone zone (no topology / unresolved). The surface renders

@@ -310,22 +310,26 @@ export async function getEntityDeviceMap(): Promise<Record<string, string>> {
     return map;
 }
 
-// --- Airzone climate-zone topology id map -------------------------------------
-// Resolve each `climate.*` entity_id to its Airzone "system:zone" id (e.g.
-// "1:2"), so the Air Control surface can correlate a master's `slave_zones` /
-// a slave's `master_zone` attribute (both "system:zone" strings) back to the
-// concrete entity_ids it renders.
+// --- Airzone climate-zone topology id map (DEVICE-REGISTRY FALLBACK) ----------
+// Resolve `climate.*` entity_ids to their Airzone "system:zone" id (e.g. "1:2")
+// via the device registry. This is now a FALLBACK ONLY: each climate entity
+// exposes a `zone_id` attribute in its state (see climate.zoneIdMapFromEntities),
+// which needs no admin call and is the primary path. We keep this for entities
+// that somehow lack `zone_id` (older firmware / pre-merge instances).
 //
 // The Airzone integration names each zone's HA device with identifier
 // `f"{entry_id}_{system_zone_id}"` where system_zone_id = "{system}:{zone}".
 // We join entity_registry (entity_id → device_id) with device_registry
 // (device_id → identifiers) and extract the "<digits>:<digits>" suffix.
 //
-// device_registry/list is admin-gated; if it's unavailable (non-admin user) or
-// the integration predates the topology attrs, this returns {} and the surface
-// degrades to flat/standalone grouping. Never throws.
-export async function getClimateZoneIdMap(): Promise<Record<string, string>> {
+// device_registry/list is admin-gated; if it's unavailable (non-admin user)
+// this returns {} and the affected entities degrade to standalone grouping.
+// `onlyEntities`, when given, limits the result to those entity_ids (the ones
+// still missing a state-based zone_id), so a non-admin failure here is harmless
+// when the state path already covered everything. Never throws.
+export async function getClimateZoneIdMap(onlyEntities?: Set<string>): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
+    if (onlyEntities && onlyEntities.size === 0) return out;
     try {
         const conn = await getConnection();
 
@@ -336,7 +340,7 @@ export async function getClimateZoneIdMap(): Promise<Record<string, string>> {
             const res: any = await conn.sendMessagePromise({ type: 'config/device_registry/list' });
             devices = Array.isArray(res) ? res : Array.isArray(res?.devices) ? res.devices : [];
         } catch (e) {
-            console.warn('[B-Panels] device_registry/list unavailable (non-admin?); climate topology grouping disabled.', e);
+            console.warn('[B-Panels] device_registry/list unavailable (non-admin?); zone_id-less climates degrade to standalone.', e);
             return out;
         }
         // HA identifiers are [[domain, id], ...]. Match the trailing
@@ -359,11 +363,12 @@ export async function getClimateZoneIdMap(): Promise<Record<string, string>> {
         const entityDevice = await getEntityDeviceMap();
         for (const [eid, did] of Object.entries(entityDevice)) {
             if (!eid.startsWith('climate.')) continue;
+            if (onlyEntities && !onlyEntities.has(eid)) continue;
             const zoneId = deviceZoneId[did];
             if (zoneId) out[eid] = zoneId;
         }
     } catch (e) {
-        console.warn('[B-Panels] climate zone-id map failed; topology grouping disabled.', e);
+        console.warn('[B-Panels] climate zone-id device-registry fallback failed; affected zones degrade to standalone.', e);
     }
     return out;
 }

@@ -14,6 +14,7 @@ import {
     discoverClimateZones,
     groupClimateZones,
     resolveModeTarget,
+    zoneIdMapFromEntities,
     setFanMode as svcSetFanMode,
     setHvacMode as svcSetHvacMode,
     setTargetTemperature as svcSetTargetTemperature,
@@ -75,15 +76,17 @@ export function useClimateZones(): UseClimateZones {
     // bump to trigger re-render.
     const patchesRef = useRef<Record<string, OptimisticPatch>>({});
     const lastEntitiesRef = useRef<HassEntities>({});
-    // entity_id → "system:zone" map for Airzone master/slave correlation. Empty
-    // until resolved (admin-gated device registry); empty → flat/standalone
-    // grouping (graceful degradation).
-    const zoneIdMapRef = useRef<Record<string, string>>({});
+    // DEVICE-REGISTRY FALLBACK map (entity_id → "system:zone"), only for entities
+    // that lack the state-based `zone_id` attribute (older firmware). The primary
+    // map is built fresh from entity state every recompute, so non-admin kiosks
+    // get full grouping with no admin call.
+    const fallbackZoneIdMapRef = useRef<Record<string, string>>({});
     const [, forceRender] = useState(0);
 
     // Recompute zones from the latest entities + current optimistic patches,
     // pruning patches that real state has caught up to. Then group them by
-    // master/slave topology using the resolved zone-id map.
+    // master/slave topology using the zone-id map built from entity state
+    // (`zone_id` attr) plus any device-registry fallback entries.
     const recompute = useCallback(() => {
         const base = discoverClimateZones(lastEntitiesRef.current);
         const patches = patchesRef.current;
@@ -102,8 +105,10 @@ export function useClimateZones(): UseClimateZones {
             }
             return applyPatch(z, patch);
         });
+        // State-based map first (primary, no admin), fallback fills only the gaps.
+        const zoneIdMap = { ...fallbackZoneIdMapRef.current, ...zoneIdMapFromEntities(lastEntitiesRef.current) };
         setZones(merged);
-        setGroups(groupClimateZones(merged, zoneIdMapRef.current));
+        setGroups(groupClimateZones(merged, zoneIdMap));
         if (pruned) forceRender((n) => n + 1);
     }, []);
 
@@ -118,20 +123,34 @@ export function useClimateZones(): UseClimateZones {
             staleTimer = setTimeout(() => setStatus('stale'), 30000);
         };
 
-        // Resolve the Airzone "system:zone" → entity_id correlation map once.
-        // It's static topology, so a single fetch is enough; failure (non-admin
-        // / no topology) leaves the map empty and grouping degrades to flat.
-        let mapLoaded = false;
-        const loadZoneIdMap = () => {
-            if (mapLoaded) return;
-            mapLoaded = true;
-            getClimateZoneIdMap()
+        // Device-registry FALLBACK, run at most once and ONLY when some climate
+        // entity lacks the state-based `zone_id` attribute (older firmware). The
+        // primary map comes from entity state in recompute, so the common case
+        // (and every non-admin kiosk) never touches the admin-gated registry.
+        let fallbackTried = false;
+        const maybeLoadFallback = (entities: HassEntities) => {
+            if (fallbackTried) return;
+            const stateMap = zoneIdMapFromEntities(entities);
+            const needFallback = new Set<string>();
+            for (const id of Object.keys(entities)) {
+                if (!id.startsWith('climate.')) continue;
+                if (stateMap[id]) continue; // already resolved from state
+                const a = entities[id]?.attributes || {};
+                // Only bother resolving zones that actually participate in
+                // topology but are missing zone_id.
+                const inTopology =
+                    a.is_master === true || typeof a.master_zone === 'string' || Array.isArray(a.slave_zones);
+                if (inTopology) needFallback.add(id);
+            }
+            if (needFallback.size === 0) return; // state covered everything
+            fallbackTried = true;
+            getClimateZoneIdMap(needFallback)
                 .then((m) => {
                     if (cancelled) return;
-                    zoneIdMapRef.current = m;
+                    fallbackZoneIdMapRef.current = { ...fallbackZoneIdMapRef.current, ...m };
                     recompute();
                 })
-                .catch(() => { /* keep empty map → standalone grouping */ });
+                .catch(() => { /* keep state-only map → affected zones standalone */ });
         };
 
         const start = async () => {
@@ -142,7 +161,7 @@ export function useClimateZones(): UseClimateZones {
                     setStatus('live');
                     armStaleTimer();
                     recompute();
-                    loadZoneIdMap();
+                    maybeLoadFallback(entities);
                 });
             } catch {
                 if (!cancelled) setStatus('stale');

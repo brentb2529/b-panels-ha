@@ -108,11 +108,21 @@ Discovery: binds generically to `climate.*`, excludes pool/spa heaters by id
 ### Master/slave grouping (Airzone topology — LOCKED, ENTITY_CONTRACT v0.2)
 
 The read-only climate attributes `is_master` (bool), `master_zone`
-(`"system:zone"`, slaves only), and `slave_zones` (`"system:zone"[]`, masters
-only) are consumed here. The `"system:zone"` ids are correlated to concrete
-`entity_id`s via the device registry: each Airzone zone device carries the
-identifier `{entry_id}_{system_zone_id}`, so we join entity_registry →
-device_registry → identifier suffix (`getClimateZoneIdMap` in `haClient.ts`).
+(`"system:zone"`, slaves only), `slave_zones` (`"system:zone"[]`, masters only),
+and **`zone_id`** (`"system:zone"`, every zone) are consumed here.
+
+The `"system:zone"` ids in `master_zone`/`slave_zones` are correlated to concrete
+`entity_id`s **entirely from entity state**: each `climate.*` entity carries its
+own `zone_id` attribute, so `zoneIdMapFromEntities` (in `services/climate.ts`)
+builds `entity_id → "system:zone"` straight from the subscribed states. **No
+admin / `config/device_registry/list` call is needed** — master/slave grouping
+works for non-admin and read-only-token wall-panel kiosks.
+
+The device-registry join (`getClimateZoneIdMap` in `haClient.ts`, identifier
+`{entry_id}_{system_zone_id}`) is kept ONLY as a fallback for entities that lack
+`zone_id` (older firmware / pre-merge); it runs at most once and only for the
+zones still missing an id. If neither path resolves a zone, it degrades to a
+standalone tile.
 
 - **Grouping:** a master renders as a card with its resolved slave cards nested
   beneath in a bordered cluster (full-row, sub-grid). The header shows a
@@ -131,17 +141,19 @@ when the master is resolvable (calling the master works today):
 - Slave with resolved master → mode control **stays enabled**; pressing it calls
   `climate.set_hvac_mode` on the **master** entity, with a "via `<master>`" hint.
   The optimistic patch is applied to the master; slaves follow via real state.
-- Slave whose master is **unresolved** (no device-registry map, e.g. non-admin
-  user, or attrs missing) → mode control is **disabled** and the tile shows
+- Slave whose master is **unresolved** (master entity not present, or attrs
+  missing on older firmware) → mode control is **disabled** and the tile shows
   "Mode follows `<master>`". We never call `set_hvac_mode` on a slave entity.
 - Setpoint and fan_mode are always per-slave (those work on slave entities).
 
 ### Graceful degradation
 
 When the topology attrs are absent (older Airzone firmware / pre-merge
-instances) OR the device-registry map can't be built (non-admin user), every
-zone falls through to **standalone** rendering — identical to the pre-topology
-surface. Nothing crashes; no zone is dropped.
+instances) and the device-registry fallback also can't resolve a zone, that zone
+falls through to **standalone** rendering — identical to the pre-topology
+surface. Nothing crashes; no zone is dropped. Because the primary correlation is
+now the state `zone_id` attribute, this no longer depends on admin rights:
+**non-admin / read-only-token kiosks get full grouping**.
 
 **Verify:** the simulated zones appear as cards; a master shows its slaves
 nested with a Master badge; a slave's mode button either routes "via master" or
