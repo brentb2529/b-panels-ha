@@ -77,11 +77,30 @@ temp, feelsLike, humidity, wind speed/gust/dir, pressure, UV, solar, precip,
 lightning count/distance, forecast → local `sensor.*` (+ `weather.<station>` from
 `weatherflow_cloud` for forecast). Weather tile + composite of station sensors.
 
-## CoolMaster (core `coolmasternet`) — composite card ⛔
+## CoolMaster (core `coolmasternet`) — composite card ✅
 
-per-unit mode/fan/roomTemp/setPoint/errorCode → one `climate.<unit>` per indoor
-unit (`hvac_mode`/`fan_mode`/`current_temperature`/`temperature`). Composite groups
-the gateway's units.
+One `CoolMasterTile` per indoor unit, auto-discovered from `climate.*` entities.
+
+| Original field | HA entity | In tile? |
+| --- | --- | --- |
+| hvac_mode (cool/heat/auto/fan/dry/off) | `climate.<unit>` state | ✅ mode selector |
+| current_temperature | `climate.<unit>` attr `current_temperature` | ✅ thermal ring (current arc) |
+| setPoint / temperature | `climate.<unit>` attr `temperature` | ✅ thermal ring (target arc) + ±0.5 step controls |
+| fan_mode + fan_modes (incl. `top` / FAN_TOP) | `climate.<unit>` attrs | ✅ fan mode pills + turbine animation |
+| swing_mode + swing_modes (when supported) | `climate.<unit>` attrs | ✅ swing pills + vane animation (when present) |
+| temperature_unit | `climate.<unit>` attr `temperature_unit` | ✅ °C / °F auto-read |
+| error_code | `sensor.<unit>_error_code` | ✅ fault badge (pulsing alert) |
+| clean_filter | `binary_sensor.<unit>_clean_filter` | ✅ filter badge (pulsing warn) |
+| reset filter timer | `button.<unit>_reset_filter` | ✅ reset button (button.press) |
+
+**Architecture:** `useCoolMasterSurface.ts` discovers entities by entity_id heuristic
+(`climate.l<n>_<digits>` or integration platform hint) and groups sibling entities.
+One `Device` per unit with `type: DeviceType.CoolMaster`; member entity_ids hidden
+from generic tile list. Raw entity snapshot (`rawEntitiesRef`) used for attribute
+metadata not forwarded by the standard entity mapper.
+
+**Verify:** After install, check `Developer Tools → States` for `climate.l1_*` (or
+equivalent) entities; CoolMasterTile cards should appear per unit in the tile picker.
 
 ## Sonos (core `sonos`) — SonosPlayerTile ⛔
 
