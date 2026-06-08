@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Modal from './Modal';
+import { swallowNextClick } from '../utils';
 
 interface PinPadModalProps {
   onClose: () => void;
@@ -15,7 +16,13 @@ const PinPadModal = ({ onClose, onConfirm }: PinPadModalProps) => {
   const handleKeyPress = useCallback((key: string) => {
     if (pin.length < 4 && !isSubmitting) {
       setError('');
-      setPin(prev => prev + key);
+      setPin(prev => {
+        const next = prev + key;
+        // 4th digit auto-submits + closes the modal; eat the tap's trailing
+        // click so it can't fall through to the tile underneath.
+        if (next.length === 4) swallowNextClick();
+        return next;
+      });
     }
   }, [pin.length, isSubmitting]);
 
