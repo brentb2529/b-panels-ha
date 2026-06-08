@@ -37,6 +37,7 @@ const TilePreviewIcon = ({ type }: { type: DeviceType }) => {
         case DeviceType.SonosPlayer: return <IconMusic {...iconProps} />;
         case DeviceType.PanicButton: return <IconAlertOctagon {...iconProps} className="w-8 h-8 text-red-400" />;
         case DeviceType.AlarmHistory: return <IconHistory {...iconProps} className="w-8 h-8 text-blue-400" />;
+        case DeviceType.AkvoFloor: return <IconWaves {...iconProps} className="w-8 h-8 text-cyan-400" />;
         case DeviceType.RSSFeed: return <IconRss {...iconProps} className="w-8 h-8 text-orange-400" />;
         case DeviceType.WaterSensor: 
         case DeviceType.Valve: return <IconDroplets {...iconProps} className="w-8 h-8 text-blue-400" />;
@@ -1837,6 +1838,7 @@ const VirtualDeviceManager = () => {
         { value: DeviceType.CameraGroup, label: 'Camera Group' },
         { value: DeviceType.PanicButton, label: 'Panic Button' },
         { value: DeviceType.AlarmHistory, label: 'Alarm History' },
+        { value: DeviceType.AkvoFloor, label: 'AKVO Movable Floor' },
         { value: DeviceType.RSSFeed, label: 'RSS Feed' },
         { value: DeviceType.InternetMonitor, label: 'Internet Monitor' },
         { value: DeviceType.FishingReport, label: 'Fishing Report' },
