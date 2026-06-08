@@ -90,37 +90,40 @@
           linear-gradient(180deg, rgb(12 18 28) 0%, rgb(var(--bg)) 40%, rgb(6 10 16) 100%);
       }
 
-      /* Light mode: white surfaces, soft cool canvas. Accent inherits :root. */
+      /* Light mode: premium COOL-TINTED canvas (a faint slate/blue cast, not
+         flat white) so the glass reads as real material with depth. */
       body.light-mode {
-        --bg: 238 241 245;
+        --bg: 224 230 240;            /* cool slate, not neutral grey */
         --surface-raised: 255 255 255;
         --surface: 255 255 255;
-        --surface-control: 229 231 235;
-        --text: 31 41 55;             /* near-black so inherited text reads on white */
-        --elev-1: 0 1px 2px rgba(0,0,0,0.07), 0 8px 20px -8px rgba(0,0,0,0.14);
-        --elev-2: 0 14px 34px -10px rgba(0,0,0,0.2);
+        --surface-control: 226 232 240;
+        --text: 28 37 54;             /* deep slate so inherited text reads */
+        --elev-1: 0 1px 2px rgba(30,41,59,0.10), 0 8px 18px -6px rgba(30,41,59,0.16);
+        --elev-2: 0 14px 34px -10px rgba(30,41,59,0.22);
         --tile-alpha: 0.97;
-        --tile-border: rgba(0,0,0,0.07);
+        --tile-border: rgba(30,41,59,0.08);
         --bg-gradient:
-          radial-gradient(ellipse 70% 55% at 15% -5%, rgba(214, 228, 255, 0.8) 0%, transparent 55%),
-          radial-gradient(ellipse 50% 45% at 85% 105%, rgba(200, 218, 250, 0.5) 0%, transparent 50%),
-          linear-gradient(180deg, #f4f7fb 0%, rgb(var(--bg)) 40%, #e8edf5 100%);
+          radial-gradient(ellipse 72% 58% at 18% -5%, rgba(199, 215, 244, 0.95) 0%, transparent 55%),
+          radial-gradient(ellipse 54% 48% at 84% 106%, rgba(180, 201, 236, 0.7) 0%, transparent 52%),
+          linear-gradient(180deg, #eaf0f8 0%, rgb(var(--bg)) 42%, #d3dcec 100%);
       }
 
-      /* Ambient night: dim, warm, low-contrast for a wall panel after dark. */
+      /* Ambient night: refined DIM-WARM. Near-black CHARCOAL canvas (neutral,
+         not brown) with a RESTRAINED warm accent — low blue light for night
+         viewing. Warmth is an accent, not a wash over everything. */
       body.ambient-night {
-        --bg: 10 9 8;
-        --surface-raised: 20 17 13;
-        --surface: 27 23 18;
-        --surface-control: 39 32 25;
-        --accent: 217 138 58;         /* warm amber, less blue light at night */
-        --text: 216 205 190;          /* warm dim */
+        --bg: 11 11 12;               /* near-black charcoal (neutral) */
+        --surface-raised: 22 21 20;
+        --surface: 28 27 25;
+        --surface-control: 40 38 35;
+        --accent: 230 168 96;         /* refined warm amber accent (low blue) */
+        --text: 224 218 208;          /* warm-neutral dim text, not brown */
         --tile-alpha: 0.92;
-        --tile-border: rgba(255,205,150,0.06);
+        --tile-border: rgba(255,222,170,0.07);
         --bg-gradient:
-          radial-gradient(ellipse 65% 50% at 25% -5%, rgb(38 28 14) 0%, transparent 55%),
-          radial-gradient(ellipse 50% 45% at 75% 110%, rgb(28 18 8) 0%, transparent 50%),
-          linear-gradient(180deg, rgb(16 13 8) 0%, rgb(var(--bg)) 40%, rgb(5 4 3) 100%);
+          radial-gradient(ellipse 68% 54% at 22% -5%, rgb(26 24 20) 0%, transparent 56%),
+          radial-gradient(ellipse 52% 46% at 78% 110%, rgb(20 19 18) 0%, transparent 52%),
+          linear-gradient(180deg, rgb(15 15 16) 0%, rgb(var(--bg)) 42%, rgb(7 7 8) 100%);
       }
 
       /* Ambient gradient canvas: painted on the body and any base bg-gray-900

@@ -141,13 +141,15 @@ const ClusterCard = ({
             display: 'flex',
             flexDirection: 'column',
             gap: 'var(--space-3)',
-            // Level-4 deepest glass: cluster wrapper is most transparent
-            backdropFilter:       'blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate))',
-            WebkitBackdropFilter: 'blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate))',
-            backgroundColor: 'color-mix(in srgb, var(--accent) 6%, var(--glass-l4-bg))',
-            backgroundImage: 'var(--specular-default)',
-            border:          '1px solid color-mix(in srgb, var(--accent) 28%, var(--glass-l4-border))',
-            boxShadow:       'var(--specular-bevel), var(--elev-2)',
+            // Level-4 deepest glass: cluster wrapper is the most transparent,
+            // recessed layer. The beveled rim + an INSET top shadow make it read
+            // as a well that the master/slave cards float ABOVE.
+            backdropFilter:       'var(--glass-l4-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l4-backdrop)',
+            backgroundColor: 'color-mix(in srgb, var(--accent) 7%, var(--glass-l4-bg))',
+            backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l4-tint)',
+            border:          '1px solid color-mix(in srgb, var(--accent) 26%, var(--glass-l4-border))',
+            boxShadow:       'var(--rim), inset 0 8px 20px -10px rgba(0,0,0,0.55), var(--elev-2)',
         }}
     >
         {/* Master zone tile */}
@@ -225,11 +227,12 @@ const EmptyState = ({ status }: { status: 'connecting' | 'live' | 'stale' }) => 
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                backdropFilter:       'var(--glass-l3-backdrop)',
+                WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
                 backgroundColor: 'var(--glass-l3-bg)',
+                backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l3-tint)',
                 border: '1px solid var(--glass-l3-border)',
-                boxShadow: 'var(--specular-bevel), var(--elev-2)',
+                boxShadow: 'var(--rim), var(--elev-2)',
             }}
         >
             <IconWind style={{ width: 24, height: 24, color: 'rgba(var(--text) / 0.22)' }} />
@@ -269,13 +272,13 @@ const AirControlSurface = (_props: TileProps) => {
                 width: '100%',
                 borderRadius: 'var(--radius-surface)',
                 overflow: 'hidden',
-                // Level-1 base glass
-                backdropFilter:       'blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate))',
-                WebkitBackdropFilter: 'blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate))',
+                // Level-1 base glass: luminous backdrop + sheen sweep + beveled rim
+                backdropFilter:       'var(--glass-l1-backdrop)',
+                WebkitBackdropFilter: 'var(--glass-l1-backdrop)',
                 backgroundColor: 'var(--glass-l1-bg)',
-                backgroundImage: 'var(--specular-default)',
+                backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l1-tint)',
                 border: '1px solid var(--glass-l1-border)',
-                boxShadow: 'var(--specular-bevel), var(--elev-3)',
+                boxShadow: 'var(--rim), var(--elev-4)',
                 // Spring-animated mount
                 animation: 'glass-mount var(--dur-enter, 320ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
             }}
@@ -292,7 +295,7 @@ const AirControlSurface = (_props: TileProps) => {
                     // Header gets its own micro-glass layer to separate from scroll content
                     backdropFilter:       'blur(8px)',
                     WebkitBackdropFilter: 'blur(8px)',
-                    backgroundColor: 'rgba(255,255,255,0.025)',
+                    backgroundColor: 'var(--glass-l1-tint)',
                 }}
             >
                 {/* Title group */}
@@ -306,11 +309,12 @@ const AirControlSurface = (_props: TileProps) => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                            backgroundColor: 'color-mix(in srgb, var(--accent-water) 18%, var(--glass-l3-bg))',
-                            border: '1px solid color-mix(in srgb, var(--accent-water) 40%, var(--glass-l3-border))',
-                            boxShadow: 'var(--specular-bevel), 0 0 12px -3px color-mix(in srgb, var(--accent-water) 45%, transparent)',
+                            backdropFilter:       'var(--glass-l3-backdrop)',
+                            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                            backgroundColor: 'color-mix(in srgb, var(--accent-water) 22%, var(--glass-l3-bg))',
+                            backgroundImage: 'var(--specular-strong)',
+                            border: '1px solid color-mix(in srgb, var(--accent-water) 48%, var(--glass-l3-border))',
+                            boxShadow: 'var(--rim-light), inset 0 0 14px -4px color-mix(in srgb, var(--accent-water) 40%, transparent), 0 0 16px -3px color-mix(in srgb, var(--accent-water) 55%, transparent)',
                         }}
                     >
                         <IconWind style={{ width: 18, height: 18, color: 'var(--accent-water)' }} />

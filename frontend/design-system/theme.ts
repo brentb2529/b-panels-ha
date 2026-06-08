@@ -25,43 +25,92 @@ export function glassMaterial(
     level: GlassLevel = 1,
     opts: { accentRgb?: string; accentStrength?: number } = {}
 ): React.CSSProperties {
-    const blur    = `var(--glass-l${level}-blur)`;
-    const sat     = `var(--glass-l${level}-saturate)`;
+    const backdrop = `var(--glass-l${level}-backdrop)`;
     const bg      = opts.accentRgb
         ? `color-mix(in srgb, rgb(${opts.accentRgb}) ${Math.round((opts.accentStrength ?? 0.12) * 100)}%, var(--glass-l${level}-bg))`
         : `var(--glass-l${level}-bg)`;
 
     return {
-        backdropFilter:       `blur(${blur}) saturate(${sat})`,
-        WebkitBackdropFilter: `blur(${blur}) saturate(${sat})`,
+        backdropFilter:       backdrop,
+        WebkitBackdropFilter: backdrop,
         backgroundColor:      bg,
-        backgroundImage:      `var(--specular-default), var(--glass-l${level}-tint)`,
+        // Layered: sheen sweep ABOVE the top-lit specular ABOVE the base tint.
+        backgroundImage:      `var(--sheen-default), var(--specular-default), var(--glass-l${level}-tint)`,
         border:               `1px solid var(--glass-l${level}-border)`,
-        boxShadow:            `var(--specular-bevel), var(--elev-${level + 1})`,
+        // Beveled rim (bright top + dark bottom edge) + float shadow.
+        boxShadow:            `var(--rim), var(--elev-${level + 1})`,
     };
 }
 
 /**
- * Like glassMaterial, but with an active glow — used for tiles in
- * active/on states. The glow is inset so it doesn't bleed past rounded corners.
+ * Like glassMaterial, but with a readable accent halo — used for tiles in
+ * active/on states. The card glows in its mode color (warm for heat, cool for
+ * cool) with a soft luminous outer halo + an inner accent wash + the beveled rim.
+ *
+ *   glowStrength  — inner wash + tint intensity (0–1, default --glow-tint-strength)
+ *   haloSpread    — outer glow blur radius (CSS length, default --glow-soft-spread)
+ *   haloStrength  — outer glow color-mix % (0–1, default --glow-soft-strength)
  */
 export function glassMaterialActive(
     level: GlassLevel = 1,
     accentVar: string,          // CSS var string, e.g. 'var(--accent-water)'
-    opts: { glowStrength?: number } = {}
+    opts: { glowStrength?: number; haloSpread?: string; haloStrength?: number } = {}
 ): React.CSSProperties {
-    const str = opts.glowStrength ?? 0.22;
+    const tintPct  = Math.round((opts.glowStrength ?? 0.22) * 100);
+    const spread   = opts.haloSpread ?? 'var(--glow-soft-spread)';
+    const haloPct  = Math.round((opts.haloStrength ?? 0.4) * 100);
     return {
         ...glassMaterial(level),
-        backgroundColor: `color-mix(in srgb, ${accentVar} ${Math.round(str * 100)}%, var(--glass-l${level}-bg))`,
-        border:          `1px solid color-mix(in srgb, ${accentVar} 55%, var(--glass-l${level}-border))`,
+        backgroundColor: `color-mix(in srgb, ${accentVar} ${tintPct}%, var(--glass-l${level}-bg))`,
+        border:          `1px solid color-mix(in srgb, ${accentVar} 60%, var(--glass-l${level}-border))`,
         boxShadow: [
-            `var(--specular-bevel)`,
-            `inset 0 0 28px -4px color-mix(in srgb, ${accentVar} 35%, transparent)`,
-            `0 0 0 1px color-mix(in srgb, ${accentVar} 30%, transparent)`,
+            `var(--rim)`,
+            // Inner accent wash — luminous from within the glass
+            `inset 0 0 34px -6px color-mix(in srgb, ${accentVar} 42%, transparent)`,
+            // Crisp accent edge
+            `0 0 0 1px color-mix(in srgb, ${accentVar} 45%, transparent)`,
+            // Soft luminous outer halo
+            `0 0 ${spread} -2px color-mix(in srgb, ${accentVar} ${haloPct}%, transparent)`,
             `var(--elev-${level + 1})`,
         ].join(', '),
     };
+}
+
+// ── Glass material surface decoration tokens ───────────────────────────────
+// Reference these when composing a glass surface by hand (not via the helpers).
+export const glassDecor = {
+    sheen:    'var(--sheen-default)',     // diagonal sheen sweep
+    specular: 'var(--specular-default)',  // top-lit specular highlight
+    specularStrong: 'var(--specular-strong)',
+    rim:      'var(--rim)',               // beveled rim (top light + bottom shade)
+    rimLight: 'var(--rim-light)',
+    rimShade: 'var(--rim-shade)',
+    bevel:    'var(--specular-bevel)',    // back-compat single bright top edge
+} as const;
+
+/** Pre-composed backdrop-filter strings (blur + saturate + brightness). */
+export const glassBackdrop = {
+    1: 'var(--glass-l1-backdrop)',
+    2: 'var(--glass-l2-backdrop)',
+    3: 'var(--glass-l3-backdrop)',
+    4: 'var(--glass-l4-backdrop)',
+} as const;
+
+/**
+ * Build a readable accent halo box-shadow fragment for an active card/control.
+ * Compose with your own rim/elevation. `accentVar` is a CSS var string.
+ */
+export function accentHalo(
+    accentVar: string,
+    opts: { spread?: string; strength?: number } = {}
+): string {
+    const spread = opts.spread ?? 'var(--glow-soft-spread)';
+    const pct    = Math.round((opts.strength ?? 0.4) * 100);
+    return [
+        `inset 0 0 34px -6px color-mix(in srgb, ${accentVar} 42%, transparent)`,
+        `0 0 0 1px color-mix(in srgb, ${accentVar} 45%, transparent)`,
+        `0 0 ${spread} -2px color-mix(in srgb, ${accentVar} ${pct}%, transparent)`,
+    ].join(', ');
 }
 
 // ── Elevation ────────────────────────────────────────────────────────────

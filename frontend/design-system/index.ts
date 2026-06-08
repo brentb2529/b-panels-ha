@@ -31,6 +31,9 @@ export type { GlassButtonProps } from './components/GlassButton';
 export {
     glassMaterial,
     glassMaterialActive,
+    glassDecor,
+    glassBackdrop,
+    accentHalo,
     type GlassLevel,
     elevation,
     radius,

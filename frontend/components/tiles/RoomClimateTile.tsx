@@ -118,13 +118,13 @@ const StepBtn = ({
             lineHeight: 1,
             cursor: disabled ? 'not-allowed' : 'pointer',
             opacity: disabled ? 0.35 : 1,
-            // Level-3 glass bead
-            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+            // Level-3 glass bead: strong specular + beveled rim so it catches light
+            backdropFilter:       'var(--glass-l3-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
             backgroundColor: 'var(--glass-l3-bg)',
-            backgroundImage: 'var(--specular-strong)',
+            backgroundImage: 'var(--sheen-default), var(--specular-strong), var(--glass-l3-tint)',
             border: '1px solid var(--glass-l3-border)',
-            boxShadow: 'var(--specular-bevel), var(--elev-2)',
+            boxShadow: 'var(--rim), var(--elev-2)',
             color: 'rgb(var(--text))',
             transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1)), opacity 80ms ease',
             // Active state via CSS (no JS needed)
@@ -201,16 +201,28 @@ const RoomClimateTile = ({
     // - Off / disabled: neutral glass
     const activeGlass = !isOff && !disabled;
 
+    // Running zones glow strongest (the equipment is actively heating/cooling);
+    // active-but-idle zones get a softer halo; off/disabled stay neutral.
     const cardBg = activeGlass
-        ? `color-mix(in srgb, ${colorVar} 14%, var(--glass-l2-bg))`
+        ? `color-mix(in srgb, ${colorVar} 20%, var(--glass-l2-bg))`
         : 'var(--glass-l2-bg)';
 
     const cardBorder = activeGlass
-        ? `color-mix(in srgb, ${colorVar} 45%, var(--glass-l2-border))`
+        ? `color-mix(in srgb, ${colorVar} 58%, var(--glass-l2-border))`
         : 'var(--glass-l2-border)';
 
+    // Readable luminous halo: inner accent wash + crisp accent edge + a soft
+    // outer color halo so heat zones glow warm / cool zones glow cool. Running
+    // zones push the outer halo wider/brighter for an at-a-glance "this is on".
+    const haloSpread = isRunning ? '34px' : '24px';
+    const haloPct    = isRunning ? 52 : 38;
     const cardGlow = activeGlass
-        ? `inset 0 0 32px -8px color-mix(in srgb, ${colorVar} 28%, transparent), 0 0 0 1px color-mix(in srgb, ${colorVar} 22%, transparent), var(--elev-2)`
+        ? [
+              `inset 0 0 40px -8px color-mix(in srgb, ${colorVar} 38%, transparent)`,
+              `0 0 0 1px color-mix(in srgb, ${colorVar} 40%, transparent)`,
+              `0 0 ${haloSpread} -4px color-mix(in srgb, ${colorVar} ${haloPct}%, transparent)`,
+              `var(--elev-3)`,
+          ].join(', ')
         : 'var(--elev-2)';
 
     return (
@@ -224,13 +236,13 @@ const RoomClimateTile = ({
                 opacity: disabled ? 0.55 : 1,
                 filter: disabled ? 'grayscale(0.7)' : undefined,
                 minHeight: nested ? '10.5rem' : '12rem',
-                // Liquid Glass level-2 material
-                backdropFilter:       'blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate))',
-                WebkitBackdropFilter: 'blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate))',
+                // Liquid Glass level-2 material: luminous backdrop + sheen + rim
+                backdropFilter:       'var(--glass-l2-backdrop)',
+                WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
                 backgroundColor: cardBg,
-                backgroundImage: 'var(--specular-default)',
+                backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
                 border: `1px solid ${cardBorder}`,
-                boxShadow: `var(--specular-bevel), ${cardGlow}`,
+                boxShadow: `var(--rim), ${cardGlow}`,
                 // Spring transition on mode/state changes
                 transition: [
                     `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
@@ -537,11 +549,12 @@ const RoomClimateTile = ({
                             gap: 3,
                             borderRadius: 'var(--radius-control)',
                             padding: 'var(--space-2) var(--space-3)',
-                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            backdropFilter:       'var(--glass-l3-backdrop)',
+                            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
                             backgroundColor: 'var(--glass-l3-bg)',
+                            backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
                             border: '1px solid var(--glass-l3-border)',
-                            boxShadow: 'var(--specular-bevel)',
+                            boxShadow: 'var(--rim)',
                         }}
                         title={masterName ? `Mode is set by master zone ${masterName}` : 'Mode is set by the master zone'}
                     >
@@ -593,18 +606,18 @@ const RoomClimateTile = ({
                             padding: 'var(--space-2) var(--space-3)',
                             cursor: modeControlDisabled ? 'not-allowed' : 'pointer',
                             opacity: modeControlDisabled ? 0.40 : 1,
-                            // Level-3 glass, tinted by mode color when active
-                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            // Level-3 glass, tinted + haloed by mode color when active
+                            backdropFilter:       'var(--glass-l3-backdrop)',
+                            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
                             backgroundColor: !isOff && !disabled
-                                ? `color-mix(in srgb, ${colorVar} 16%, var(--glass-l3-bg))`
+                                ? `color-mix(in srgb, ${colorVar} 22%, var(--glass-l3-bg))`
                                 : 'var(--glass-l3-bg)',
-                            backgroundImage: 'var(--specular-default)',
+                            backgroundImage: 'var(--sheen-default), var(--specular-strong), var(--glass-l3-tint)',
                             border: `1px solid ${!isOff && !disabled
-                                ? `color-mix(in srgb, ${colorVar} 38%, var(--glass-l3-border))`
+                                ? `color-mix(in srgb, ${colorVar} 48%, var(--glass-l3-border))`
                                 : 'var(--glass-l3-border)'}`,
-                            boxShadow: `var(--specular-bevel)${!isOff && !disabled
-                                ? `, inset 0 0 14px -4px color-mix(in srgb, ${colorVar} 22%, transparent)`
+                            boxShadow: `var(--rim)${!isOff && !disabled
+                                ? `, inset 0 0 18px -5px color-mix(in srgb, ${colorVar} 34%, transparent), 0 0 14px -4px color-mix(in srgb, ${colorVar} 42%, transparent)`
                                 : ''}`,
                             transition: [
                                 `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
@@ -679,12 +692,12 @@ const RoomClimateTile = ({
                             cursor: disabled ? 'not-allowed' : 'pointer',
                             opacity: disabled ? 0.40 : 1,
                             // Level-3 glass
-                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
-                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            backdropFilter:       'var(--glass-l3-backdrop)',
+                            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
                             backgroundColor: 'var(--glass-l3-bg)',
-                            backgroundImage: 'var(--specular-default)',
+                            backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l3-tint)',
                             border: '1px solid var(--glass-l3-border)',
-                            boxShadow: 'var(--specular-bevel)',
+                            boxShadow: 'var(--rim)',
                             fontFamily: 'var(--font-body)',
                             fontSize: 'var(--type-sm)',
                             fontWeight: 500,

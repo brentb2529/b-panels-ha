@@ -47,18 +47,27 @@ frontend/
 
 ### Glass material levels (`--glass-l{1-4}-*`)
 
-| Level | Use-case | Blur | Saturation | Opacity |
-|-------|----------|------|------------|---------|
-| 1 | Outer surface / panel | 12px (dark) / 16px (light) | 1.6 | ~72% |
-| 2 | Individual zone cards | 18px / 22px | 1.8 | ~62% |
-| 3 | Control buttons / beads | 8px / 10px | 1.5 | ~58% |
-| 4 | Cluster wrapper | 24px / 28px | 2.0 | ~55% |
+| Level | Use-case | Blur (dark) | Saturation | Brightness | Opacity |
+|-------|----------|-------------|------------|------------|---------|
+| 1 | Outer surface / panel | 16px | 1.9 | 1.08 | ~60% |
+| 2 | Individual zone cards | 22px | 2.1 | 1.10 | ~50% |
+| 3 | Control buttons / beads | 10px | 1.8 | 1.12 | ~50% |
+| 4 | Cluster wrapper | 30px | 2.3 | 1.04 | ~46% |
 
-Each level exposes four sub-tokens:
+Each level exposes these sub-tokens:
 - `--glass-lN-blur` — backdrop-filter blur radius
 - `--glass-lN-saturate` — backdrop-filter saturate multiplier
+- `--glass-lN-brightness` — backdrop-filter brightness (lifts the material so the
+  background reads luminously instead of muddy — the key "more life" lever)
 - `--glass-lN-bg` — base background RGBA (dark/light/ambient variants)
 - `--glass-lN-border` — border color RGBA
+- `--glass-lN-tint` — faint inner tint layer (background-image)
+- **`--glass-lN-backdrop`** — pre-composed `blur() saturate() brightness()` string.
+  **Always use this** for `backdrop-filter` rather than re-composing by hand, so the
+  vibrancy recipe stays consistent and tunable in one place.
+
+> Iteration 2 intensified all levels: higher saturation + a brightness lift,
+> lower bg opacity (more luminous show-through), and the new sheen + rim layers.
 
 ### Specular highlights (`--specular-*`)
 
@@ -66,12 +75,50 @@ Each level exposes four sub-tokens:
 |-------|-----|
 | `--specular-default` | Standard top-lit gradient overlay (background-image layer) |
 | `--specular-strong` | Stronger highlight for buttons / beads |
-| `--specular-bevel` | Inset top-edge bevel (box-shadow layer) |
+| `--specular-bevel` | Back-compat single bright top edge (box-shadow); prefer `--rim` |
+
+### Sheen sweep (`--sheen-default`)
+
+A narrow diagonal band of light across the surface — the hallmark of real glass
+catching a reflection. Layer it ABOVE the specular in `background-image`:
+
+```css
+background-image: var(--sheen-default), var(--specular-default), var(--glass-l2-tint);
+```
+
+An opt-in `glass-sheen-drift` keyframe slowly travels the sheen across large
+hero surfaces (use sparingly).
+
+### Beveled rim (`--rim`, `--rim-light`, `--rim-shade`)
+
+A fine glass edge composed as inset box-shadows: a bright top-left light
+(`--rim-light`) + a dark bottom-right shade (`--rim-shade`). `--rim` combines
+both. Use it as the first box-shadow layer on any glass surface so the edge
+catches light and reads as real material:
+
+```css
+box-shadow: var(--rim), var(--elev-2);
+```
+
+### Accent glow recipes (`--glow-*`)
+
+Drive the readable warm/cool halo on active cards. The helpers
+`glassMaterialActive()` / `accentHalo()` consume these:
+
+| Token | Meaning |
+|-------|---------|
+| `--glow-soft-spread` / `--glow-strong-spread` | Outer halo blur radius |
+| `--glow-soft-strength` / `--glow-strong-strength` | Outer halo color-mix % |
+| `--glow-tint-strength` | Inner accent wash strength (into glass bg) |
+
+Heat zones glow warm (amber `--accent-warn`), cool zones glow cool (blue
+`--accent-water`); running zones push the halo wider/brighter than idle ones.
 
 ### Elevation / shadow scale (`--elev-0` … `--elev-5`)
 
-Multilayer shadows: close ambient + wide diffuse + hairline ring.
-Adapts between dark (deep) and light (soft) automatically.
+Multilayer shadows: tight contact + wide diffuse + hairline ring. Iteration 2
+strengthened (but kept soft) all levels so cards visibly float above the panel.
+Adapts between dark (deep), light (cool-cast soft), and ambient-night (deep warm).
 
 ### Border radii (`--radius-*`)
 
@@ -251,12 +298,18 @@ The glass tokens automatically adapt — you never need to branch on theme in
 component code. The `tokens.css` file declares three sets of `--glass-l*-*`
 values under `:root`, `body.light-mode`, and `body.ambient-night`.
 
-- **Dark (default)**: deep navy glass with a cool-blue tint and bright
-  specular highlights. High contrast, readable at room distance.
-- **Light**: white-frosted glass with gossamer borders. Specular is a
-  creamy-white top sheen. Shadows are light-grey, not black.
-- **Ambient-night**: warm amber-tinted glass with reduced saturation and
-  suppressed blue light. Designed for a wall panel after dark.
+- **Dark (default)** — the quality bar: deep navy glass with a cool-blue tint,
+  high saturation + brightness lift, pronounced specular + sheen, and readable
+  warm/cool accent halos. High contrast, gorgeous at room distance.
+- **Light** — premium **cool-tinted** glass (NOT flat white): the frosted
+  material carries a faint slate/blue cast so it reads as real glass over a cool
+  canvas. Genuine layered depth (deeper cool-cast `--elev-*` shadows so cards
+  visibly float) + a refined, not-blown-out top-edge specular + background
+  showing through (lower bg opacity, high saturation).
+- **Ambient-night** — refined **dim-warm charcoal** (NOT brown-washed): a
+  near-black neutral charcoal glass with a RESTRAINED warm accent that lives only
+  in the rim / specular / a whisper of bg cast — low blue light for night
+  viewing. Elegant and dark, matching the navy theme's polish, just warmer/dimmer.
 
 ---
 
