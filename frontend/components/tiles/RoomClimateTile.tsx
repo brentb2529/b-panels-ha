@@ -1,4 +1,4 @@
-// One independent climate zone, rendered as a wall-legible control card.
+// One independent climate zone, rendered as a wall-legible Liquid Glass card.
 //
 // Shows: room name, current temperature, current humidity (if known), the
 // target setpoint (large, primary), hvac_mode, fan_mode (if supported), and the
@@ -6,8 +6,8 @@
 // surface fires the HA service and reconciles against real state — and are
 // disabled when the zone is unavailable so we never command an offline zone.
 //
-// Each tile drives EXACTLY its own entity. There is no shared/master mode: a
-// multi-master system has one of these per zone, each independent.
+// VISUAL: Liquid Glass / Apple design system. All functionality, data bindings,
+// optimistic control logic, and master/slave semantics are unchanged.
 
 import React from 'react';
 import type { ClimateZone, ZoneRole } from '../../services/climate';
@@ -22,108 +22,128 @@ import {
     IconActivity,
 } from '../icons';
 
+// ── Mode accent mapping ────────────────────────────────────────────────────
 type Accent = 'heat' | 'cool' | 'auto' | 'dry' | 'fan' | 'off';
 
-// Map an hvac_mode to a semantic accent + the CSS-variable color so the card
-// lights up in the right hue across all three themes (warn=orange for heat,
-// water=blue for cool, etc.) instead of a hardcoded color.
 function accentFor(mode: string): { accent: Accent; colorVar: string } {
     switch (mode) {
-        case 'heat':
-            return { accent: 'heat', colorVar: 'var(--accent-warn)' };
-        case 'cool':
-            return { accent: 'cool', colorVar: 'var(--accent-water)' };
+        case 'heat':       return { accent: 'heat', colorVar: 'var(--accent-warn)' };
+        case 'cool':       return { accent: 'cool', colorVar: 'var(--accent-water)' };
         case 'heat_cool':
-        case 'auto':
-            return { accent: 'auto', colorVar: 'var(--accent-plug)' };
-        case 'dry':
-            return { accent: 'dry', colorVar: 'var(--accent-light)' };
-        case 'fan_only':
-            return { accent: 'fan', colorVar: 'var(--accent)' };
-        default:
-            return { accent: 'off', colorVar: 'var(--surface-control)' };
+        case 'auto':       return { accent: 'auto', colorVar: 'var(--accent-plug)' };
+        case 'dry':        return { accent: 'dry',  colorVar: 'var(--accent-light)' };
+        case 'fan_only':   return { accent: 'fan',  colorVar: 'var(--accent)' };
+        default:           return { accent: 'off',  colorVar: 'var(--glass-l3-bg)' };
     }
 }
 
 function modeLabel(mode: string): string {
     switch (mode) {
-        case 'heat_cool':
-            return 'Heat/Cool';
-        case 'fan_only':
-            return 'Fan';
-        default:
-            return mode.charAt(0).toUpperCase() + mode.slice(1);
+        case 'heat_cool': return 'Heat/Cool';
+        case 'fan_only':  return 'Fan';
+        default:          return mode.charAt(0).toUpperCase() + mode.slice(1);
     }
 }
 
-function ModeIcon({ mode, className, style }: { mode: string; className?: string; style?: React.CSSProperties }) {
+function ModeIcon({ mode, style }: { mode: string; style?: React.CSSProperties }) {
     switch (mode) {
-        case 'heat':
-            return <IconFlame className={className} style={style} />;
-        case 'cool':
-            return <IconSnowflake className={className} style={style} />;
-        case 'dry':
-            return <IconDroplets className={className} style={style} />;
-        case 'fan_only':
-            return <IconFan className={className} style={style} />;
+        case 'heat':     return <IconFlame     style={style} />;
+        case 'cool':     return <IconSnowflake style={style} />;
+        case 'dry':      return <IconDroplets  style={style} />;
+        case 'fan_only': return <IconFan       style={style} />;
         case 'heat_cool':
-        case 'auto':
-            return <IconActivity className={className} style={style} />;
-        default:
-            return <IconPower className={className} style={style} />;
+        case 'auto':     return <IconActivity  style={style} />;
+        default:         return <IconPower     style={style} />;
     }
 }
 
-// hvac_action → short status label + a color for the running badge.
-function actionMeta(action: string | null): { label: string; rgb: string } | null {
+function actionMeta(action: string | null): { label: string; colorVar: string } | null {
     switch (action) {
-        case 'heating':
-            return { label: 'Heating', rgb: 'var(--accent-warn)' };
-        case 'cooling':
-            return { label: 'Cooling', rgb: 'var(--accent-water)' };
-        case 'drying':
-            return { label: 'Drying', rgb: 'var(--accent-light)' };
-        case 'fan':
-            return { label: 'Fan', rgb: 'var(--accent)' };
-        case 'idle':
-            return { label: 'Idle', rgb: 'var(--surface-control)' };
-        case 'off':
-            return { label: 'Off', rgb: 'var(--surface-control)' };
-        case 'preheating':
-            return { label: 'Preheating', rgb: 'var(--accent-warn)' };
-        case 'defrosting':
-            return { label: 'Defrosting', rgb: 'var(--accent-water)' };
-        default:
-            return null;
+        case 'heating':    return { label: 'Heating',   colorVar: 'var(--accent-warn)' };
+        case 'cooling':    return { label: 'Cooling',   colorVar: 'var(--accent-water)' };
+        case 'drying':     return { label: 'Drying',    colorVar: 'var(--accent-light)' };
+        case 'fan':        return { label: 'Fan',       colorVar: 'var(--accent)' };
+        case 'idle':       return { label: 'Idle',      colorVar: 'rgba(var(--text) / 0.3)' };
+        case 'off':        return { label: 'Off',       colorVar: 'rgba(var(--text) / 0.3)' };
+        case 'preheating': return { label: 'Preheating',colorVar: 'var(--accent-warn)' };
+        case 'defrosting': return { label: 'Defrosting',colorVar: 'var(--accent-water)' };
+        default:           return null;
     }
 }
 
-// Round to the entity's step, clamped to its bounds.
 function clampStep(value: number, step: number, min: number, max: number): number {
     const snapped = Math.round(value / step) * step;
-    const fixed = parseFloat(snapped.toFixed(2));
+    const fixed   = parseFloat(snapped.toFixed(2));
     return Math.min(max, Math.max(min, fixed));
 }
 
+// ── Props ──────────────────────────────────────────────────────────────────
 interface Props {
     zone: ClimateZone;
     onSetTemperature: (entityId: string, temperature: number) => void;
-    // Cycles this zone's hvac_mode to `next`; the parent handles slave→master
-    // routing, so the tile only asks for the next mode.
     onCycleHvacMode: (next: string) => void;
     onSetFanMode: (entityId: string, fanMode: string) => void;
-    // Topology role + mode-control state (resolved by the parent surface).
     role?: ZoneRole;
-    // Display name of the owning master (for "mode follows <name>").
     masterName?: string;
-    // True when this slave's mode change is routed to the master (control stays
-    // enabled). When false AND role==='slave', the mode control is disabled and
-    // we show "mode follows master".
     modeRouted?: boolean;
-    // Compact variant for slaves nested under a master card.
     nested?: boolean;
 }
 
+// ── Stepper button — a glass bead control ─────────────────────────────────
+const StepBtn = ({
+    label,
+    symbol,
+    disabled,
+    onClick,
+}: {
+    label: string;
+    symbol: string;
+    disabled: boolean;
+    onClick: () => void;
+}) => (
+    <button
+        aria-label={label}
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+            width: '2.75rem',
+            height: '2.75rem',
+            minWidth: '2.75rem',
+            borderRadius: 'var(--radius-pill)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.5rem',
+            fontWeight: 300,
+            lineHeight: 1,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.35 : 1,
+            // Level-3 glass bead
+            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+            backgroundColor: 'var(--glass-l3-bg)',
+            backgroundImage: 'var(--specular-strong)',
+            border: '1px solid var(--glass-l3-border)',
+            boxShadow: 'var(--specular-bevel), var(--elev-2)',
+            color: 'rgb(var(--text))',
+            transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1)), opacity 80ms ease',
+            // Active state via CSS (no JS needed)
+        }}
+        onPointerDown={(e) => {
+            if (!disabled) (e.currentTarget as HTMLElement).style.transform = 'scale(0.88)';
+        }}
+        onPointerUp={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = '';
+        }}
+        onPointerLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.transform = '';
+        }}
+    >
+        {symbol}
+    </button>
+);
+
+// ── Main tile component ────────────────────────────────────────────────────
 const RoomClimateTile = ({
     zone,
     onSetTemperature,
@@ -134,19 +154,18 @@ const RoomClimateTile = ({
     modeRouted = false,
     nested = false,
 }: Props) => {
-    const { accent, colorVar } = accentFor(zone.hvacMode);
-    const isOff = zone.hvacMode === 'off';
-    const disabled = !zone.available;
-    const action = actionMeta(zone.hvacAction);
-    const isRunning = zone.hvacAction === 'heating' || zone.hvacAction === 'cooling' || zone.hvacAction === 'drying' || zone.hvacAction === 'fan';
+    const { colorVar } = accentFor(zone.hvacMode);
+    const isOff      = zone.hvacMode === 'off';
+    const disabled   = !zone.available;
+    const action     = actionMeta(zone.hvacAction);
+    const isRunning  = zone.hvacAction === 'heating'
+                    || zone.hvacAction === 'cooling'
+                    || zone.hvacAction === 'drying'
+                    || zone.hvacAction === 'fan';
 
-    // A slave can change its mode ONLY when the parent can route the call to the
-    // master entity (calling set_hvac_mode on a slave hard-fails today). When it
-    // can't be routed, the control is disabled and we show "mode follows master".
-    const isSlave = role === 'slave';
+    const isSlave            = role === 'slave';
     const modeControlDisabled = disabled || zone.hvacModes.length === 0 || (isSlave && !modeRouted);
 
-    // The displayed setpoint: single target, else the range midpoint.
     const displaySetpoint =
         zone.targetTemperature ??
         (zone.targetTempLow != null && zone.targetTempHigh != null
@@ -163,92 +182,198 @@ const RoomClimateTile = ({
 
     const cycleMode = () => {
         if (modeControlDisabled) return;
-        const idx = zone.hvacModes.indexOf(zone.hvacMode);
+        const idx  = zone.hvacModes.indexOf(zone.hvacMode);
         const next = zone.hvacModes[(idx + 1) % zone.hvacModes.length];
         onCycleHvacMode(next);
     };
 
     const cycleFan = () => {
         if (disabled || !zone.supportsFanMode || zone.fanModes.length === 0) return;
-        const idx = zone.fanMode ? zone.fanModes.indexOf(zone.fanMode) : -1;
+        const idx  = zone.fanMode ? zone.fanModes.indexOf(zone.fanMode) : -1;
         const next = zone.fanModes[(idx + 1) % zone.fanModes.length];
         onSetFanMode(zone.entityId, next);
     };
 
     const unit = zone.temperatureUnit || '°C';
 
+    // Derive glass material state for the card:
+    // - Active (not off, not disabled): bleed accent color into the glass
+    // - Off / disabled: neutral glass
+    const activeGlass = !isOff && !disabled;
+
+    const cardBg = activeGlass
+        ? `color-mix(in srgb, ${colorVar} 14%, var(--glass-l2-bg))`
+        : 'var(--glass-l2-bg)';
+
+    const cardBorder = activeGlass
+        ? `color-mix(in srgb, ${colorVar} 45%, var(--glass-l2-border))`
+        : 'var(--glass-l2-border)';
+
+    const cardGlow = activeGlass
+        ? `inset 0 0 32px -8px color-mix(in srgb, ${colorVar} 28%, transparent), 0 0 0 1px color-mix(in srgb, ${colorVar} 22%, transparent), var(--elev-2)`
+        : 'var(--elev-2)';
+
     return (
         <div
-            className="relative flex flex-col rounded-tile overflow-hidden bg-gray-700 transition-all duration-200"
             style={{
-                border: `1px solid ${!isOff && !disabled ? colorVar : 'var(--tile-border)'}`,
-                boxShadow:
-                    !isOff && !disabled
-                        ? `inset 0 1px 0 rgb(255 255 255 / 0.13), inset 0 -3px 7px rgb(0 0 0 / 0.22), inset 0 0 22px -6px ${colorVar}, var(--elev-1)`
-                        : `inset 0 1px 0 rgb(255 255 255 / 0.13), inset 0 -3px 7px rgb(0 0 0 / 0.22), var(--elev-1)`,
-                backgroundColor:
-                    !isOff && !disabled
-                        ? `color-mix(in srgb, ${colorVar} 16%, rgb(var(--surface) / var(--tile-alpha)))`
-                        : `rgb(var(--surface) / var(--tile-alpha))`,
-                opacity: disabled ? 0.6 : 1,
-                filter: disabled ? 'grayscale(1)' : undefined,
-                minHeight: nested ? '10.5rem' : '11.5rem',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: 'var(--radius-card)',
+                overflow: 'hidden',
+                opacity: disabled ? 0.55 : 1,
+                filter: disabled ? 'grayscale(0.7)' : undefined,
+                minHeight: nested ? '10.5rem' : '12rem',
+                // Liquid Glass level-2 material
+                backdropFilter:       'blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate))',
+                WebkitBackdropFilter: 'blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate))',
+                backgroundColor: cardBg,
+                backgroundImage: 'var(--specular-default)',
+                border: `1px solid ${cardBorder}`,
+                boxShadow: `var(--specular-bevel), ${cardGlow}`,
+                // Spring transition on mode/state changes
+                transition: [
+                    `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                    `border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                    `box-shadow var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                    `opacity var(--dur-medium, 260ms) ease`,
+                    `filter var(--dur-medium, 260ms) ease`,
+                ].join(', '),
             }}
         >
-            {/* Header: room name + running badge */}
-            <div className="flex items-start justify-between gap-2 px-3 pt-3">
-                <div className="flex items-center gap-2 min-w-0">
+            {/* ── Header: name + running badge ─────────────────────────── */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3) var(--space-3) 0',
+                }}
+            >
+                {/* Left: mode icon + name + role badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
                     <ModeIcon
                         mode={zone.hvacMode}
-                        className="shrink-0"
                         style={{
-                            width: '1.25rem',
-                            height: '1.25rem',
-                            color: isOff || disabled ? 'rgb(var(--text) / 0.45)' : colorVar,
-                            filter: isRunning ? `drop-shadow(0 0 6px ${colorVar})` : undefined,
+                            width: 18,
+                            height: 18,
+                            flexShrink: 0,
+                            color: isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar,
+                            filter: isRunning
+                                ? `drop-shadow(0 0 5px ${colorVar})`
+                                : undefined,
+                            transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
                         }}
                     />
-                    <h3 className="font-bold text-white truncate text-base leading-tight">{zone.name}</h3>
+                    <h3
+                        style={{
+                            margin: 0,
+                            fontFamily: 'var(--font-display)',
+                            fontSize: 'var(--type-md)',
+                            fontWeight: 600,
+                            letterSpacing: 'var(--tracking-tight)',
+                            color: 'rgb(var(--text))',
+                            lineHeight: 1.2,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {zone.name}
+                    </h3>
+
+                    {/* Master badge */}
                     {role === 'master' && (
                         <span
-                            className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
                             style={{
+                                flexShrink: 0,
+                                padding: '2px 6px',
+                                borderRadius: 'var(--radius-chip)',
+                                fontSize: 'var(--type-2xs)',
+                                fontWeight: 700,
+                                letterSpacing: 'var(--tracking-caps)',
+                                textTransform: 'uppercase',
                                 color: 'var(--accent)',
-                                backgroundColor: 'color-mix(in srgb, var(--accent) 18%, transparent)',
-                                border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
+                                backgroundColor: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+                                border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)',
                             }}
                             title="Master zone — controls the mode for its slave zones"
                         >
                             Master
                         </span>
                     )}
+
+                    {/* Slave badge */}
                     {role === 'slave' && (
                         <span
-                            className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-gray-300"
-                            style={{ backgroundColor: 'rgb(var(--surface-control))', border: '1px solid var(--tile-border)' }}
+                            style={{
+                                flexShrink: 0,
+                                padding: '2px 6px',
+                                borderRadius: 'var(--radius-chip)',
+                                fontSize: 'var(--type-2xs)',
+                                fontWeight: 600,
+                                letterSpacing: 'var(--tracking-caps)',
+                                textTransform: 'uppercase',
+                                color: 'rgba(var(--text) / 0.55)',
+                                backgroundColor: 'var(--glass-l3-bg)',
+                                border: '1px solid var(--glass-l3-border)',
+                            }}
                             title={masterName ? `Slave zone of ${masterName}` : 'Slave zone'}
                         >
                             Slave
                         </span>
                     )}
                 </div>
+
+                {/* Right: status badge */}
                 {disabled ? (
-                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 shrink-0">
-                        <IconWifiOff className="w-3.5 h-3.5" /> Offline
+                    <span
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 'var(--type-2xs)',
+                            fontWeight: 600,
+                            letterSpacing: 'var(--tracking-caps)',
+                            textTransform: 'uppercase',
+                            color: 'rgba(var(--text) / 0.38)',
+                            flexShrink: 0,
+                        }}
+                    >
+                        <IconWifiOff style={{ width: 11, height: 11 }} />
+                        Offline
                     </span>
                 ) : action ? (
                     <span
-                        className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0"
                         style={{
-                            color: action.rgb,
-                            backgroundColor: `color-mix(in srgb, ${action.rgb} 18%, transparent)`,
-                            border: `1px solid color-mix(in srgb, ${action.rgb} 35%, transparent)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '3px 8px',
+                            borderRadius: 'var(--radius-pill)',
+                            fontSize: 'var(--type-2xs)',
+                            fontWeight: 700,
+                            letterSpacing: 'var(--tracking-caps)',
+                            textTransform: 'uppercase',
+                            flexShrink: 0,
+                            color: action.colorVar,
+                            backgroundColor: `color-mix(in srgb, ${action.colorVar} 14%, transparent)`,
+                            border: `1px solid color-mix(in srgb, ${action.colorVar} 30%, transparent)`,
+                            transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
                         }}
                     >
                         {isRunning && (
                             <span
-                                className="rounded-full animate-pulse"
-                                style={{ width: 6, height: 6, backgroundColor: action.rgb }}
+                                style={{
+                                    width: 5,
+                                    height: 5,
+                                    borderRadius: '50%',
+                                    backgroundColor: action.colorVar,
+                                    animation: 'pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite',
+                                    display: 'inline-block',
+                                    boxShadow: `0 0 5px 1px ${action.colorVar}`,
+                                }}
                             />
                         )}
                         {action.label}
@@ -256,114 +381,339 @@ const RoomClimateTile = ({
                 ) : null}
             </div>
 
-            {/* Current readings */}
-            <div className="flex items-center gap-3 px-3 pt-1.5 text-gray-300">
-                <span className="flex items-center gap-1 text-sm tabular-nums">
-                    <IconThermometer className="w-4 h-4 opacity-70" />
-                    {zone.currentTemperature != null ? `${zone.currentTemperature.toFixed(1)}${unit}` : '--'}
+            {/* ── Ambient readings: current temp + humidity ─────────────── */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-2) var(--space-3) 0',
+                }}
+            >
+                <span
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        fontFamily: 'var(--font-numeric)',
+                        fontSize: 'var(--type-sm)',
+                        fontWeight: 500,
+                        color: 'rgba(var(--text) / 0.55)',
+                        letterSpacing: '-0.01em',
+                    }}
+                >
+                    <IconThermometer style={{ width: 13, height: 13, opacity: 0.65 }} />
+                    {zone.currentTemperature != null
+                        ? `${zone.currentTemperature.toFixed(1)}${unit}`
+                        : '--'}
                 </span>
                 {zone.currentHumidity != null && (
-                    <span className="flex items-center gap-1 text-sm tabular-nums">
-                        <IconDroplets className="w-4 h-4 opacity-70" />
+                    <span
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            fontFamily: 'var(--font-numeric)',
+                            fontSize: 'var(--type-sm)',
+                            fontWeight: 500,
+                            color: 'rgba(var(--text) / 0.55)',
+                            letterSpacing: '-0.01em',
+                        }}
+                    >
+                        <IconDroplets style={{ width: 13, height: 13, opacity: 0.65 }} />
                         {Math.round(zone.currentHumidity)}%
                     </span>
                 )}
             </div>
 
-            {/* Setpoint stepper — the primary control */}
-            <div className="flex-1 flex items-center justify-center gap-3 px-3 py-2">
-                <button
-                    aria-label="Lower setpoint"
-                    onClick={() => step(-zone.tempStep)}
+            {/* ── Setpoint stepper — the hero control ──────────────────── */}
+            <div
+                style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 'var(--space-4)',
+                    padding: 'var(--space-3) var(--space-4)',
+                }}
+            >
+                <StepBtn
+                    label="Lower setpoint"
+                    symbol="−"
                     disabled={!canStep}
-                    className="flex items-center justify-center rounded-full bg-gray-600 text-white text-2xl font-light leading-none active:scale-90 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ width: '2.75rem', height: '2.75rem', minWidth: '2.75rem' }}
+                    onClick={() => step(-zone.tempStep)}
+                />
+
+                {/* Setpoint digit */}
+                <div
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        lineHeight: 1,
+                        gap: 3,
+                    }}
                 >
-                    −
-                </button>
-                <div className="flex flex-col items-center leading-none">
-                    <div className="font-bold text-white tabular-nums" style={{ fontSize: '2.5rem' }}>
+                    <div
+                        style={{
+                            fontFamily: 'var(--font-numeric)',
+                            fontSize: 'var(--type-hero)',
+                            fontWeight: 700,
+                            letterSpacing: '-0.04em',
+                            color: activeGlass ? colorVar : 'rgba(var(--text) / 0.90)',
+                            textShadow: activeGlass
+                                ? `0 0 24px color-mix(in srgb, ${colorVar} 50%, transparent)`
+                                : undefined,
+                            transition: [
+                                `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                `text-shadow var(--dur-medium, 260ms) ease`,
+                            ].join(', '),
+                        }}
+                    >
                         {displaySetpoint != null ? (
                             <>
                                 {displaySetpoint.toFixed(zone.tempStep < 1 ? 1 : 0)}
-                                <span className="text-gray-400" style={{ fontSize: '0.45em' }}>
+                                <span
+                                    style={{
+                                        fontSize: '0.38em',
+                                        fontWeight: 500,
+                                        opacity: 0.65,
+                                        verticalAlign: 'super',
+                                        letterSpacing: 0,
+                                    }}
+                                >
                                     {unit}
                                 </span>
                             </>
                         ) : (
-                            <span className="text-gray-500 text-2xl">—</span>
+                            <span style={{ color: 'rgba(var(--text) / 0.28)', fontSize: '0.7em' }}>—</span>
                         )}
                     </div>
-                    {zone.supportsTargetRange && zone.targetTempLow != null && zone.targetTempHigh != null && (
-                        <span className="text-[11px] text-gray-400 tabular-nums mt-0.5">
+
+                    {zone.supportsTargetRange
+                        && zone.targetTempLow  != null
+                        && zone.targetTempHigh != null && (
+                        <span
+                            style={{
+                                fontFamily: 'var(--font-numeric)',
+                                fontSize: 'var(--type-xs)',
+                                fontWeight: 500,
+                                color: 'rgba(var(--text) / 0.40)',
+                                letterSpacing: '-0.01em',
+                            }}
+                        >
                             {zone.targetTempLow.toFixed(0)}–{zone.targetTempHigh.toFixed(0)}{unit}
                         </span>
                     )}
                 </div>
-                <button
-                    aria-label="Raise setpoint"
-                    onClick={() => step(zone.tempStep)}
+
+                <StepBtn
+                    label="Raise setpoint"
+                    symbol="+"
                     disabled={!canStep}
-                    className="flex items-center justify-center rounded-full bg-gray-600 text-white text-2xl font-light leading-none active:scale-90 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ width: '2.75rem', height: '2.75rem', minWidth: '2.75rem' }}
-                >
-                    +
-                </button>
+                    onClick={() => step(zone.tempStep)}
+                />
             </div>
 
-            {/* Mode + fan selectors (tap to cycle) */}
-            <div className="flex items-stretch gap-2 px-3 pb-3">
+            {/* ── Mode + fan selectors ──────────────────────────────────── */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    gap: 'var(--space-2)',
+                    padding: '0 var(--space-3) var(--space-3)',
+                }}
+            >
+                {/* Mode control */}
                 {isSlave && !modeRouted ? (
-                    // Slave whose mode can't be routed to a master entity: the
-                    // integration hard-fails set_hvac_mode on a slave, so we show
-                    // a read-only "mode follows master" chip instead of a control.
+                    // Slave whose mode can't be routed: read-only chip
                     <div
-                        className="flex-1 flex flex-col items-center justify-center rounded-control py-1.5 px-2"
-                        style={{ backgroundColor: 'rgb(var(--surface-control))', border: '1px solid var(--tile-border)' }}
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
+                            borderRadius: 'var(--radius-control)',
+                            padding: 'var(--space-2) var(--space-3)',
+                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            backgroundColor: 'var(--glass-l3-bg)',
+                            border: '1px solid var(--glass-l3-border)',
+                            boxShadow: 'var(--specular-bevel)',
+                        }}
                         title={masterName ? `Mode is set by master zone ${masterName}` : 'Mode is set by the master zone'}
                     >
-                        <span className="flex items-center gap-1.5 text-white font-semibold text-sm">
-                            <ModeIcon mode={zone.hvacMode} style={{ width: '1rem', height: '1rem' }} />
+                        <span
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                fontFamily: 'var(--font-body)',
+                                fontSize: 'var(--type-sm)',
+                                fontWeight: 600,
+                                color: 'rgb(var(--text))',
+                                letterSpacing: 'var(--tracking-tight)',
+                            }}
+                        >
+                            <ModeIcon mode={zone.hvacMode} style={{ width: 14, height: 14 }} />
                             {modeLabel(zone.hvacMode)}
                         </span>
-                        <span className="text-[9px] text-gray-400 uppercase tracking-wider mt-0.5 truncate max-w-full">
-                            Mode follows {masterName || 'master'}
+                        <span
+                            style={{
+                                fontSize: 'var(--type-2xs)',
+                                fontWeight: 500,
+                                letterSpacing: 'var(--tracking-caps)',
+                                textTransform: 'uppercase',
+                                color: 'rgba(var(--text) / 0.35)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: '100%',
+                            }}
+                        >
+                            Follows {masterName || 'master'}
                         </span>
                     </div>
                 ) : (
+                    // Active mode button
                     <button
                         onClick={cycleMode}
                         disabled={modeControlDisabled}
-                        className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-control bg-gray-600 text-white font-semibold py-2.5 active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
-                        style={{
-                            color: isOff || disabled ? undefined : colorVar,
-                            border: `1px solid ${isOff || disabled ? 'transparent' : `color-mix(in srgb, ${colorVar} 40%, transparent)`}`,
-                        }}
                         title={isSlave && modeRouted && masterName ? `Sets the mode on master zone ${masterName}` : undefined}
+                        style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
+                            borderRadius: 'var(--radius-control)',
+                            padding: 'var(--space-2) var(--space-3)',
+                            cursor: modeControlDisabled ? 'not-allowed' : 'pointer',
+                            opacity: modeControlDisabled ? 0.40 : 1,
+                            // Level-3 glass, tinted by mode color when active
+                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            backgroundColor: !isOff && !disabled
+                                ? `color-mix(in srgb, ${colorVar} 16%, var(--glass-l3-bg))`
+                                : 'var(--glass-l3-bg)',
+                            backgroundImage: 'var(--specular-default)',
+                            border: `1px solid ${!isOff && !disabled
+                                ? `color-mix(in srgb, ${colorVar} 38%, var(--glass-l3-border))`
+                                : 'var(--glass-l3-border)'}`,
+                            boxShadow: `var(--specular-bevel)${!isOff && !disabled
+                                ? `, inset 0 0 14px -4px color-mix(in srgb, ${colorVar} 22%, transparent)`
+                                : ''}`,
+                            transition: [
+                                `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                `border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                `box-shadow var(--dur-medium, 260ms) ease`,
+                                `transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))`,
+                                `opacity 120ms ease`,
+                            ].join(', '),
+                        }}
+                        onPointerDown={(e) => {
+                            if (!modeControlDisabled) (e.currentTarget as HTMLElement).style.transform = 'scale(0.95)';
+                        }}
+                        onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+                        onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
                     >
-                        <span className="flex items-center gap-1.5">
-                            <ModeIcon mode={zone.hvacMode} style={{ width: '1.1rem', height: '1.1rem' }} />
-                            <span className="text-sm">{modeLabel(zone.hvacMode)}</span>
+                        <span
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                fontFamily: 'var(--font-body)',
+                                fontSize: 'var(--type-sm)',
+                                fontWeight: 600,
+                                letterSpacing: 'var(--tracking-tight)',
+                                color: !isOff && !disabled ? colorVar : 'rgb(var(--text))',
+                                transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                            }}
+                        >
+                            <ModeIcon
+                                mode={zone.hvacMode}
+                                style={{
+                                    width: 14,
+                                    height: 14,
+                                    filter: isRunning ? `drop-shadow(0 0 4px ${colorVar})` : undefined,
+                                }}
+                            />
+                            {modeLabel(zone.hvacMode)}
                         </span>
                         {isSlave && modeRouted && (
-                            <span className="text-[9px] text-gray-300 uppercase tracking-wider truncate max-w-full">
+                            <span
+                                style={{
+                                    fontSize: 'var(--type-2xs)',
+                                    fontWeight: 500,
+                                    letterSpacing: 'var(--tracking-caps)',
+                                    textTransform: 'uppercase',
+                                    color: 'rgba(var(--text) / 0.38)',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    maxWidth: '100%',
+                                }}
+                            >
                                 via {masterName || 'master'}
                             </span>
                         )}
                     </button>
                 )}
+
+                {/* Fan mode button */}
                 {zone.supportsFanMode && zone.fanModes.length > 0 && (
                     <button
                         onClick={cycleFan}
                         disabled={disabled}
-                        className="flex items-center justify-center gap-1.5 rounded-control bg-gray-600 text-gray-100 font-semibold py-2.5 px-3 active:scale-[0.97] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Fan mode"
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 5,
+                            borderRadius: 'var(--radius-control)',
+                            padding: 'var(--space-2) var(--space-3)',
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            opacity: disabled ? 0.40 : 1,
+                            // Level-3 glass
+                            backdropFilter:       'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            WebkitBackdropFilter: 'blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate))',
+                            backgroundColor: 'var(--glass-l3-bg)',
+                            backgroundImage: 'var(--specular-default)',
+                            border: '1px solid var(--glass-l3-border)',
+                            boxShadow: 'var(--specular-bevel)',
+                            fontFamily: 'var(--font-body)',
+                            fontSize: 'var(--type-sm)',
+                            fontWeight: 500,
+                            color: 'rgba(var(--text) / 0.75)',
+                            letterSpacing: 'var(--tracking-tight)',
+                            whiteSpace: 'nowrap',
+                            transition: [
+                                `transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))`,
+                                `opacity 120ms ease`,
+                            ].join(', '),
+                        }}
+                        onPointerDown={(e) => {
+                            if (!disabled) (e.currentTarget as HTMLElement).style.transform = 'scale(0.95)';
+                        }}
+                        onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+                        onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
                     >
                         <IconFan
-                            className={isRunning && zone.hvacAction === 'fan' ? 'animate-spin' : ''}
-                            style={{ width: '1.1rem', height: '1.1rem' }}
+                            style={{
+                                width: 14,
+                                height: 14,
+                                animation: isRunning && zone.hvacAction === 'fan'
+                                    ? 'glass-spin-slow 1.4s linear infinite'
+                                    : undefined,
+                            }}
                         />
-                        <span className="text-sm capitalize">{zone.fanMode ?? 'Fan'}</span>
+                        <span style={{ textTransform: 'capitalize' }}>
+                            {zone.fanMode ?? 'Fan'}
+                        </span>
                     </button>
                 )}
             </div>

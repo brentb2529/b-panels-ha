@@ -1,0 +1,314 @@
+/*
+ * B-Panels Liquid Glass Design System — CSS Custom Property Tokens
+ *
+ * Every surface/tile imports this file (or picks it up via index.html).
+ * All values are pure CSS custom properties — no Tailwind needed.
+ *
+ * TOKEN GROUPS
+ * ─────────────────────────────────────────────────────────────────────
+ *  --glass-*        Material definition (blur, saturation, tint)
+ *  --elev-*         Shadow / elevation scale (0 = flat → 5 = floating)
+ *  --specular-*     Highlight overlays for top-lit surfaces
+ *  --radius-*       Continuous-rounded corner radii (squircle-feel)
+ *  --spring-*       Motion easing curves + duration scale
+ *  --type-*         Type-scale (size + weight + tracking)
+ *  --space-*        Spacing scale (4 pt grid)
+ *  --accent-*       Semantic device accents (unchanged from base theme)
+ *  --surface-*      Background RGB channel triplets (unchanged from base)
+ *
+ * DARK (default :root), LIGHT (body.light-mode), AMBIENT-NIGHT (body.ambient-night)
+ * — glass materiality changes between themes; accent hues are inherited from
+ * the base theme tokens already set in index.html.
+ */
+
+/* ── DARK default ───────────────────────────────────────────────────────── */
+:root {
+  /* Glass material levels ───────────────────────────────────────────────── */
+  /* Level 1 — base tile surface (slight frosting, mostly opaque) */
+  --glass-l1-blur:       12px;
+  --glass-l1-saturate:   1.6;
+  --glass-l1-bg:         rgba(22, 30, 42, 0.72);
+  --glass-l1-border:     rgba(255, 255, 255, 0.10);
+  --glass-l1-tint:       rgba(255, 255, 255, 0.035);
+
+  /* Level 2 — elevated card (more frosting, lifted) */
+  --glass-l2-blur:       18px;
+  --glass-l2-saturate:   1.8;
+  --glass-l2-bg:         rgba(30, 40, 58, 0.62);
+  --glass-l2-border:     rgba(255, 255, 255, 0.14);
+  --glass-l2-tint:       rgba(255, 255, 255, 0.05);
+
+  /* Level 3 — control buttons (compact glass beads) */
+  --glass-l3-blur:       8px;
+  --glass-l3-saturate:   1.5;
+  --glass-l3-bg:         rgba(40, 52, 70, 0.58);
+  --glass-l3-border:     rgba(255, 255, 255, 0.12);
+  --glass-l3-tint:       rgba(255, 255, 255, 0.04);
+
+  /* Level 4 — cluster wrapper (deepest, most transparent) */
+  --glass-l4-blur:       24px;
+  --glass-l4-saturate:   2.0;
+  --glass-l4-bg:         rgba(15, 22, 35, 0.55);
+  --glass-l4-border:     rgba(255, 255, 255, 0.08);
+  --glass-l4-tint:       rgba(255, 255, 255, 0.025);
+
+  /* Vibrancy tint strength — accent bleeds into glass bg */
+  --glass-accent-tint-strength: 0.12;
+
+  /* Elevation / shadow scale ────────────────────────────────────────────── */
+  --elev-0:  none;
+  --elev-1:  0 1px 1px rgba(0,0,0,0.20),
+             0 4px 8px -2px rgba(0,0,0,0.32),
+             0 0 0 0.5px rgba(0,0,0,0.18);
+  --elev-2:  0 2px 4px rgba(0,0,0,0.24),
+             0 8px 20px -4px rgba(0,0,0,0.44),
+             0 0 0 0.5px rgba(0,0,0,0.22);
+  --elev-3:  0 4px 8px rgba(0,0,0,0.28),
+             0 16px 36px -6px rgba(0,0,0,0.52),
+             0 0 0 0.5px rgba(0,0,0,0.24);
+  --elev-4:  0 8px 16px rgba(0,0,0,0.30),
+             0 24px 52px -8px rgba(0,0,0,0.62),
+             0 0 0 0.5px rgba(0,0,0,0.28);
+  --elev-5:  0 16px 32px rgba(0,0,0,0.34),
+             0 40px 80px -12px rgba(0,0,0,0.70),
+             0 0 0 0.5px rgba(0,0,0,0.32);
+
+  /* Specular / highlight overlays ──────────────────────────────────────── */
+  /* Applied as a top-lit gradient pseudo-element or background-image layer */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,255,255,0.16) 0%,
+      rgba(255,255,255,0.06) 28%,
+      rgba(255,255,255,0.00) 55%,
+      rgba(0,0,0,0.10) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      155deg,
+      rgba(255,255,255,0.22) 0%,
+      rgba(255,255,255,0.08) 22%,
+      rgba(255,255,255,0.00) 50%,
+      rgba(0,0,0,0.14) 100%
+    );
+  /* Top-edge bevel: a thin bright line at the top */
+  --specular-bevel: inset 0 1px 0 rgba(255,255,255,0.18);
+
+  /* Continuous-rounded radii ────────────────────────────────────────────── */
+  /* Named by use-case; the values give a squircle-adjacent feel at scale */
+  --radius-surface:  1.25rem;   /* outer surface/panel */
+  --radius-card:     1.0rem;    /* zone tiles, cards */
+  --radius-control:  0.75rem;   /* buttons, selectors */
+  --radius-chip:     0.5rem;    /* badges, pills */
+  --radius-pill:     9999px;    /* fully-rounded pills */
+
+  /* Keep backward-compat aliases used by TileWrapper / existing tiles */
+  --radius-tile:     var(--radius-card);
+
+  /* Motion: spring-eased curves ────────────────────────────────────────── */
+  /* Apple-style spring: fast in, elastic settle. Approx. CASpringAnimation. */
+  --spring-snappy:   cubic-bezier(0.34, 1.56, 0.64, 1);   /* overshoot+settle */
+  --spring-gentle:   cubic-bezier(0.22, 1.0,  0.36, 1);   /* smooth, no over  */
+  --spring-bounce:   cubic-bezier(0.25, 1.8,  0.5,  1);   /* pronounced bounce */
+
+  /* Duration scale */
+  --dur-instant:     80ms;
+  --dur-fast:        160ms;
+  --dur-medium:      260ms;
+  --dur-slow:        420ms;
+  --dur-enter:       320ms;   /* tile/modal mount */
+  --dur-exit:        200ms;   /* tile/modal unmount */
+
+  /* Type scale ──────────────────────────────────────────────────────────── */
+  /* SF Pro Display-inspired: uses native system-ui font for maximum fidelity */
+  --font-display:    -apple-system, "SF Pro Display", system-ui, sans-serif;
+  --font-body:       -apple-system, "SF Pro Text",    system-ui, sans-serif;
+  --font-numeric:    "SF Mono", "Menlo", ui-monospace, monospace;
+
+  --type-hero:       clamp(2.5rem, 5cqw, 3.5rem);   /* setpoint digit */
+  --type-xl:         1.5rem;
+  --type-lg:         1.125rem;
+  --type-md:         0.9375rem;
+  --type-sm:         0.8125rem;
+  --type-xs:         0.6875rem;
+  --type-2xs:        0.5625rem;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-heavy:    800;
+
+  --tracking-tight:  -0.025em;
+  --tracking-default: -0.01em;
+  --tracking-loose:  0.04em;
+  --tracking-caps:   0.08em;
+
+  /* Spacing scale (4pt grid) ────────────────────────────────────────────── */
+  --space-1:   0.25rem;   /*  4px */
+  --space-2:   0.5rem;    /*  8px */
+  --space-3:   0.75rem;   /* 12px */
+  --space-4:   1.0rem;    /* 16px */
+  --space-5:   1.25rem;   /* 20px */
+  --space-6:   1.5rem;    /* 24px */
+  --space-8:   2.0rem;    /* 32px */
+  --space-10:  2.5rem;    /* 40px */
+  --space-12:  3.0rem;    /* 48px */
+}
+
+/* ── LIGHT mode ─────────────────────────────────────────────────────────── */
+body.light-mode {
+  /* Glass becomes white-frosted — white tint bleeds instead of dark */
+  --glass-l1-blur:       16px;
+  --glass-l1-saturate:   1.4;
+  --glass-l1-bg:         rgba(255, 255, 255, 0.68);
+  --glass-l1-border:     rgba(0, 0, 0, 0.06);
+  --glass-l1-tint:       rgba(255, 255, 255, 0.45);
+
+  --glass-l2-blur:       22px;
+  --glass-l2-saturate:   1.6;
+  --glass-l2-bg:         rgba(255, 255, 255, 0.58);
+  --glass-l2-border:     rgba(0, 0, 0, 0.08);
+  --glass-l2-tint:       rgba(255, 255, 255, 0.5);
+
+  --glass-l3-blur:       10px;
+  --glass-l3-saturate:   1.3;
+  --glass-l3-bg:         rgba(245, 247, 250, 0.72);
+  --glass-l3-border:     rgba(0, 0, 0, 0.07);
+  --glass-l3-tint:       rgba(255, 255, 255, 0.6);
+
+  --glass-l4-blur:       28px;
+  --glass-l4-saturate:   1.8;
+  --glass-l4-bg:         rgba(240, 244, 250, 0.50);
+  --glass-l4-border:     rgba(0, 0, 0, 0.05);
+  --glass-l4-tint:       rgba(255, 255, 255, 0.6);
+
+  --glass-accent-tint-strength: 0.08;
+
+  /* Lighter shadows for white surfaces */
+  --elev-1:  0 1px 2px rgba(0,0,0,0.06),
+             0 4px 10px -2px rgba(0,0,0,0.10),
+             0 0 0 0.5px rgba(0,0,0,0.04);
+  --elev-2:  0 2px 4px rgba(0,0,0,0.08),
+             0 8px 20px -4px rgba(0,0,0,0.14),
+             0 0 0 0.5px rgba(0,0,0,0.05);
+  --elev-3:  0 4px 8px rgba(0,0,0,0.10),
+             0 16px 36px -6px rgba(0,0,0,0.18),
+             0 0 0 0.5px rgba(0,0,0,0.06);
+  --elev-4:  0 8px 16px rgba(0,0,0,0.10),
+             0 24px 52px -8px rgba(0,0,0,0.22),
+             0 0 0 0.5px rgba(0,0,0,0.06);
+  --elev-5:  0 16px 32px rgba(0,0,0,0.12),
+             0 40px 80px -12px rgba(0,0,0,0.26),
+             0 0 0 0.5px rgba(0,0,0,0.07);
+
+  /* Light-mode specular: gentler highlights */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,255,255,0.70) 0%,
+      rgba(255,255,255,0.30) 25%,
+      rgba(255,255,255,0.00) 55%,
+      rgba(0,0,0,0.03) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      155deg,
+      rgba(255,255,255,0.80) 0%,
+      rgba(255,255,255,0.40) 20%,
+      rgba(255,255,255,0.00) 50%,
+      rgba(0,0,0,0.04) 100%
+    );
+  --specular-bevel: inset 0 1px 0 rgba(255,255,255,0.90);
+}
+
+/* ── AMBIENT-NIGHT mode ──────────────────────────────────────────────────── */
+body.ambient-night {
+  /* Warm-tinted glass — lower saturation, amber vibrancy to reduce blue light */
+  --glass-l1-blur:       10px;
+  --glass-l1-saturate:   1.3;
+  --glass-l1-bg:         rgba(26, 20, 12, 0.74);
+  --glass-l1-border:     rgba(255, 210, 140, 0.07);
+  --glass-l1-tint:       rgba(255, 200, 120, 0.03);
+
+  --glass-l2-blur:       14px;
+  --glass-l2-saturate:   1.4;
+  --glass-l2-bg:         rgba(34, 26, 16, 0.64);
+  --glass-l2-border:     rgba(255, 210, 140, 0.09);
+  --glass-l2-tint:       rgba(255, 200, 120, 0.04);
+
+  --glass-l3-blur:       6px;
+  --glass-l3-saturate:   1.2;
+  --glass-l3-bg:         rgba(44, 34, 22, 0.60);
+  --glass-l3-border:     rgba(255, 200, 130, 0.08);
+  --glass-l3-tint:       rgba(255, 190, 100, 0.03);
+
+  --glass-l4-blur:       18px;
+  --glass-l4-saturate:   1.5;
+  --glass-l4-bg:         rgba(18, 14, 8, 0.58);
+  --glass-l4-border:     rgba(255, 200, 120, 0.06);
+  --glass-l4-tint:       rgba(255, 190, 100, 0.02);
+
+  --glass-accent-tint-strength: 0.10;
+
+  /* Warm, low-intensity shadows */
+  --elev-1:  0 1px 2px rgba(0,0,0,0.30),
+             0 4px 8px -2px rgba(0,0,0,0.45);
+  --elev-2:  0 2px 4px rgba(0,0,0,0.34),
+             0 8px 20px -4px rgba(0,0,0,0.55);
+  --elev-3:  0 4px 8px rgba(0,0,0,0.38),
+             0 16px 36px -6px rgba(0,0,0,0.62);
+  --elev-4:  0 8px 16px rgba(0,0,0,0.42),
+             0 24px 52px -8px rgba(0,0,0,0.68);
+  --elev-5:  0 16px 32px rgba(0,0,0,0.46),
+             0 40px 80px -12px rgba(0,0,0,0.75);
+
+  /* Warmer specular */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,210,140,0.10) 0%,
+      rgba(255,200,120,0.04) 28%,
+      rgba(255,255,255,0.00) 55%,
+      rgba(0,0,0,0.12) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      155deg,
+      rgba(255,210,140,0.14) 0%,
+      rgba(255,200,120,0.06) 22%,
+      rgba(255,255,255,0.00) 50%,
+      rgba(0,0,0,0.16) 100%
+    );
+  --specular-bevel: inset 0 1px 0 rgba(255,210,140,0.12);
+}
+
+/* ── Liquid Glass animation keyframes ───────────────────────────────────── */
+@keyframes glass-mount {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes glass-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.7; }
+  70%  { box-shadow: 0 0 0 8px currentColor; opacity: 0; }
+  100% { box-shadow: 0 0 0 0 currentColor; opacity: 0; }
+}
+
+@keyframes glass-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes glass-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
