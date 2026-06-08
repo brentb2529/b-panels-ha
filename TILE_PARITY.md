@@ -43,14 +43,41 @@ from Home Assistant integration entities. Status legend: ✅ built & mapped ·
 Composite groups all of the above into one card. **Verify:** the robot device's
 entities appear as stats.
 
-## Briggs & Stratton generator — composite card ⛔
+## Kohler / Rehlko standby generator (core `rehlko`) — composite card 🟡
 
-No official integration. Original fields (status, battery V, grid V, engine hours,
-frequency, alarms) map to a generator integration's `sensor`/`binary_sensor`
-entities **if present**. Closest analog: `ha-generac` (Generac) entity shape
-(`sensor.*_status`, `*_battery_voltage`, `*_run_time`, `binary_sensor.*_connected`).
-B&S typically needs genmon→MQTT or a REST/scrape. Tile = composite of whatever
-generator entities exist.
+DISPLAY-ONLY. `rehlko` (HA core, silver; successor to the removed `oncue`)
+exposes telemetry only — **no control entities** — so the surface renders state
+and never commands the unit (start/stop/exercise are equipment-gated, not wired).
+Built as a composite (`KohlerGeneratorTile`, `DeviceType.GeneratorRehlko`,
+composite id `rehlko:generator`) folded from the generator's prefixed entities by
+naming convention (`sensor.generator_*` / `binary_sensor.generator_*`), all via
+`subscribeEntities` (no polling). Distinct from the legacy EnergyTrak/genmon
+`GeneratorTile` (`DeviceType.Generator`), which polls an HTTP endpoint.
+
+| Surface field | HA entity (rehlko slug) | In tile? |
+| --- | --- | --- |
+| headline (Standby/Running/Exercising/Offline) | `sensor.generator_engine_state` + `_status` (derived) | ✅ hero |
+| power source (On Utility / On Generator) | `sensor.generator_power_source` | ✅ hero pill |
+| attention (low oil pressure) | `binary_sensor.generator_oil_pressure` (problem) | ✅ |
+| attention (controller offline) | `binary_sensor.generator_connectivity` | ✅ |
+| auto mode armed | `binary_sensor.generator_auto_run` | ✅ footer |
+| battery V | `sensor.generator_battery_voltage` | ✅ vital |
+| load W / % | `sensor.generator_load` / `_load_percent` | ✅ vital (kW≥1000W) |
+| output V (avg) | `sensor.generator_voltage` | ✅ vital |
+| utility V (avg) | `sensor.generator_utility_voltage` | ✅ modal |
+| frequency Hz | `sensor.generator_engine_frequency` | ✅ vital |
+| engine rpm | `sensor.generator_engine_speed` | ✅ vital |
+| total runtime hrs | `sensor.generator_total_runtime` | ✅ vital |
+| coolant/oil/controller temp, oil psi | `sensor.generator_*_temp`, `_oil_pressure` | ✅ modal |
+| next exercise / last run / maintenance | `sensor.generator_next_exercise` / `_last_run` / `_*_maintenance` (timestamp) | ✅ footer + modal |
+| fuel level | none (NG/LP — no tank sender) | n/a (shows "n/a") |
+| **control (start/stop/exercise)** | — none in `rehlko` — | **omitted by design (safety)** |
+
+**Status 🟡:** designed + verified against a clearly-labelled `(preview)` fixture
+(`dev-ha/config/packages/kohler_generator_preview.yaml`); promotes to ✅ once the
+real `rehlko` account is connected and the entity ids/units are confirmed against
+`Developer Tools → States`. The surface shows an amber "Preview data" ribbon
+whenever the fixture is in play (lifted from the `(preview)` friendly-name marker).
 
 ## Flair (HACS `flair`) — composite card ⛔
 

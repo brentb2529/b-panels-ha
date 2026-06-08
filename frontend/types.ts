@@ -31,6 +31,12 @@ export enum DeviceType {
   SmokeDetector = 'SMOKE_DETECTOR',
   CarbonMonoxideDetector = 'CARBON_MONOXIDE_DETECTOR',
   Generator = 'GENERATOR',
+  // Standby-generator status surface bound to the Home Assistant core `rehlko`
+  // integration (Kohler / RDC2). Distinct from `Generator` above, which is the
+  // legacy EnergyTrak/genmon HTTP-proxy tile. DISPLAY-ONLY: rehlko exposes no
+  // control entities, so this surface renders telemetry and never commands the
+  // unit. Built as a composite from the generator's prefixed HA entities.
+  GeneratorRehlko = 'GENERATOR_REHLKO',
   LitterRobot = 'LITTER_ROBOT',
   Vacuum = 'VACUUM',
   Pet = 'PET',
@@ -697,6 +703,55 @@ export interface FlairStructure {
   roomCount: number;
   ventCount: number;
   activeRoomCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Kohler / Rehlko standby generator (HA core `rehlko`) — composite card state
+// ---------------------------------------------------------------------------
+// DISPLAY-ONLY telemetry composed from the generator's prefixed HA entities
+// (sensor.generator_* / binary_sensor.generator_*). rehlko ships NO control
+// entities, so this state object carries no command surface. A numeric/string
+// field is `null` when the controller didn't report it (availability varies per
+// unit) — the tile renders "n/a" rather than a fake 0.
+export interface GeneratorRehlkoState {
+  // Identification / liveness
+  generatorName: string;
+  isConnected: boolean | null;     // binary_sensor.*_connectivity (controller online)
+  isPreview: boolean;              // representative fixture, NOT live telemetry
+
+  // Hero
+  engineState: string | null;      // sensor.*_engine_state (Off/Standby/Running/…)
+  status: string | null;           // sensor.*_status (ReadyToRun/Running/…)
+  isRunning: boolean;              // derived: engineState/status == running/exercise
+  isExercising: boolean;           // derived: exercise cycle
+  powerSource: 'utility' | 'generator' | null; // sensor.*_power_source
+  autoRun: boolean | null;         // binary_sensor.*_auto_run (AUTO mode armed)
+
+  // Attention (the only shipped fault is oil-pressure problem)
+  oilPressureProblem: boolean | null; // binary_sensor.*_oil_pressure (problem class; true = problem)
+
+  // Vitals (null when not reported)
+  batteryVoltage: number | null;   // V
+  engineFrequency: number | null;  // Hz
+  generatorVoltage: number | null; // V (avg)
+  utilityVoltage: number | null;   // V (avg)
+  loadWatts: number | null;        // W
+  loadPercent: number | null;      // %
+  engineSpeed: number | null;      // rpm
+  coolantTemp: number | null;      // °F
+  oilTemp: number | null;          // °F
+  controllerTemp: number | null;   // °F
+  oilPressure: number | null;      // psi
+  totalRuntimeHours: number | null;// h
+
+  // Schedule / maintenance (ISO 8601 strings)
+  nextExercise: string | null;
+  lastRun: string | null;
+  lastMaintenance: string | null;
+  nextMaintenance: string | null;
+
+  // Member entity_ids that fed this composite (diagnostic / detail modal).
+  memberEntityIds: string[];
 }
 
 export interface FlairState {
