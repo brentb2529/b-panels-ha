@@ -88,24 +88,41 @@ the gateway's units.
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
 state + `volume_level` + `media_title`/`media_artist`/`entity_picture` + `shuffle`/`repeat`.
 
-## Lutron HomeWorks QSX (`lutron_caseta`, core) — LutronSurface 🟡
+## Lutron HomeWorks QSX (`lutron_caseta`, core) — LutronSurface ✅
 
 Self-driven surface tile (DeviceType.LutronSurface). Discovers entities dynamically
 via subscribeEntities; groups by area token from entity_id slug; graceful degradation
 when absent.
 
+Animation/richness pass (feat/lutron-anim) upgrades over v1:
+- Light card: live colour/brightness swatch disk scales + glows with level; ambient colour
+  halo behind the bulb; power button breathing ring when on; bulb icon drop-shadow glow.
+- Brightness slider: fill gradient matches live swatch colour; dragging class adds focus ring.
+- CCT strip: improved gradient (warm amber → cool blue); thumb transitions smoothly.
+- Shade glyph: translucent light-ray shaft scales with open position; light-leak below shade
+  panel; window cross-brace detail; richer fabric stripe + rail shadow.
+- Blind slats: smooth cubic-bezier tilt transition; translucent light-leak between slats.
+- Scene button: icon circle pulses on hover/press; multi-layer ripple + flash state.
+- Keypad LED: activity (green) flash on button press in addition to on/off states.
+- Stale state: whole surface dims (opacity) + amber pulsing border ring.
+- Cover move buttons: active state highlights opening/closing direction.
+- Light/dark theme: full CSS variable set overriding all hardcoded colors for light mode
+  (`prefers-color-scheme: light`).
+- Mobile reflow: collapse grids to 1–2 columns below 420 px.
+- Entity bindings and service calls unchanged.
+
 | Original field | HA entity | In surface? |
 | --- | --- | --- |
-| Light on/off + level (0–100%) | `light.<area>_<name>` state + `brightness` | ✅ animated dimmer slider, power toggle |
-| Light color (HS) | `light.*` `hs_color` | ✅ CSS color swatch + color-input |
-| Light color temperature (K) | `light.*` `color_temp_kelvin` / `min/max_color_temp_kelvin` | ✅ CCT slider with warm→cool gradient |
-| Shade position (0–100%) | `cover.*` `current_position` / `is_closed` | ✅ animated shade glyph; open/stop/close buttons |
-| Blind tilt (0–100%) | `cover.*` `current_tilt_position` | ✅ animated slat visualization; tilt-open/close buttons |
-| Scene activation | `scene.*` | ✅ tactile scene buttons with ripple feedback |
+| Light on/off + level (0–100%) | `light.<area>_<name>` state + `brightness` | ✅ animated dimmer slider + swatch disk + power toggle |
+| Light color (HS) | `light.*` `hs_color` | ✅ live colour swatch disk + ambient halo |
+| Light color temperature (K) | `light.*` `color_temp_kelvin` / `min/max_color_temp_kelvin` | ✅ CCT slider with warm→cool gradient; halo tinted by K |
+| Shade position (0–100%) | `cover.*` `current_position` / `is_closed` | ✅ animated shade glyph; light ray; open/stop/close buttons |
+| Blind tilt (0–100%) | `cover.*` `current_tilt_position` | ✅ animated slat tilt with light-leak; tilt-open/close buttons |
+| Scene activation | `scene.*` | ✅ tactile scene buttons with ripple + icon-pulse feedback |
 | Keypad buttons | `button.<keypad>_<button>` | ✅ grouped by keypad; tap to press |
-| Keypad LED state | `binary_sensor.<keypad>_<button>_led` | ✅ glowing amber dot per button (display-only; LED control deferred) |
+| Keypad LED state | `binary_sensor.<keypad>_<button>_led` | ✅ glowing amber dot (on) + green flash on press (display-only; LED control deferred) |
 | Connection health | live HA subscription | ✅ live/connecting/stale pill |
-| Stale indicator | subscribeEntities heartbeat | ✅ amber "Stale" pill after 30 s silence |
+| Stale indicator | subscribeEntities heartbeat | ✅ dim overlay + amber pulsing border after 30 s silence |
 
 Sources: `services/lutron.ts`, `hooks/useLutronSurface.ts`, `components/tiles/LutronSurface.tsx`.
 
