@@ -50,6 +50,12 @@ export enum DeviceType {
   // (or any URL) in a sandboxed iframe. HA-aware — resolves a relative
   // dashboard path against the configured HA connection's base URL.
   HACustomCard = 'HA_CUSTOM_CARD',
+
+  // Surface 1 — Pool / Spa (Pentair IntelliCenter).
+  // Self-driven: the tile hooks directly into subscribeEntities and resolves
+  // all IntelliCenter entities at runtime. See hooks/usePoolSurface.ts.
+  // Bind by OBJTYPE/OBJNAM attributes, NOT by literal entity_id.
+  IntelliCenterPool = 'INTELLICENTER_POOL',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home
