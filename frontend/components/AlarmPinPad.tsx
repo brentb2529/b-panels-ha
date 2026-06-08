@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { IconBackspace } from './icons';
+import { swallowNextClick } from '../utils';
 
 // Shared PIN pad for the alarm disarm flows (entry-delay + intrusion). Keeps the
 // two modals visually and behaviourally identical. Theme-adaptive: surfaces use
@@ -16,7 +17,17 @@ const AlarmPinPad = ({ accent, onDisarm }: AlarmPinPadProps) => {
   const [error, setError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const handleDigit = useCallback((d: string) => { setPin(prev => (prev.length < 6 ? prev + d : prev)); setError(null); }, []);
+  const handleDigit = useCallback((d: string) => {
+    setPin(prev => {
+      if (prev.length >= 6) return prev;
+      const next = prev + d;
+      // 4th digit auto-submits + closes the modal; eat the tap's trailing click
+      // so it can't fall through to the tile underneath.
+      if (next.length === 4) swallowNextClick();
+      return next;
+    });
+    setError(null);
+  }, []);
   const handleBackspace = useCallback(() => { setPin(prev => prev.slice(0, -1)); setError(null); }, []);
   const handleClear = useCallback(() => { setPin(''); setError(null); }, []);
 
