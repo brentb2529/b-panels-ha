@@ -88,6 +88,38 @@ the gateway's units.
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
 state + `volume_level` + `media_title`/`media_artist`/`entity_picture` + `shuffle`/`repeat`.
 
+## Lutron HomeWorks QSX (`lutron_caseta`, core) — LutronSurface 🟡
+
+Self-driven surface tile (DeviceType.LutronSurface). Discovers entities dynamically
+via subscribeEntities; groups by area token from entity_id slug; graceful degradation
+when absent.
+
+| Original field | HA entity | In surface? |
+| --- | --- | --- |
+| Light on/off + level (0–100%) | `light.<area>_<name>` state + `brightness` | ✅ animated dimmer slider, power toggle |
+| Light color (HS) | `light.*` `hs_color` | ✅ CSS color swatch + color-input |
+| Light color temperature (K) | `light.*` `color_temp_kelvin` / `min/max_color_temp_kelvin` | ✅ CCT slider with warm→cool gradient |
+| Shade position (0–100%) | `cover.*` `current_position` / `is_closed` | ✅ animated shade glyph; open/stop/close buttons |
+| Blind tilt (0–100%) | `cover.*` `current_tilt_position` | ✅ animated slat visualization; tilt-open/close buttons |
+| Scene activation | `scene.*` | ✅ tactile scene buttons with ripple feedback |
+| Keypad buttons | `button.<keypad>_<button>` | ✅ grouped by keypad; tap to press |
+| Keypad LED state | `binary_sensor.<keypad>_<button>_led` | ✅ glowing amber dot per button (display-only; LED control deferred) |
+| Connection health | live HA subscription | ✅ live/connecting/stale pill |
+| Stale indicator | subscribeEntities heartbeat | ✅ amber "Stale" pill after 30 s silence |
+
+Sources: `services/lutron.ts`, `hooks/useLutronSurface.ts`, `components/tiles/LutronSurface.tsx`.
+
+Binding assumptions:
+- Area names are derived from the entity_id slug (all tokens except the last).
+  e.g. `light.living_room_overhead` → area "Living Room", device "Overhead".
+- LED entities are matched by the convention `binary_sensor.<button_slug>_led`.
+  If the convention differs on the actual installation, the LED dot renders "unknown" (dim)
+  but the button still works.
+- All light/cover entities in HA are shown (no integration-filter); non-Lutron entities
+  that share a domain are also displayed. This is acceptable for an opt-in surface tile.
+- LED control (writing to binary_sensor or related switch) is explicitly deferred per
+  ENTITY_CONTRACT.md; the surface is display-only for LED state.
+
 ---
 
 ### Build order (each verified for parity before next)
@@ -95,4 +127,5 @@ state + `volume_level` + `media_title`/`media_artist`/`entity_picture` + `shuffl
 2. Litter-Robot composite (verify waste/litter/status stats).
 3. CoolMaster + Flair + Jandy pool composites (climate-based).
 4. Generator composite + Tempest weather + Sonos player.
-5. Keypad / Panic if applicable.
+5. **Lutron HomeWorks QSX surface** ✅ (this loop).
+6. Keypad / Panic if applicable.

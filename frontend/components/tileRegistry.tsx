@@ -24,6 +24,7 @@ import RSSFeedTile from './tiles/RSSFeedTile';
 import GeneratorTile from './tiles/GeneratorTile';
 import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
+import LutronSurface from './tiles/LutronSurface';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -78,6 +79,10 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.PanicButton]: PanicTile,
   [DeviceType.AlarmHistory]: AlarmHistoryTile,
   [DeviceType.Folder]: FolderTile,
+
+  // Lutron HomeWorks QSX: self-driven surface rendering lights/covers/scenes/keypads.
+  // Placed as a virtual tile in the dashboard config; discovers entities dynamically.
+  [DeviceType.LutronSurface]: LutronSurface,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a
   // bespoke tile above; presentation is derived from the entity's inferred
