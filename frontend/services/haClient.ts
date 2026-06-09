@@ -196,6 +196,37 @@ export async function getStates(): Promise<any[]> {
     return Array.isArray(states) ? states : Object.values(states ?? {});
 }
 
+// Liveness probe. After a kiosk device sleeps, the websocket can become a
+// "zombie" — still flagged open but delivering nothing — so the state (incl. the
+// alarm tile) silently goes stale. ping() round-trips over the live socket; if it
+// doesn't answer within the timeout, the socket is dead and the caller should
+// force a reconnect. Returns true only on a real, timely pong.
+export async function pingAlive(timeoutMs = 3000): Promise<boolean> {
+    try {
+        const conn = await getConnection();
+        await Promise.race([
+            (conn as any).ping(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('ping timeout')), timeoutMs)),
+        ]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Force the existing connection to drop its socket and reconnect now (which
+// re-runs subscriptions and re-syncs the full entity collection). Used on wake /
+// network-online / when a liveness ping fails, so a stale snapshot can't persist.
+export async function forceReconnect(): Promise<void> {
+    try {
+        const conn = await getConnection();
+        (conn as any).reconnect(true);
+    } catch {
+        // No live connection object — getConnection's own retry path will rebuild it.
+        connectionPromise = null;
+    }
+}
+
 // Send a raw websocket command and return its result (for integration WS
 // commands without a dedicated wrapper, e.g. Alarmo's read-only `alarmo/users`).
 export async function haSendMessage(msg: Record<string, any>): Promise<any> {

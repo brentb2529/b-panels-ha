@@ -30,7 +30,7 @@ const ShieldHalo = ({ color, glow, children }: { color: string; glow: boolean; c
 );
 
 const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, haAlarmoSensors, alarmState: globalAlarmState } = useDashboard();
+    const { setAlarmStatus, requestPin, armingState, devices, sensorAliases, notifyingSensorIds, haAlarmoSensors, alarmState: globalAlarmState, haWsState } = useDashboard();
     const isLocked = !!tile.isLocked;
 
     // A real alarm_control_panel device has a plain arm-state string for
@@ -187,8 +187,16 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
             grad: 'linear-gradient(160deg,#dc2626_0%,#b91c1c_55%,#7f1d1d_100%)',
             glowColor: '#fca5a5',
         },
+        // SAFETY: state could not be determined (unavailable entity / reconnecting).
+        // Neutral grey + explicit "unknown" — NEVER the green "Disarmed" look.
+        unknown: {
+            text: 'Status Unknown',
+            icon: IconShield,
+            grad: 'linear-gradient(160deg,#4b5563_0%,#374151_55%,#1f2937_100%)',
+            glowColor: '#9ca3af',
+        },
     }[alarmState.armState] || {
-        text: 'Unknown',
+        text: 'Status Unknown',
         icon: IconShield,
         grad: 'linear-gradient(160deg,#4b5563_0%,#374151_55%,#1f2937_100%)',
         glowColor: '#9ca3af',
@@ -196,6 +204,10 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
 
     const Icon = statusConfig.icon;
     const isArmed = alarmState.armState === 'armedStay' || alarmState.armState === 'armedAway';
+    const isUnknown = alarmState.armState === 'unknown';
+    // Live socket lost/reconnecting → the displayed state may be stale; surface it
+    // so a stale reading is never silently trusted (the morning-incident guard).
+    const isStale = haWsState !== 'connected';
 
     const btnBase = "flex-1 rounded-control font-bold transition-all flex items-center justify-center gap-2 uppercase tracking-wide active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
     const btnScaleStyle: React.CSSProperties = {
@@ -238,6 +250,17 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                     {phase === 'arming' ? 'Arming' : phase === 'pending' ? 'Entry Delay' : statusConfig.text}
                 </p>
 
+                {/* Live-connection lost: the displayed state may be stale. Never let
+                    a stale reading pass as trusted truth on a security tile. */}
+                {isStale && (
+                    <div className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-amber-300 animate-pulse shadow-[0_0_6px_rgba(252,211,77,0.8)]" />
+                        <p className="!text-white font-bold uppercase tracking-wider" style={fluidTextXs}>
+                            Reconnecting — state may be stale
+                        </p>
+                    </div>
+                )}
+
                 {/* Inline exit/entry-delay countdown (the modals carry the full UI). */}
                 {(phase === 'arming' || phase === 'pending') && (
                     <p className="!text-white font-bold uppercase tracking-widest tabular-nums animate-pulse" style={{ ...fluidTextXs, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
@@ -270,7 +293,7 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                     </div>
                 )}
 
-                {!isArmed && !isReady && !armError && (
+                {!isArmed && !isUnknown && !isReady && !armError && (
                     <div className="flex flex-col items-center gap-1.5 mt-1 max-w-full">
                         <div className="flex items-center gap-2 bg-black/30 px-4 py-1.5 rounded-full backdrop-blur-sm shadow-sm">
                             <span className="w-2.5 h-2.5 rounded-full bg-yellow-300 animate-pulse shadow-[0_0_8px_rgba(253,224,71,0.7)]" />
@@ -303,7 +326,17 @@ const AlarmTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
 
             {/* Control Bar */}
             <div className="flex w-full bg-black/15 backdrop-blur-sm mt-auto border-t border-white/10" style={controlBarStyle}>
-                {isArmed ? (
+                {isUnknown ? (
+                    // State unknown (unavailable entity / reconnecting): don't offer
+                    // arm/disarm that we can't trust — show a clear waiting state.
+                    <button
+                        className={`${btnBase} ${btnSecondary} w-full`}
+                        style={btnScaleStyle}
+                        disabled
+                    >
+                        Waiting for status…
+                    </button>
+                ) : isArmed ? (
                     <button
                         onClick={() => handleAction('DISARMED')}
                         className={`${btnBase} ${btnPrimary} w-full`}
