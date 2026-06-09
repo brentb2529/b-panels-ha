@@ -22,6 +22,7 @@ import PetTile from './tiles/PetTile';
 import FlairTile from './tiles/FlairTile';
 import RSSFeedTile from './tiles/RSSFeedTile';
 import GeneratorTile from './tiles/GeneratorTile';
+import KohlerGeneratorTile from './tiles/KohlerGeneratorTile';
 import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
 import AirControlSurface from './tiles/AirControlSurface';
@@ -81,6 +82,7 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.Flair]: FlairTile,
   [DeviceType.RSSFeed]: RSSFeedTile,
   [DeviceType.Generator]: GeneratorTile,
+  [DeviceType.GeneratorRehlko]: KohlerGeneratorTile,
   [DeviceType.PanicButton]: PanicTile,
   [DeviceType.AlarmHistory]: AlarmHistoryTile,
   [DeviceType.AirControl]: AirControlSurface,

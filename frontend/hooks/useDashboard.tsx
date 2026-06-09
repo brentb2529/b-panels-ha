@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, GeneratorRehlkoState } from '../types';
 import { produce } from 'immer';
 import { useCoolMasterComposites } from './useCoolMasterSurface';
 import { homeAssistantService } from '../services/homeassistant';
@@ -347,6 +347,7 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.AlarmHistory:
         case DeviceType.RSSFeed:
         case DeviceType.Generator:
+        case DeviceType.GeneratorRehlko:
         case DeviceType.LitterRobot:
         case DeviceType.AirControl:
         // Pool surface is self-driven via usePoolSurface; its device.state is
@@ -1380,22 +1381,144 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     useMemo(() => rawEntitiesRef.current, [rawEntitiesVersion])
   );
 
+  // Kohler / Rehlko standby-generator composite. The HA core `rehlko`
+  // integration splits one generator into ~25 prefixed sensor/binary_sensor
+  // entities (sensor.generator_*, binary_sensor.generator_*). We fold them back
+  // into ONE display-only status card, mirroring the Flair composite pattern.
+  // DISPLAY-ONLY: rehlko exposes no control entities, so nothing here is wired
+  // to a service call. Bound by naming prefix so it works regardless of the
+  // device's friendly name (entity_ids are `<device slug>_<key>`); we accept a
+  // `generator_` or `rehlko_` object-id prefix. Lives purely in serviceDevices,
+  // so it stays live via subscribeEntities with no polling.
+  const { generatorRehlkoComposites, generatorRehlkoMemberIds } = useMemo(() => {
+    const empty = { generatorRehlkoComposites: [] as Device[], generatorRehlkoMemberIds: new Set<string>() };
+
+    // Object-id (after the domain dot) for an entity device id.
+    const objId = (id: string) => id.split('.').slice(1).join('.');
+    // A generator member: sensor/binary_sensor whose object-id starts with the
+    // generator/rehlko prefix. (The `_oil_pressure` binary_sensor is the fault;
+    // the `_oil_pressure` sensor is the psi reading — both are valid members.)
+    const PREFIX_RE = /^(generator|rehlko)[_-]/i;
+    const members = serviceDevices.filter(d => {
+      const [domain] = d.id.split('.');
+      return (domain === 'sensor' || domain === 'binary_sensor') && PREFIX_RE.test(objId(d.id));
+    });
+    if (members.length === 0) return empty;
+
+    const raw = (d: Device) => String((d.capabilityData as any)?.rawState ?? '');
+    const dc = (d: Device) => String((d.capabilityData as any)?.deviceClass ?? '').toLowerCase();
+    // Find one member by a suffix on its object-id (anchored to end).
+    const find = (suffix: RegExp) => members.find(d => suffix.test(objId(d.id)));
+    const num = (d: Device | undefined): number | null => {
+      if (!d) return null;
+      const n = parseFloat(raw(d));
+      return Number.isFinite(n) ? n : null;
+    };
+    const txt = (d: Device | undefined): string | null => {
+      if (!d) return null;
+      const s = raw(d);
+      return s && !['unknown', 'unavailable', ''].includes(s.toLowerCase()) ? s : null;
+    };
+    const boolOf = (d: Device | undefined): boolean | null => {
+      if (!d) return null;
+      const s = raw(d).toLowerCase();
+      if (['on', 'true'].includes(s)) return true;
+      if (['off', 'false'].includes(s)) return false;
+      return null;
+    };
+
+    // Resolve each logical field from its entity. Suffixes are anchored ($) so
+    // e.g. `_voltage` doesn't swallow `_utility_voltage` / `_battery_voltage`.
+    const engineStateE = find(/_engine_state$/);
+    const statusE = find(/_status$/);
+    const powerSourceE = find(/_power_source$/);
+    const autoRunE = find(/_auto_run$/);
+    const connectivityE = find(/_connectivity$/) || members.find(d => dc(d) === 'connectivity');
+    // oil-pressure PROBLEM binary_sensor vs the psi sensor: split by domain.
+    const oilProblemE = members.find(d => d.id.startsWith('binary_sensor.') && /_oil_pressure$/.test(objId(d.id)));
+    const oilPsiE = members.find(d => d.id.startsWith('sensor.') && /_oil_pressure$/.test(objId(d.id)));
+
+    const engineState = txt(engineStateE);
+    const status = txt(statusE);
+    const runningWord = `${engineState ?? ''} ${status ?? ''}`.toLowerCase();
+    const isExercising = /exerc/.test(runningWord);
+    const isRunning = /run|crank|exerc/.test(runningWord) && !/standby|ready|off|stop/.test(engineState?.toLowerCase() ?? '');
+
+    const psRaw = txt(powerSourceE)?.toLowerCase() ?? null;
+    const powerSource: 'utility' | 'generator' | null =
+      psRaw == null ? null : /gen/.test(psRaw) ? 'generator' : /util|mains|grid/.test(psRaw) ? 'utility' : null;
+
+    // binary_sensor with device_class=problem is ON when there IS a problem.
+    const oilPressureProblem = boolOf(oilProblemE);
+
+    const state: GeneratorRehlkoState = {
+      generatorName: 'Generator',
+      isConnected: boolOf(connectivityE),
+      isPreview: members.some(d => (d.capabilityData as any)?.preview === true)
+        || members.some(d => /\(preview\)/i.test(d.name)),
+      engineState, status, isRunning, isExercising, powerSource,
+      autoRun: boolOf(autoRunE),
+      oilPressureProblem,
+      batteryVoltage: num(find(/_battery_voltage$/)),
+      engineFrequency: num(find(/_(engine_)?frequency$/)),
+      // Generator output (avg) voltage: exactly `_voltage` (or `_voltage_avg`),
+      // NOT `_battery_voltage` / `_utility_voltage` (anchored negative lookbehind
+      // isn't portable, so match the precise suffixes instead).
+      generatorVoltage: num(members.find(d =>
+        d.id.startsWith('sensor.') && /(^|_)(generator|rehlko)_voltage(_avg)?$/.test(objId(d.id)))),
+      utilityVoltage: num(find(/_utility_voltage$/)),
+      loadWatts: num(find(/_load$/)),
+      loadPercent: num(find(/_load_percent$/)),
+      engineSpeed: num(find(/_engine_speed$/)),
+      coolantTemp: num(find(/_coolant_temp(erature)?$/)),
+      oilTemp: num(find(/_(lube_)?oil_temp(erature)?$/)),
+      controllerTemp: num(find(/_controller_temp(erature)?$/)),
+      oilPressure: num(oilPsiE),
+      totalRuntimeHours: num(find(/_total_runtime$/) || find(/_runtime$/)),
+      nextExercise: txt(find(/_next_exercise$/)),
+      lastRun: txt(find(/_last_run$/) || find(/_last_ran$/)),
+      lastMaintenance: txt(find(/_last_maintenance$/)),
+      nextMaintenance: txt(find(/_next_maintenance$/)),
+      memberEntityIds: members.map(d => d.id),
+    };
+
+    // Derive the card name from the longest common prefix of the member
+    // friendly names (e.g. "Generator …") so the card title reads naturally.
+    const baseName = (() => {
+      const n = engineStateE?.name || statusE?.name || members[0]?.name || 'Generator';
+      // Strip the trailing entity-specific words to get the device name.
+      return n.replace(/\s+(engine state|status|power source|connectivity|.*)$/i, '').trim() || 'Generator';
+    })();
+    state.generatorName = baseName;
+
+    const memberIds = new Set(members.map(d => d.id));
+    const comp: Device = {
+      id: 'rehlko:generator',
+      name: baseName,
+      type: DeviceType.GeneratorRehlko,
+      service: DeviceService.HomeAssistant,
+      state,
+    };
+    return { generatorRehlkoComposites: [comp], generatorRehlkoMemberIds: memberIds };
+  }, [serviceDevices]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
     // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !coolMasterMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !coolMasterMemberIds.has(d.id) && !generatorRehlkoMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
     // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     coolMasterComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    generatorRehlkoComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, coolMasterComposites, coolMasterMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, coolMasterComposites, coolMasterMemberIds, generatorRehlkoComposites, generatorRehlkoMemberIds]);
 
   // id -> Device lookup, derived directly from `devices`. Memoized (not a
   // useState + effect) so it updates in the same render as `devices` — no extra
