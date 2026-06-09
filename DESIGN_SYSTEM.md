@@ -32,13 +32,18 @@ The visual language is built on three ideas:
 ```
 frontend/
 ├─ design-system/
-│  ├─ tokens.css           # All CSS custom property tokens (import once at root)
+│  ├─ tokens.css           # All CSS custom property tokens + keyframes (import once at root)
 │  ├─ theme.ts             # TypeScript helpers + token references for inline styles
+│  ├─ useReducedMotion.ts  # Hook tracking prefers-reduced-motion (static fallbacks)
 │  ├─ index.ts             # Barrel export — import everything from here
 │  └─ components/
 │     ├─ GlassPanel.tsx    # Base frosted-glass container (level-1 default)
 │     ├─ GlassCard.tsx     # Elevated card (level-2 default, card radius)
-│     └─ GlassButton.tsx   # Tactile glass bead button (level-3, accessible <button>)
+│     ├─ GlassButton.tsx   # Tactile glass bead button (level-3, accessible <button>)
+│     └─ motion/           # Animated domain widgets (reusable motion library)
+│        ├─ AnimatedFan.tsx     # Spinning blades + emanating airflow
+│        ├─ BuildBar.tsx        # Value meter that builds/fills on change
+│        └─ LivingModeIcon.tsx  # Mode icon with per-mode life (shimmer/drift)
 ```
 
 ---
@@ -228,6 +233,88 @@ glassMaterialActive(2, 'var(--accent-water)', { glowStrength: 0.22 })
 
 ---
 
+## Animated domain widgets
+
+A reusable motion library lives in `design-system/components/motion/`. These
+widgets reflect REAL device state with purposeful motion (not decoration) and
+every surface inherits them on rollout. All respect `prefers-reduced-motion`:
+the global CSS killswitch neutralizes the loops, and each widget also renders a
+deliberate STATIC variant via the `useReducedMotion()` hook so it still looks
+intentional.
+
+### `AnimatedFan` — spinning blades + airflow
+
+The headline widget: an SVG fan whose blades spin and whose airflow arcs pulse
+outward ("blowing") when air is actually moving.
+
+```tsx
+import { AnimatedFan } from '../design-system';
+
+<AnimatedFan
+    active={isRunning}                        // moving air now? (spin + airflow)
+    rpmLevel={0.0..1.0}                       // speed → spin duration (def 0.6)
+    size={18}                                 // px (def 22)
+    colorVar="var(--accent-water)"            // tint (def currentColor)
+    showAirflow                               // emanating arcs (def true)
+    title="Fan running"
+/>
+```
+
+Behavior: `active=false` → blades still, no airflow. `active=true` → blades spin
+(faster at higher `rpmLevel`), three airflow arcs pulse outward on staggered
+delays. Reduced-motion → blades parked at a pleasant angle + faint static arcs.
+
+### `BuildBar` — value meter that builds/fills
+
+An animated meter whose fill springs from its previous width to the new target
+on mount and on every value change, with an optional traveling glint.
+
+```tsx
+import { BuildBar } from '../design-system';
+
+<BuildBar
+    value={humidity} min={0} max={100}
+    colorVar="var(--accent-water)"
+    active={isDrying}                         // glint + fill luminosity
+    height={5}
+    label="Humidity 48%"                      // a11y (role=meter)
+/>
+```
+
+Behavior: mount → fill animates 0 → value (spring-eased); value change → springs
+to the new width; when `active`, a highlight travels across the fill.
+Reduced-motion → fill jumps to target, no glint.
+
+### `LivingModeIcon` — mode icon with life
+
+Wraps ANY icon (icon-agnostic — pass it as children) and adds a per-mode life
+animation that only plays when the equipment is running that mode:
+
+```tsx
+import { LivingModeIcon } from '../design-system';
+
+<LivingModeIcon mode={hvacMode} active={isRunning} colorVar={colorVar}>
+    <MyHeatIcon />
+</LivingModeIcon>
+```
+
+Motion per mode: `heat` → warm shimmer + flame-flicker glow underlay; `cool` →
+gentle breeze drift (float + sway); `dry` → rising vapor underlay; `auto` /
+`heat_cool` → soft idle breathe; `off`/`idle` → still. Reduced-motion → still
+icon + faint static glow. (For `fan_only`, use `<AnimatedFan>` directly.)
+
+### `useReducedMotion()` hook
+
+```tsx
+import { useReducedMotion } from '../design-system';
+const reduced = useReducedMotion();   // tracks prefers-reduced-motion live
+```
+
+Use it when a JS-driven widget needs an explicit static branch beyond the global
+CSS killswitch.
+
+---
+
 ## Keyframe animations
 
 Defined in `tokens.css`, usable anywhere:
@@ -238,6 +325,16 @@ Defined in `tokens.css`, usable anywhere:
 | `glass-pulse-ring` | Expanding ring (use on live dots) |
 | `glass-shimmer` | Gradient shimmer sweep |
 | `glass-spin-slow` | Gentle 360° rotation (fan icon) |
+| `glass-sheen-drift` | Slow sheen travel for hero surfaces |
+| `widget-fan-spin` | Fan blade rotation (duration set per-instance) |
+| `widget-airflow` | Airflow arc grows outward + fades (fan blowing) |
+| `widget-breeze-drift` | Horizontal breeze line drift (cool/fan) |
+| `widget-heat-shimmer` | Warm-air vertical wobble (heat icon) |
+| `widget-flame-flicker` | Flame glow flicker (heat glow underlay) |
+| `widget-cool-drift` | Gentle float + sway (cool icon) |
+| `widget-idle-breathe` | Soft scale pulse (active-but-idle) |
+| `widget-dry-rise` | Rising vapor (dehumidify) |
+| `widget-bar-glint` | Traveling highlight across a BuildBar fill |
 
 ---
 

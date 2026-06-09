@@ -22,10 +22,21 @@ export { GlassPanel }    from './components/GlassPanel';
 export { GlassCard }     from './components/GlassCard';
 export { GlassButton }   from './components/GlassButton';
 
+// Animated domain widgets (reusable motion library)
+export { AnimatedFan }    from './components/motion/AnimatedFan';
+export { BuildBar }       from './components/motion/BuildBar';
+export { LivingModeIcon } from './components/motion/LivingModeIcon';
+
+// Reduced-motion hook
+export { useReducedMotion } from './useReducedMotion';
+
 // Types
 export type { GlassPanelProps } from './components/GlassPanel';
 export type { GlassCardProps }  from './components/GlassCard';
 export type { GlassButtonProps } from './components/GlassButton';
+export type { AnimatedFanProps }    from './components/motion/AnimatedFan';
+export type { BuildBarProps }       from './components/motion/BuildBar';
+export type { LivingModeIconProps } from './components/motion/LivingModeIcon';
 
 // Token helpers (for inline-style usage)
 export {

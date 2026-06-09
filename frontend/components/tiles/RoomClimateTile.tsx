@@ -21,6 +21,7 @@ import {
     IconWifiOff,
     IconActivity,
 } from '../icons';
+import { AnimatedFan, BuildBar, LivingModeIcon } from '../../design-system';
 
 // ── Mode accent mapping ────────────────────────────────────────────────────
 type Accent = 'heat' | 'cool' | 'auto' | 'dry' | 'fan' | 'off';
@@ -75,6 +76,26 @@ function clampStep(value: number, step: number, min: number, max: number): numbe
     const snapped = Math.round(value / step) * step;
     const fixed   = parseFloat(snapped.toFixed(2));
     return Math.min(max, Math.max(min, fixed));
+}
+
+// Normalize a fan_mode string to a 0..1 speed level for AnimatedFan's spin rate.
+// Handles named speeds (low/medium/high/auto) and ordinal position in fanModes
+// (e.g. ["quiet","1","2","3","4","auto"]) so the blades spin faster on higher
+// settings. Falls back to a moderate default when it can't be inferred.
+function fanLevel(fanMode: string | null, fanModes: string[]): number {
+    if (!fanMode) return 0.6;
+    const m = fanMode.toLowerCase();
+    if (m.includes('low') || m === 'min' || m === 'quiet' || m === 'silent') return 0.35;
+    if (m.includes('mid') || m === 'medium' || m === 'auto') return 0.6;
+    if (m.includes('high') || m === 'max' || m === 'turbo' || m === 'strong') return 0.95;
+    // Numeric/ordinal: position within the list → 0.3..1.0
+    const idx = fanModes.indexOf(fanMode);
+    if (idx >= 0 && fanModes.length > 1) {
+        return 0.3 + (idx / (fanModes.length - 1)) * 0.7;
+    }
+    const n = parseFloat(m);
+    if (Number.isFinite(n)) return Math.max(0.3, Math.min(1, n / 5));
+    return 0.6;
 }
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -225,6 +246,14 @@ const RoomClimateTile = ({
           ].join(', ')
         : 'var(--elev-2)';
 
+    // Temp-toward-setpoint progress: position of current temp on the zone's
+    // operating range, so the animated bar reads "where the room is" between
+    // min and max. Null when we don't have a current reading.
+    const tempProgress =
+        zone.currentTemperature != null
+            ? { value: zone.currentTemperature, min: zone.minTemp, max: zone.maxTemp }
+            : null;
+
     return (
         <div
             style={{
@@ -265,19 +294,36 @@ const RoomClimateTile = ({
             >
                 {/* Left: mode icon + name + role badge */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
-                    <ModeIcon
+                    {/* Living mode icon: heat shimmers, cool drifts, etc. when the
+                        equipment is actually running this mode. Fan mode shows the
+                        AnimatedFan instead of a static glyph. */}
+                    <LivingModeIcon
                         mode={zone.hvacMode}
-                        style={{
-                            width: 18,
-                            height: 18,
-                            flexShrink: 0,
-                            color: isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar,
-                            filter: isRunning
-                                ? `drop-shadow(0 0 5px ${colorVar})`
-                                : undefined,
-                            transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-                        }}
-                    />
+                        active={isRunning}
+                        colorVar={colorVar}
+                        style={{ flexShrink: 0 }}
+                    >
+                        {zone.hvacMode === 'fan_only' ? (
+                            <AnimatedFan
+                                active={isRunning}
+                                rpmLevel={fanLevel(zone.fanMode, zone.fanModes)}
+                                size={18}
+                                colorVar={isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar}
+                                title="Fan running"
+                            />
+                        ) : (
+                            <ModeIcon
+                                mode={zone.hvacMode}
+                                style={{
+                                    width: 18,
+                                    height: 18,
+                                    color: isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar,
+                                    filter: isRunning ? `drop-shadow(0 0 5px ${colorVar})` : undefined,
+                                    transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                }}
+                            />
+                        )}
+                    </LivingModeIcon>
                     <h3
                         style={{
                             margin: 0,
@@ -437,6 +483,47 @@ const RoomClimateTile = ({
                     </span>
                 )}
             </div>
+
+            {/* ── Animated meters: temp-on-range + humidity (build on change) ── */}
+            {(tempProgress || zone.currentHumidity != null) && (
+                <div
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        padding: '6px var(--space-3) 0',
+                    }}
+                >
+                    {tempProgress && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                            <IconThermometer style={{ width: 11, height: 11, opacity: 0.5, flexShrink: 0 }} />
+                            <BuildBar
+                                value={tempProgress.value}
+                                min={tempProgress.min}
+                                max={tempProgress.max}
+                                colorVar={activeGlass ? colorVar : 'rgba(var(--text) / 0.5)'}
+                                active={isRunning}
+                                height={5}
+                                label={`Temperature ${tempProgress.value.toFixed(1)}${unit}`}
+                            />
+                        </div>
+                    )}
+                    {zone.currentHumidity != null && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                            <IconDroplets style={{ width: 11, height: 11, opacity: 0.5, flexShrink: 0 }} />
+                            <BuildBar
+                                value={zone.currentHumidity}
+                                min={0}
+                                max={100}
+                                colorVar="var(--accent-water)"
+                                active={zone.hvacAction === 'drying'}
+                                height={5}
+                                label={`Humidity ${Math.round(zone.currentHumidity)}%`}
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* ── Setpoint stepper — the hero control ──────────────────── */}
             <div
@@ -715,14 +802,15 @@ const RoomClimateTile = ({
                         onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
                         onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
                     >
-                        <IconFan
-                            style={{
-                                width: 14,
-                                height: 14,
-                                animation: isRunning && zone.hvacAction === 'fan'
-                                    ? 'glass-spin-slow 1.4s linear infinite'
-                                    : undefined,
-                            }}
+                        <AnimatedFan
+                            // The fan blows whenever the equipment is actively moving
+                            // air: explicit fan action, OR heating/cooling/drying with
+                            // the blower engaged. Spin speed reflects the fan level.
+                            active={isRunning}
+                            rpmLevel={fanLevel(zone.fanMode, zone.fanModes)}
+                            size={15}
+                            colorVar={disabled ? 'rgba(var(--text) / 0.4)' : 'currentColor'}
+                            title={`Fan ${zone.fanMode ?? ''}`.trim()}
                         />
                         <span style={{ textTransform: 'capitalize' }}>
                             {zone.fanMode ?? 'Fan'}

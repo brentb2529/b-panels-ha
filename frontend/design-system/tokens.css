@@ -437,3 +437,72 @@ body.ambient-night {
   0%   { background-position: -140% 0, 0 0, 0 0; }
   100% { background-position:  140% 0, 0 0, 0 0; }
 }
+
+/* ── Animated domain widgets ─────────────────────────────────────────────
+   Keyframes for the reusable motion library (AnimatedFan, BuildBar,
+   LivingModeIcon). All decorative loops are neutralized by the global
+   prefers-reduced-motion killswitch; widgets also render a deliberate static
+   state for that case. */
+
+/* Fan: continuous blade rotation. Speed is set per-instance via duration. */
+@keyframes widget-fan-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Airflow: concentric arcs/lines emanating outward and fading — "fan blowing".
+   Scale + fade so each wave grows away from the hub then dissolves. */
+@keyframes widget-airflow {
+  0%   { opacity: 0;    transform: scale(0.55); }
+  20%  { opacity: 0.85; }
+  100% { opacity: 0;    transform: scale(1.5); }
+}
+
+/* Airflow streak: horizontal breeze lines drifting across (cool/fan). */
+@keyframes widget-breeze-drift {
+  0%   { opacity: 0;    transform: translateX(-30%); }
+  25%  { opacity: 0.9; }
+  100% { opacity: 0;    transform: translateX(60%); }
+}
+
+/* Heat shimmer: a vertical warm-air wobble + opacity flicker for flame life. */
+@keyframes widget-heat-shimmer {
+  0%, 100% { transform: translateY(0)     scaleY(1);    opacity: 0.92; }
+  35%      { transform: translateY(-0.5px) scaleY(1.07); opacity: 1;    }
+  70%      { transform: translateY(0.4px)  scaleY(0.96); opacity: 0.85; }
+}
+
+/* Flame flicker: a faster, subtler hue/scale jitter for the heat icon glow. */
+@keyframes widget-flame-flicker {
+  0%, 100% { opacity: 0.55; transform: scale(1);    }
+  40%      { opacity: 0.95; transform: scale(1.12); }
+  60%      { opacity: 0.7;  transform: scale(0.95); }
+}
+
+/* Cool drift: a gentle floating sway for the snowflake / breeze icon. */
+@keyframes widget-cool-drift {
+  0%, 100% { transform: translateY(0)    rotate(0deg);   }
+  50%      { transform: translateY(-1.5px) rotate(8deg);  }
+}
+
+/* Idle breathe: a barely-there scale pulse for active-but-idle states. */
+@keyframes widget-idle-breathe {
+  0%, 100% { opacity: 0.7; transform: scale(1);    }
+  50%      { opacity: 1;   transform: scale(1.05); }
+}
+
+/* Dry shimmer: rising droplet/vapor for the dehumidify state. */
+@keyframes widget-dry-rise {
+  0%   { opacity: 0;   transform: translateY(2px) scale(0.8); }
+  30%  { opacity: 0.9; }
+  100% { opacity: 0;   transform: translateY(-3px) scale(1.1); }
+}
+
+/* BuildBar fill: the meter's fill grows from 0 to its target width on mount.
+   The actual target width is set inline; this just provides the easing curve
+   via transition (not a keyframe) — see component. A subtle traveling
+   highlight conveys "live/building". */
+@keyframes widget-bar-glint {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%);  }
+}
