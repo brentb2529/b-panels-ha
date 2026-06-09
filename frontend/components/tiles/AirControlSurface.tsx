@@ -12,6 +12,9 @@
 // DeviceType.AirControl tile (the FlairTile precedent: one registered tile that
 // renders many rooms). It owns its own subscription and does NOT go through the
 // device-mapping pipeline — all data/control still flows through haClient.ts.
+//
+// VISUAL: Liquid Glass / Apple design system (feat/liquid-glass). All data
+// bindings, master/slave nesting, and service wiring are unchanged.
 
 import React from 'react';
 import { useClimateZones } from '../../hooks/useClimateZones';
@@ -20,36 +23,74 @@ import { resolveModeTarget, zoneRole, type ClimateGroup, type ClimateZone } from
 import { IconWind, IconLoader2, IconWifiOff } from '../icons';
 import type { TileProps } from '../tileRegistry';
 
+// ── Status pill ────────────────────────────────────────────────────────────
 const StatusPill = ({ status }: { status: 'connecting' | 'live' | 'stale' }) => {
     if (status === 'live') {
         return (
-            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span
+                className="flex items-center gap-1.5"
+                style={{
+                    fontSize: 'var(--type-xs)',
+                    fontWeight: 'var(--weight-semibold)',
+                    letterSpacing: 'var(--tracking-caps)',
+                    textTransform: 'uppercase',
+                    color: 'rgb(52 211 153)',
+                }}
+            >
+                <span
+                    style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: 'rgb(52 211 153)',
+                        boxShadow: '0 0 6px 2px rgba(52,211,153,0.55)',
+                        animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
+                        display: 'inline-block',
+                    }}
+                />
                 Live
             </span>
         );
     }
     if (status === 'connecting') {
         return (
-            <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-400">
-                <IconLoader2 className="w-3.5 h-3.5 animate-spin" />
+            <span
+                className="flex items-center gap-1.5"
+                style={{
+                    fontSize: 'var(--type-xs)',
+                    fontWeight: 'var(--weight-semibold)',
+                    letterSpacing: 'var(--tracking-caps)',
+                    textTransform: 'uppercase',
+                    color: 'rgba(var(--text) / 0.45)',
+                }}
+            >
+                <IconLoader2 className="w-3 h-3" style={{ animation: 'spin 1s linear infinite' }} />
                 Connecting
             </span>
         );
     }
     return (
-        <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
-            <IconWifiOff className="w-3.5 h-3.5" />
-            Stale — reconnecting
+        <span
+            className="flex items-center gap-1.5"
+            style={{
+                fontSize: 'var(--type-xs)',
+                fontWeight: 'var(--weight-semibold)',
+                letterSpacing: 'var(--tracking-caps)',
+                textTransform: 'uppercase',
+                color: 'rgb(251 146 60)',
+            }}
+        >
+            <IconWifiOff style={{ width: 12, height: 12 }} />
+            Stale
         </span>
     );
 };
 
 type SetTemp = (entityId: string, temperature: number) => void;
 type SetMode = (zone: ClimateZone, group: ClimateGroup, hvacMode: string) => void;
-type SetFan = (entityId: string, fanMode: string) => void;
+type SetFan  = (entityId: string, fanMode: string) => void;
 
-// One climate zone tile wired to the right topology-aware handlers.
+// ── Single zone tile wired to topology-aware handlers ─────────────────────
 const ZoneTile = ({
     zone,
     group,
@@ -65,15 +106,13 @@ const ZoneTile = ({
     onSetHvacMode: SetMode;
     onSetFanMode: SetFan;
 }) => {
-    const role = zoneRole(zone);
+    const role   = zoneRole(zone);
     const target = resolveModeTarget(zone, group);
     return (
         <RoomClimateTile
             zone={zone}
             role={role}
             masterName={role === 'slave' ? target.masterName ?? group.master.name : undefined}
-            // A slave's mode control stays enabled only when we can route it to a
-            // master entity_id; otherwise the tile shows "mode follows master".
             modeRouted={target.routed}
             nested={nested}
             onSetTemperature={onSetTemperature}
@@ -83,8 +122,12 @@ const ZoneTile = ({
     );
 };
 
-// A master cluster: the master card with its slaves nested beneath in a
-// bordered group, so the master↔slave relationship is visually unmistakable.
+// ── Master cluster — a labelled "system" group of equal-size cards ─────────
+// The master and its slaves render as UNIFORM cards in one responsive grid
+// (not a full-width master with a nested sub-grid), so nothing stretches and
+// the system reads as a balanced set. A slim header band carries the system
+// label + slave count; a recessed level-4 glass well holds the cards so they
+// visibly float above it. The master card is flagged so it leads the group.
 const ClusterCard = ({
     group,
     onSetTemperature,
@@ -96,27 +139,65 @@ const ClusterCard = ({
     onSetHvacMode: SetMode;
     onSetFanMode: SetFan;
 }) => (
-    <div
-        className="rounded-tile p-2.5 flex flex-col gap-2.5"
+    <section
         style={{
-            border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--tile-border))',
-            background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
+            borderRadius: 'var(--radius-surface)',
+            padding: 'var(--space-3)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+            // Level-4 deepest glass: recessed well the cards float above.
+            backdropFilter:       'var(--glass-l4-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l4-backdrop)',
+            backgroundColor: 'color-mix(in srgb, var(--accent) 7%, var(--glass-l4-bg))',
+            backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l4-tint)',
+            border:          '1px solid color-mix(in srgb, var(--accent) 26%, var(--glass-l4-border))',
+            boxShadow:       'var(--rim), inset 0 8px 20px -10px rgba(0,0,0,0.55), var(--elev-2)',
         }}
     >
-        <ZoneTile
-            zone={group.master}
-            group={group}
-            onSetTemperature={onSetTemperature}
-            onSetHvacMode={onSetHvacMode}
-            onSetFanMode={onSetFanMode}
-        />
-        <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                {group.slaves.length} slave {group.slaves.length === 1 ? 'zone' : 'zones'}
+        {/* System label band */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-1)' }}>
+            <span
+                style={{
+                    fontSize: 'var(--type-2xs)',
+                    fontWeight: 700,
+                    letterSpacing: 'var(--tracking-caps)',
+                    textTransform: 'uppercase',
+                    color: 'color-mix(in srgb, var(--accent) 70%, rgb(var(--text)))',
+                }}
+            >
+                {group.master.name} system
             </span>
-            <div className="flex-1 h-px" style={{ background: 'var(--tile-border)' }} />
+            <span
+                style={{
+                    fontSize: 'var(--type-2xs)',
+                    fontWeight: 600,
+                    letterSpacing: 'var(--tracking-caps)',
+                    textTransform: 'uppercase',
+                    color: 'rgba(var(--text) / 0.38)',
+                }}
+            >
+                · {group.slaves.length} {group.slaves.length === 1 ? 'zone' : 'zones'}
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'var(--glass-l4-border)' }} />
         </div>
-        <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(13rem, 1fr))' }}>
+
+        {/* Uniform card grid: master + slaves, equal size, no stretch */}
+        <div
+            style={{
+                display: 'grid',
+                gap: 'var(--space-3)',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))',
+                alignItems: 'stretch',
+            }}
+        >
+            <ZoneTile
+                zone={group.master}
+                group={group}
+                onSetTemperature={onSetTemperature}
+                onSetHvacMode={onSetHvacMode}
+                onSetFanMode={onSetFanMode}
+            />
             {group.slaves.map((slave) => (
                 <ZoneTile
                     key={slave.entityId}
@@ -129,9 +210,58 @@ const ClusterCard = ({
                 />
             ))}
         </div>
+    </section>
+);
+
+// ── Empty state ────────────────────────────────────────────────────────────
+const EmptyState = ({ status }: { status: 'connecting' | 'live' | 'stale' }) => (
+    <div
+        style={{
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 'var(--space-4)',
+            padding: 'var(--space-10) var(--space-6)',
+        }}
+    >
+        <div
+            style={{
+                width: 56,
+                height: 56,
+                borderRadius: 'var(--radius-card)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backdropFilter:       'var(--glass-l3-backdrop)',
+                WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                backgroundColor: 'var(--glass-l3-bg)',
+                backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l3-tint)',
+                border: '1px solid var(--glass-l3-border)',
+                boxShadow: 'var(--rim), var(--elev-2)',
+            }}
+        >
+            <IconWind style={{ width: 24, height: 24, color: 'rgba(var(--text) / 0.22)' }} />
+        </div>
+        <p
+            style={{
+                fontSize: 'var(--type-sm)',
+                color: 'rgba(var(--text) / 0.40)',
+                textAlign: 'center',
+                maxWidth: '22rem',
+                lineHeight: 1.55,
+                fontWeight: 400,
+            }}
+        >
+            {status === 'connecting'
+                ? 'Connecting to Home Assistant…'
+                : 'No climate zones found. Air zones appear here automatically as climate.· entities come online.'}
+        </p>
     </div>
 );
 
+// ── Surface root ───────────────────────────────────────────────────────────
 // `tile`/`device` are part of the shared TileProps contract but this surface is
 // self-driven (it discovers its own entities), so they're unused here.
 const AirControlSurface = (_props: TileProps) => {
@@ -140,42 +270,123 @@ const AirControlSurface = (_props: TileProps) => {
     const clusterCount = groups.filter((g) => g.isCluster).length;
 
     return (
-        <div className="flex flex-col h-full w-full rounded-tile overflow-hidden bg-gray-700/60" style={{ border: '1px solid var(--tile-border)' }}>
-            {/* Surface header */}
-            <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ borderBottom: '1px solid var(--tile-border)' }}>
-                <div className="flex items-center gap-2.5">
-                    <IconWind className="w-6 h-6" style={{ color: 'var(--accent-water)' }} />
-                    <div className="flex flex-col leading-tight">
-                        <h2 className="font-bold text-white text-lg">Air Control</h2>
-                        <span className="text-xs text-gray-400">
+        /* Outermost surface: level-1 glass, surface-radius, fills the tile slot */
+        <div
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                width: '100%',
+                borderRadius: 'var(--radius-surface)',
+                overflow: 'hidden',
+                // Level-1 base glass: luminous backdrop + sheen sweep + beveled rim
+                backdropFilter:       'var(--glass-l1-backdrop)',
+                WebkitBackdropFilter: 'var(--glass-l1-backdrop)',
+                backgroundColor: 'var(--glass-l1-bg)',
+                backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l1-tint)',
+                border: '1px solid var(--glass-l1-border)',
+                boxShadow: 'var(--rim), var(--elev-4)',
+                // Spring-animated mount
+                animation: 'glass-mount var(--dur-enter, 320ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
+            }}
+        >
+            {/* ── Surface header ────────────────────────────────────────── */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: 'var(--space-4) var(--space-5)',
+                    borderBottom: '1px solid var(--glass-l1-border)',
+                    flexShrink: 0,
+                    // Header gets its own micro-glass layer to separate from scroll content
+                    backdropFilter:       'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    backgroundColor: 'var(--glass-l1-tint)',
+                }}
+            >
+                {/* Title group */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    {/* Icon bead */}
+                    <div
+                        style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 'var(--radius-control)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backdropFilter:       'var(--glass-l3-backdrop)',
+                            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                            backgroundColor: 'color-mix(in srgb, var(--accent-water) 22%, var(--glass-l3-bg))',
+                            backgroundImage: 'var(--specular-strong)',
+                            border: '1px solid color-mix(in srgb, var(--accent-water) 48%, var(--glass-l3-border))',
+                            boxShadow: 'var(--rim-light), inset 0 0 14px -4px color-mix(in srgb, var(--accent-water) 40%, transparent), 0 0 16px -3px color-mix(in srgb, var(--accent-water) 55%, transparent)',
+                        }}
+                    >
+                        <IconWind style={{ width: 18, height: 18, color: 'var(--accent-water)' }} />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <h2
+                            style={{
+                                margin: 0,
+                                fontFamily: 'var(--font-display)',
+                                fontSize: 'var(--type-lg)',
+                                fontWeight: 700,
+                                letterSpacing: 'var(--tracking-tight)',
+                                color: 'rgb(var(--text))',
+                                lineHeight: 1.2,
+                            }}
+                        >
+                            Air Control
+                        </h2>
+                        <span
+                            style={{
+                                fontSize: 'var(--type-xs)',
+                                fontWeight: 500,
+                                letterSpacing: 'var(--tracking-default)',
+                                color: 'rgba(var(--text) / 0.45)',
+                                lineHeight: 1,
+                            }}
+                        >
                             {zones.length} {zones.length === 1 ? 'zone' : 'zones'}
                             {clusterCount > 0 && ` · ${clusterCount} ${clusterCount === 1 ? 'system' : 'systems'}`}
                         </span>
                     </div>
                 </div>
+
                 <StatusPill status={status} />
             </div>
 
-            {/* Group grid (scrolls internally if it overflows the surface) */}
-            <div className="flex-1 overflow-y-auto p-3 min-h-0">
+            {/* ── Scrollable zone grid ──────────────────────────────────── */}
+            <div
+                style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: 'var(--space-4)',
+                    minHeight: 0,
+                }}
+            >
                 {zones.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 gap-3 py-10">
-                        <IconWind className="w-12 h-12 opacity-30" />
-                        <p className="text-sm max-w-xs">
-                            {status === 'connecting'
-                                ? 'Connecting to Home Assistant…'
-                                : 'No climate zones found. Air zones appear here automatically as climate.* entities come online.'}
-                        </p>
-                    </div>
+                    <EmptyState status={status} />
                 ) : (
                     <div
-                        className="grid gap-3 items-start"
-                        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(15rem, 1fr))' }}
+                        style={{
+                            display: 'grid',
+                            gap: 'var(--space-4)',
+                            alignItems: 'start',
+                            // Cards have a sensible MAX width (24rem) so they never
+                            // stretch full-bleed on a wide wall: tracks fill the row
+                            // then cap, leaving a tidy multi-column grid instead of
+                            // a few marooned ultra-wide cards. Clusters span the full
+                            // row (their own inner grid lays out uniform cards).
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 24rem))',
+                            justifyContent: 'center',
+                        }}
                     >
                         {groups.map((group) =>
                             group.isCluster ? (
-                                // A cluster spans the full row so its nested slaves
-                                // have room to lay out in their own sub-grid.
                                 <div key={group.key} style={{ gridColumn: '1 / -1' }}>
                                     <ClusterCard
                                         group={group}
