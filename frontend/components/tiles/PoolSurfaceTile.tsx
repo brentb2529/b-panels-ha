@@ -1,10 +1,9 @@
 /**
- * PoolSurfaceTile — marquee Pool / Spa dashboard surface for B-Panels.
+ * PoolSurfaceTile — Liquid Glass marquee Pool / Spa dashboard surface.
  *
- * Binds to Pentair IntelliCenter entities via the usePoolSurface hook, which
- * resolves them at runtime by matching (domain, device_class, OBJTYPE/OBJNAM).
- * All data/control flows through haClient (getStates / subscribeEntities /
- * callService) — no backend, no polling, optimistic writes, reconcile on push.
+ * Visual: Liquid Glass / Apple design system. All data bindings, OBJTYPE
+ * detection, hook integration, service calls, and control logic are
+ * UNCHANGED from the pre-glass version. Only the visual layer is restyled.
  *
  * Surface layout (adaptive by tile size):
  *
@@ -12,24 +11,13 @@
  *  │  HEADER — Pool / Spa name badges + freeze alert + stale dot │
  *  ├─────────────────┬───────────────────────────────────────────┤
  *  │  BODY CONTROLS  │  TELEMETRY (pumps + chem + probe temps)   │
- *  │  · body on/off  │  · RPM / W / GPM gauges with sparklines   │
- *  │  · heater mode  │  · Salt / pH / ORP pills                  │
+ *  │  · body on/off  │  · RPM / W / GPM gauges (glass ArcGauge)  │
+ *  │  · heater mode  │  · Salt / pH / ORP (BuildBar + StatCard)  │
  *  │  · target temp  │  · Probe temps (air / solar / …)          │
  *  ├─────────────────┴───────────────────────────────────────────┤
  *  │  CONTROLS — Lights (+ effect picker) · Water features ·     │
  *  │             SWG output % · Pump speed setpoints             │
  *  └─────────────────────────────────────────────────────────────┘
- *
- * Graceful degradation: if no IntelliCenter entities are present, a friendly
- * "Not detected" placeholder is shown. Individual sub-sections degrade
- * individually when their entities are absent.
- *
- * Light effect picker: light tiles with an effect_list surface a horizontal
- * scrollable chip-row. Tapping a chip calls light.turn_on with the effect.
- * No rgb_color (not supported by the integration).
- *
- * Design language: water-blue accent (#38bdf8 = --accent-water), animated
- * pool-water SVG background, dimensional stat cards, pill badges, fluid sizing.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -51,46 +39,58 @@ import {
   IconWaves, IconPower, IconAlertTriangle, IconCheck, IconX,
   IconActivity, IconLightbulb, IconSun, IconInfo,
 } from '../icons';
+import { BuildBar } from '../../design-system';
 import {
   fluidTextXs, fluidTextSm, fluidTextBase, fluidTextLg, fluidTextXl,
   fluidText2xl, fluidText3xl, fluidGap, fluidPad,
 } from './tileScale';
 
-// ── Pool water animated background ───────────────────────────────────────────
+// ── Water accent CSS var ──────────────────────────────────────────────────────
+const WATER = 'var(--accent-water)';
+const WARN  = 'var(--accent-warn)';
+const ALERT = 'var(--accent-alert)';
 
+// ── Pool water animated background (glass-aware) ─────────────────────────────
 const PoolBackground = ({ active }: { active: boolean }) => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none">
     <svg viewBox="0 0 400 200" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
       <defs>
         <linearGradient id="poolDepth" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#0c4a6e" />
-          <stop offset="60%" stopColor="#075985" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#0e3c56" />
+          <stop offset="0%" stopColor="#0c4a6e" stopOpacity="0.85" />
+          <stop offset="60%" stopColor="#075985" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#0e3c56" stopOpacity="0.70" />
         </linearGradient>
         <radialGradient id="poolGlow" cx="50%" cy="40%" r="55%">
-          <stop offset="0%" stopColor="#38bdf8" stopOpacity={active ? '0.18' : '0.07'} />
+          <stop offset="0%" stopColor="#38bdf8" stopOpacity={active ? '0.22' : '0.08'} />
           <stop offset="100%" stopColor="transparent" />
         </radialGradient>
       </defs>
       <rect width="400" height="200" fill="url(#poolDepth)" />
       <rect width="400" height="200" fill="url(#poolGlow)">
         {active && (
-          <animate attributeName="opacity" values="0.6;1;0.6" dur="4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.55;1;0.55" dur="4s" repeatCount="indefinite" />
         )}
       </rect>
       {/* Lazy caustic ripple lines */}
-      <path d="M0 120 Q80 108 160 118 Q240 128 320 116 Q380 108 400 118" fill="none" stroke="#38bdf8" strokeWidth="1.2" opacity="0.12">
+      <path d="M0 120 Q80 108 160 118 Q240 128 320 116 Q380 108 400 118" fill="none" stroke="#38bdf8" strokeWidth="1.4" opacity="0.14">
         {active && <animate attributeName="d" values="M0 120 Q80 108 160 118 Q240 128 320 116 Q380 108 400 118;M0 124 Q80 114 160 122 Q240 132 320 120 Q380 112 400 122;M0 120 Q80 108 160 118 Q240 128 320 116 Q380 108 400 118" dur="3.5s" repeatCount="indefinite" />}
       </path>
-      <path d="M0 140 Q100 128 200 138 Q300 148 400 138" fill="none" stroke="#7dd3fc" strokeWidth="0.8" opacity="0.09">
+      <path d="M0 140 Q100 128 200 138 Q300 148 400 138" fill="none" stroke="#7dd3fc" strokeWidth="0.9" opacity="0.10">
         {active && <animate attributeName="d" values="M0 140 Q100 128 200 138 Q300 148 400 138;M0 144 Q100 134 200 142 Q300 152 400 142;M0 140 Q100 128 200 138 Q300 148 400 138" dur="4.8s" repeatCount="indefinite" />}
       </path>
+      {/* Subtle surface sheen */}
+      <rect x="0" y="0" width="400" height="200"
+        fill="none"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%)',
+        }}
+        opacity={active ? 0.9 : 0.5}
+      />
     </svg>
   </div>
 );
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
+// ── Glass stat card (replaces old plain-bg StatCard) ─────────────────────────
 const StatCard = ({
   label, value, unit, highlight, accent, note,
 }: {
@@ -101,42 +101,67 @@ const StatCard = ({
   accent?: 'blue' | 'amber' | 'red' | 'green' | 'gray';
   note?: string;
 }) => {
-  const accentMap = {
-    blue:  { border: 'border-sky-400/40',   bg: 'rgb(8 51 68 / 0.55)',  text: 'text-sky-200',   glow: '0 0 12px -2px #38bdf8' },
-    amber: { border: 'border-amber-400/40', bg: 'rgb(60 36 6 / 0.55)',  text: 'text-amber-200', glow: '0 0 12px -2px #fbbf24' },
-    red:   { border: 'border-red-400/40',   bg: 'rgb(60 12 12 / 0.55)', text: 'text-red-200',   glow: '0 0 12px -2px #f87171' },
-    green: { border: 'border-emerald-400/40', bg: 'rgb(6 40 20 / 0.55)', text: 'text-emerald-200', glow: '0 0 12px -2px #34d399' },
-    gray:  { border: 'border-white/10',     bg: 'rgb(0 0 0 / 0.4)',     text: 'text-white',     glow: 'none' },
+  const accentColorVar: Record<string, string> = {
+    blue:  WATER,
+    amber: WARN,
+    red:   ALERT,
+    green: 'var(--accent-plug)',
+    gray:  'rgba(var(--text) / 0.4)',
   };
-  const a = accentMap[accent ?? (highlight ? 'blue' : 'gray')];
+  const chosen = accent ?? (highlight ? 'blue' : 'gray');
+  const colorVar = accentColorVar[chosen];
+
   return (
     <div
-      className={`flex flex-col items-center justify-center rounded-control flex-1 border backdrop-blur-sm ${a.border} min-w-0`}
+      className="flex flex-col items-center justify-center rounded-control flex-1 min-w-0"
       style={{
-        background: a.bg,
-        boxShadow: a.glow !== 'none'
-          ? `inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -2px 6px rgb(0 0 0 / 0.4), ${a.glow}`
-          : 'inset 0 1px 0 rgb(255 255 255 / 0.06), inset 0 -2px 5px rgb(0 0 0 / 0.4)',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: chosen !== 'gray'
+          ? `color-mix(in srgb, ${colorVar} 16%, var(--glass-l3-bg))`
+          : 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+        border: `1px solid ${chosen !== 'gray'
+          ? `color-mix(in srgb, ${colorVar} 45%, var(--glass-l3-border))`
+          : 'var(--glass-l3-border)'}`,
+        boxShadow: chosen !== 'gray'
+          ? `var(--rim), inset 0 0 20px -6px color-mix(in srgb, ${colorVar} 30%, transparent), 0 0 14px -4px color-mix(in srgb, ${colorVar} 38%, transparent)`
+          : 'var(--rim), var(--elev-1)',
         padding: 'clamp(0.2rem, 2cqmin, 0.5rem) clamp(0.15rem, 1.5cqmin, 0.35rem)',
+        transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), box-shadow var(--dur-medium, 260ms) ease`,
       }}
     >
-      <span className="text-gray-300 uppercase font-bold tracking-wider truncate w-full text-center" style={{ fontSize: 'clamp(0.42rem, 3.8cqmin, 0.6rem)' }}>
+      <span
+        className="uppercase font-bold tracking-wider truncate w-full text-center"
+        style={{ fontSize: 'clamp(0.42rem, 3.8cqmin, 0.6rem)', color: 'rgba(var(--text) / 0.5)' }}
+      >
         {label}
       </span>
-      <span className={`font-bold leading-tight tabular-nums ${a.text}`} style={{ fontSize: 'clamp(0.7rem, 6.5cqmin, 1.05rem)' }}>
-        {value ?? '--'}{unit && <span className="font-normal ml-0.5" style={{ fontSize: 'clamp(0.4rem, 3.2cqmin, 0.55rem)' }}>{unit}</span>}
+      <span
+        className="font-bold leading-tight tabular-nums"
+        style={{ fontSize: 'clamp(0.7rem, 6.5cqmin, 1.05rem)', color: chosen !== 'gray' ? colorVar : 'rgb(var(--text))' }}
+      >
+        {value ?? '--'}
+        {unit && (
+          <span className="font-normal ml-0.5" style={{ fontSize: 'clamp(0.4rem, 3.2cqmin, 0.55rem)', color: 'rgba(var(--text) / 0.5)' }}>
+            {unit}
+          </span>
+        )}
       </span>
-      {note && <span className="text-gray-400 truncate w-full text-center" style={{ fontSize: 'clamp(0.38rem, 3cqmin, 0.5rem)' }}>{note}</span>}
+      {note && (
+        <span className="truncate w-full text-center" style={{ fontSize: 'clamp(0.38rem, 3cqmin, 0.5rem)', color: 'rgba(var(--text) / 0.4)' }}>
+          {note}
+        </span>
+      )}
     </div>
   );
 };
 
-// Compact sparkline using an SVG polyline — no charting library needed.
+// ── Sparkline ─────────────────────────────────────────────────────────────────
 const Sparkline = ({ data, color = '#38bdf8', height = 28 }: { data: number[]; color?: string; height?: number }) => {
   if (data.length < 2) return null;
   const max = Math.max(...data, 1);
-  const w = 80;
-  const h = height;
+  const w = 80; const h = height;
   const pts = data.map((v, i) => {
     const x = (i / (data.length - 1)) * w;
     const y = h - (v / max) * (h - 2) - 1;
@@ -144,12 +169,12 @@ const Sparkline = ({ data, color = '#38bdf8', height = 28 }: { data: number[]; c
   }).join(' ');
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: 'clamp(14px, 6cqmin, 28px)' }} preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
     </svg>
   );
 };
 
-// Circular arc gauge for RPM / W
+// ── Glass arc gauge (RPM / W / GPM) ──────────────────────────────────────────
 const ArcGauge = ({
   value, max, label, unit, color = '#38bdf8',
 }: {
@@ -160,26 +185,35 @@ const ArcGauge = ({
   color?: string;
 }) => {
   const pct = value !== null ? Math.min(1, value / max) : 0;
-  const r = 28;
-  const cx = 36; const cy = 36;
+  const r = 28; const cx = 36; const cy = 36;
   const circ = 2 * Math.PI * r;
-  const arcLen = pct * circ * 0.75; // 270° arc
+  const arcLen = pct * circ * 0.75;
   const dashArray = `${arcLen.toFixed(1)} ${circ.toFixed(1)}`;
-  // 270° arc starting at 135° (bottom-left)
   const startAngle = 135;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const startX = cx + r * Math.cos(toRad(startAngle));
-  const startY = cy + r * Math.sin(toRad(startAngle));
 
   return (
-    <div className="flex flex-col items-center" style={{ minWidth: 0, flex: '0 0 auto' }}>
+    <div
+      className="flex flex-col items-center"
+      style={{
+        minWidth: 0,
+        flex: '0 0 auto',
+        borderRadius: 'var(--radius-control)',
+        padding: 'clamp(0.2rem, 1.8cqmin, 0.4rem)',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: `color-mix(in srgb, ${color} 12%, var(--glass-l3-bg))`,
+        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+        border: `1px solid color-mix(in srgb, ${color} 30%, var(--glass-l3-border))`,
+        boxShadow: `var(--rim), inset 0 0 14px -4px color-mix(in srgb, ${color} 22%, transparent), 0 0 10px -3px color-mix(in srgb, ${color} 30%, transparent)`,
+      }}
+    >
       <svg viewBox="0 0 72 72" style={{ width: 'clamp(40px, 16cqmin, 72px)', height: 'clamp(40px, 16cqmin, 72px)' }}>
         {/* Track */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5"
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5"
           strokeDasharray={`${(circ * 0.75).toFixed(1)} ${circ.toFixed(1)}`}
           strokeDashoffset={-(circ * 0.125).toFixed(1) as any}
           strokeLinecap="round"
-          style={{ transform: `rotate(-90deg)`, transformOrigin: `${cx}px ${cy}px` }}
+          style={{ transform: 'rotate(-90deg)', transformOrigin: `${cx}px ${cy}px` }}
         />
         {/* Active arc */}
         {value !== null && (
@@ -190,26 +224,32 @@ const ArcGauge = ({
             style={{
               transform: `rotate(${startAngle - 90}deg)`,
               transformOrigin: `${cx}px ${cy}px`,
-              filter: `drop-shadow(0 0 4px ${color})`,
+              filter: `drop-shadow(0 0 5px ${color})`,
+              transition: 'stroke-dasharray 0.6s cubic-bezier(0.22,1,0.36,1)',
             }}
           />
         )}
         {/* Value */}
-        <text x={cx} y={cy + 5} textAnchor="middle" fill="white"
-          style={{ fontSize: 'clamp(8px, 3.5cqmin, 14px)', fontWeight: 700, fontFamily: 'monospace' }}>
+        <text x={cx} y={cy + 5} textAnchor="middle" fill="rgb(var(--text))"
+          style={{ fontSize: 'clamp(8px, 3.5cqmin, 14px)', fontWeight: 700, fontFamily: 'var(--font-numeric)' }}>
           {value !== null ? (value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(Math.round(value))) : '--'}
         </text>
-        <text x={cx} y={cy + 17} textAnchor="middle" fill="rgba(200,200,200,0.7)"
+        <text x={cx} y={cy + 17} textAnchor="middle" fill="rgba(var(--text) / 0.45)"
           style={{ fontSize: 'clamp(5px, 2.2cqmin, 9px)', fontWeight: 600 }}>
           {unit}
         </text>
       </svg>
-      <span className="text-gray-300 uppercase font-bold tracking-wider text-center truncate w-full" style={{ fontSize: 'clamp(0.38rem, 3cqmin, 0.55rem)' }}>{label}</span>
+      <span
+        className="uppercase font-bold tracking-wider text-center truncate w-full"
+        style={{ fontSize: 'clamp(0.38rem, 3cqmin, 0.55rem)', color: 'rgba(var(--text) / 0.5)' }}
+      >
+        {label}
+      </span>
     </div>
   );
 };
 
-// A toggleable control pill
+// ── Glass control pill (toggle button) ────────────────────────────────────────
 const ControlPill = ({
   label, isOn, onClick, disabled, accent,
 }: {
@@ -219,62 +259,155 @@ const ControlPill = ({
   disabled?: boolean;
   accent?: 'blue' | 'amber' | 'green';
 }) => {
-  const colors = {
-    blue:  isOn ? 'bg-sky-500/30 border-sky-400/60 text-sky-100' : 'bg-black/30 border-white/10 text-gray-400',
-    amber: isOn ? 'bg-amber-500/30 border-amber-400/60 text-amber-100' : 'bg-black/30 border-white/10 text-gray-400',
-    green: isOn ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-100' : 'bg-black/30 border-white/10 text-gray-400',
-  };
-  const c = colors[accent ?? 'blue'];
+  const colorVar = accent === 'amber' ? WARN : accent === 'green' ? 'var(--accent-plug)' : WATER;
   return (
     <button
-      className={`flex items-center gap-1 rounded-full border px-2 transition-all duration-150 active:scale-95 ${c} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:brightness-110'}`}
-      style={{ padding: 'clamp(0.12rem, 1.2cqmin, 0.3rem) clamp(0.4rem, 2.5cqmin, 0.75rem)' }}
+      className={`flex items-center gap-1 rounded-full border ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+      style={{
+        padding: 'clamp(0.12rem, 1.2cqmin, 0.3rem) clamp(0.4rem, 2.5cqmin, 0.75rem)',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: isOn
+          ? `color-mix(in srgb, ${colorVar} 26%, var(--glass-l3-bg))`
+          : 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+        border: `1px solid ${isOn
+          ? `color-mix(in srgb, ${colorVar} 58%, var(--glass-l3-border))`
+          : 'var(--glass-l3-border)'}`,
+        boxShadow: isOn
+          ? `var(--rim), inset 0 0 12px -3px color-mix(in srgb, ${colorVar} 32%, transparent), 0 0 10px -3px color-mix(in srgb, ${colorVar} 44%, transparent)`
+          : 'var(--rim)',
+        transition: `all var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))`,
+      }}
       onClick={!disabled ? onClick : undefined}
       disabled={disabled}
+      onPointerDown={(e) => { if (!disabled) (e.currentTarget as HTMLElement).style.transform = 'scale(0.94)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
     >
-      <div className={`rounded-full flex-shrink-0 ${isOn ? (accent === 'amber' ? 'bg-amber-400' : accent === 'green' ? 'bg-emerald-400' : 'bg-sky-400') : 'bg-gray-500'}`}
-        style={{ width: 'clamp(5px, 1.8cqmin, 8px)', height: 'clamp(5px, 1.8cqmin, 8px)' }} />
-      <span className="font-semibold truncate" style={{ fontSize: 'clamp(0.45rem, 3.5cqmin, 0.65rem)' }}>{label}</span>
+      <div
+        className="rounded-full flex-shrink-0"
+        style={{
+          width: 'clamp(5px, 1.8cqmin, 8px)',
+          height: 'clamp(5px, 1.8cqmin, 8px)',
+          background: isOn ? colorVar : 'rgba(var(--text) / 0.3)',
+          boxShadow: isOn ? `0 0 5px 1px ${colorVar}` : 'none',
+          transition: 'background var(--dur-fast, 160ms) ease, box-shadow var(--dur-fast, 160ms) ease',
+        }}
+      />
+      <span
+        className="font-semibold truncate"
+        style={{
+          fontSize: 'clamp(0.45rem, 3.5cqmin, 0.65rem)',
+          color: isOn ? colorVar : 'rgba(var(--text) / 0.6)',
+          transition: 'color var(--dur-fast, 160ms) ease',
+        }}
+      >
+        {label}
+      </span>
     </button>
   );
 };
 
-// Section header rule
+// ── Section label with accent rule ───────────────────────────────────────────
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center gap-1.5 w-full" style={{ marginBottom: 'clamp(0.1rem, 1cqmin, 0.25rem)' }}>
-    <span className="text-sky-300/60 uppercase font-bold tracking-widest" style={{ fontSize: 'clamp(0.38rem, 2.8cqmin, 0.5rem)' }}>
+    <span
+      className="uppercase font-bold tracking-widest"
+      style={{ fontSize: 'clamp(0.38rem, 2.8cqmin, 0.5rem)', color: `color-mix(in srgb, ${WATER} 65%, rgba(var(--text) / 0.4))` }}
+    >
       {children}
     </span>
-    <div className="flex-1 h-px bg-sky-300/15" />
+    <div className="flex-1 h-px" style={{ background: `color-mix(in srgb, ${WATER} 20%, var(--glass-l3-border))` }} />
   </div>
 );
 
-// ── Effect-picker modal ──────────────────────────────────────────────────────
-
+// ── Effect-picker modal (glass-styled) ───────────────────────────────────────
 const EffectPickerModal = ({
-  light,
-  onSelect,
-  onClose,
+  light, onSelect, onClose,
 }: {
   light: LightState;
   onSelect: (effect: string) => void;
   onClose: () => void;
 }) => ReactDOM.createPortal(
-  <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={onClose}>
-    <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden border border-gray-700" onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700">
+  <div
+    className="fixed inset-0 flex items-center justify-center z-[100] p-4"
+    style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+    onClick={onClose}
+  >
+    <div
+      className="w-full max-w-sm overflow-hidden"
+      style={{
+        borderRadius: 'var(--radius-surface)',
+        backdropFilter:       'var(--glass-l2-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+        backgroundColor: 'var(--glass-l2-bg)',
+        backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
+        border: '1px solid var(--glass-l2-border)',
+        boxShadow: 'var(--rim), var(--elev-5)',
+        animation: 'glass-mount var(--dur-enter, 320ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div
+        className="flex items-center justify-between"
+        style={{
+          padding: 'var(--space-4) var(--space-5)',
+          borderBottom: '1px solid var(--glass-l2-border)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          backgroundColor: 'var(--glass-l2-tint)',
+        }}
+      >
         <div>
-          <h3 className="text-base font-bold text-white">{light.name}</h3>
-          <p className="text-xs text-gray-400">Light show / effect</p>
+          <h3 className="font-bold" style={{ fontSize: 'var(--type-md)', color: 'rgb(var(--text))' }}>
+            {light.name}
+          </h3>
+          <p style={{ fontSize: 'var(--type-xs)', color: 'rgba(var(--text) / 0.45)' }}>Light show / effect</p>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white p-1.5 rounded-full hover:bg-gray-700 transition-colors">
-          <IconX className="w-5 h-5" />
+        <button
+          onClick={onClose}
+          className="flex items-center justify-center rounded-full"
+          style={{
+            width: 32,
+            height: 32,
+            backdropFilter:       'var(--glass-l3-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+            backgroundColor: 'var(--glass-l3-bg)',
+            backgroundImage: 'var(--specular-default)',
+            border: '1px solid var(--glass-l3-border)',
+            boxShadow: 'var(--rim)',
+            color: 'rgba(var(--text) / 0.7)',
+            transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+          }}
+          onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.88)'; }}
+          onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+          onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+        >
+          <IconX className="w-4 h-4" />
         </button>
       </div>
-      <div className="p-4 flex flex-wrap gap-2 max-h-72 overflow-y-auto">
+      <div className="flex flex-wrap max-h-72 overflow-y-auto" style={{ padding: 'var(--space-4)', gap: 'var(--space-2)' }}>
         <button
           onClick={() => { onSelect('none'); onClose(); }}
-          className="px-3 py-1.5 rounded-full border text-sm font-medium transition-all active:scale-95 bg-black/30 border-white/20 text-gray-300 hover:bg-white/10"
+          style={{
+            padding: 'clamp(0.3rem, 1.5cqmin, 0.4rem) clamp(0.6rem, 3cqmin, 0.85rem)',
+            borderRadius: 'var(--radius-pill)',
+            backdropFilter:       'var(--glass-l3-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+            backgroundColor: 'var(--glass-l3-bg)',
+            backgroundImage: 'var(--specular-default)',
+            border: '1px solid var(--glass-l3-border)',
+            boxShadow: 'var(--rim)',
+            fontSize: 'var(--type-sm)',
+            fontWeight: 500,
+            color: 'rgb(var(--text))',
+            cursor: 'pointer',
+            transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+          }}
+          onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.93)'; }}
+          onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+          onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
         >
           None / Off
         </button>
@@ -282,11 +415,30 @@ const EffectPickerModal = ({
           <button
             key={effect}
             onClick={() => { onSelect(effect); onClose(); }}
-            className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all active:scale-95 ${
-              light.effect === effect
-                ? 'bg-sky-500/30 border-sky-400/60 text-sky-100'
-                : 'bg-black/30 border-white/15 text-gray-300 hover:bg-sky-500/15 hover:border-sky-400/30'
-            }`}
+            style={{
+              padding: 'clamp(0.3rem, 1.5cqmin, 0.4rem) clamp(0.6rem, 3cqmin, 0.85rem)',
+              borderRadius: 'var(--radius-pill)',
+              backdropFilter:       'var(--glass-l3-backdrop)',
+              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+              backgroundColor: light.effect === effect
+                ? `color-mix(in srgb, ${WATER} 26%, var(--glass-l3-bg))`
+                : 'var(--glass-l3-bg)',
+              backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+              border: `1px solid ${light.effect === effect
+                ? `color-mix(in srgb, ${WATER} 58%, var(--glass-l3-border))`
+                : 'var(--glass-l3-border)'}`,
+              boxShadow: light.effect === effect
+                ? `var(--rim), inset 0 0 12px -3px color-mix(in srgb, ${WATER} 30%, transparent), 0 0 10px -3px color-mix(in srgb, ${WATER} 38%, transparent)`
+                : 'var(--rim)',
+              fontSize: 'var(--type-sm)',
+              fontWeight: 500,
+              color: light.effect === effect ? WATER : 'rgb(var(--text))',
+              cursor: 'pointer',
+              transition: 'all var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+            }}
+            onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.93)'; }}
+            onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+            onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
           >
             {effect}
           </button>
@@ -297,8 +449,7 @@ const EffectPickerModal = ({
   document.body,
 );
 
-// ── Body control panel ───────────────────────────────────────────────────────
-
+// ── Body control panel (glass card) ──────────────────────────────────────────
 const BodyPanel = ({
   body,
   onToggle,
@@ -315,39 +466,51 @@ const BodyPanel = ({
   onClimateTemp: (t: number) => void;
 }) => {
   const isPool = body.name.toLowerCase().includes('pool');
-  const accentColor = isPool ? 'text-sky-300' : 'text-purple-300';
-  const pillAccent = isPool ? 'blue' : 'blue';
-
-  // Determine heat source label
-  const heaterLabel = body.heaterId
-    ? (body.heaterIsOn ? 'Heating' : 'Heater Off')
-    : (body.climateId ? 'Climate' : null);
-
-  const tempDisplay = body.waterTempC !== null
-    ? `${Math.round(body.waterTempC)}°`
-    : '--';
+  const bodyColor = isPool ? WATER : 'var(--accent)';
+  const isHeating = body.heaterIsOn;
 
   return (
     <div
-      className="flex flex-col rounded-control border border-white/10 overflow-hidden"
+      className="flex flex-col rounded-control overflow-hidden"
       style={{
-        background: 'rgb(0 0 0 / 0.35)',
-        boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.07), inset 0 -2px 6px rgb(0 0 0 / 0.4)',
+        backdropFilter:       'var(--glass-l2-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+        backgroundColor: body.isOn
+          ? `color-mix(in srgb, ${bodyColor} 18%, var(--glass-l2-bg))`
+          : 'var(--glass-l2-bg)',
+        backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
+        border: `1px solid ${body.isOn
+          ? `color-mix(in srgb, ${bodyColor} 48%, var(--glass-l2-border))`
+          : 'var(--glass-l2-border)'}`,
+        boxShadow: body.isOn
+          ? `var(--rim), inset 0 0 28px -8px color-mix(in srgb, ${bodyColor} 28%, transparent), 0 0 18px -4px color-mix(in srgb, ${bodyColor} 36%, transparent), var(--elev-2)`
+          : 'var(--rim), var(--elev-1)',
         padding: 'clamp(0.25rem, 2cqmin, 0.5rem)',
         gap: 'clamp(0.15rem, 1.5cqmin, 0.35rem)',
         display: 'flex',
         flexDirection: 'column',
+        transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), box-shadow var(--dur-medium, 260ms) ease`,
       }}
     >
       {/* Name + temp + run toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 min-w-0">
-          <IconWaves className={`flex-shrink-0 ${accentColor}`} style={{ width: 'clamp(10px, 4cqmin, 16px)', height: 'clamp(10px, 4cqmin, 16px)' }} />
-          <span className={`font-bold truncate ${accentColor}`} style={fluidTextSm}>{body.name}</span>
+          <IconWaves
+            className="flex-shrink-0"
+            style={{
+              width: 'clamp(10px, 4cqmin, 16px)',
+              height: 'clamp(10px, 4cqmin, 16px)',
+              color: bodyColor,
+              filter: body.isOn ? `drop-shadow(0 0 4px ${bodyColor})` : undefined,
+            }}
+          />
+          <span className="font-bold truncate" style={{ ...fluidTextSm, color: bodyColor }}>{body.name}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-white font-bold tabular-nums" style={fluidTextLg}>{tempDisplay}</span>
-          <span className="text-gray-400" style={fluidTextXs}>{body.waterTempUnit}</span>
+          <span className="font-bold tabular-nums" style={{ ...fluidTextLg, color: 'rgb(var(--text))' }}>
+            {body.waterTempC !== null ? `${Math.round(body.waterTempC)}°` : '--'}
+          </span>
+          <span style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.45)' }}>{body.waterTempUnit}</span>
           <ControlPill label={body.isOn ? 'ON' : 'OFF'} isOn={body.isOn} onClick={() => onToggle(!body.isOn)} accent="blue" />
         </div>
       </div>
@@ -357,8 +520,15 @@ const BodyPanel = ({
         <div className="flex items-center gap-1 flex-wrap">
           {body.heaterId && (
             <>
-              <IconFlame className={`flex-shrink-0 ${body.heaterIsOn ? 'text-amber-400' : 'text-gray-500'}`}
-                style={{ width: 'clamp(9px, 3.5cqmin, 14px)', height: 'clamp(9px, 3.5cqmin, 14px)' }} />
+              <IconFlame
+                className="flex-shrink-0"
+                style={{
+                  width: 'clamp(9px, 3.5cqmin, 14px)',
+                  height: 'clamp(9px, 3.5cqmin, 14px)',
+                  color: body.heaterIsOn ? WARN : 'rgba(var(--text) / 0.3)',
+                  filter: body.heaterIsOn ? `drop-shadow(0 0 4px ${WARN})` : undefined,
+                }}
+              />
               <ControlPill
                 label={body.heaterIsOn ? `Heat ${body.heaterTarget ?? '--'}°` : 'Heater Off'}
                 isOn={body.heaterIsOn}
@@ -366,7 +536,7 @@ const BodyPanel = ({
                 accent="amber"
               />
               {body.heaterIsOn && body.heaterTarget !== null && (
-                <span className="text-gray-400" style={fluidTextXs}>
+                <span style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.4)' }}>
                   → {body.heaterTarget}{body.waterTempUnit}
                 </span>
               )}
@@ -374,8 +544,14 @@ const BodyPanel = ({
           )}
           {!body.heaterId && body.climateId && (
             <>
-              <IconSnowflake className={`flex-shrink-0 ${body.climateMode && body.climateMode !== 'off' ? 'text-sky-400' : 'text-gray-500'}`}
-                style={{ width: 'clamp(9px, 3.5cqmin, 14px)', height: 'clamp(9px, 3.5cqmin, 14px)' }} />
+              <IconSnowflake
+                className="flex-shrink-0"
+                style={{
+                  width: 'clamp(9px, 3.5cqmin, 14px)',
+                  height: 'clamp(9px, 3.5cqmin, 14px)',
+                  color: body.climateMode && body.climateMode !== 'off' ? WATER : 'rgba(var(--text) / 0.3)',
+                }}
+              />
               <ControlPill
                 label={body.climateMode ? `Mode: ${body.climateMode}` : 'Climate Off'}
                 isOn={!!(body.climateMode && body.climateMode !== 'off')}
@@ -384,19 +560,18 @@ const BodyPanel = ({
               />
             </>
           )}
-          {heaterLabel === null && <span className="text-gray-500 italic" style={fluidTextXs}>No heater</span>}
+          {!body.heaterId && !body.climateId && (
+            <span style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.3)', fontStyle: 'italic' }}>No heater</span>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-// ── Pump telemetry section ───────────────────────────────────────────────────
-
+// ── Pump telemetry section ────────────────────────────────────────────────────
 const PumpSection = ({
-  pumps,
-  speedSetpoints,
-  onSetSpeed,
+  pumps, speedSetpoints, onSetSpeed,
 }: {
   pumps: PumpTelemetry[];
   speedSetpoints: SpeedSetpointState[];
@@ -410,18 +585,49 @@ const PumpSection = ({
         {pumps.map(pump => (
           <div
             key={pump.entityId}
-            className="flex flex-col rounded-control border border-white/10 overflow-hidden flex-1"
-            style={{ background: 'rgb(0 0 0 / 0.35)', minWidth: 'clamp(90px, 30cqw, 160px)', padding: 'clamp(0.2rem, 1.8cqmin, 0.45rem)' }}
+            className="flex flex-col flex-1 rounded-control overflow-hidden"
+            style={{
+              backdropFilter:       'var(--glass-l2-backdrop)',
+              WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+              backgroundColor: pump.isRunning
+                ? `color-mix(in srgb, ${WATER} 14%, var(--glass-l2-bg))`
+                : 'var(--glass-l2-bg)',
+              backgroundImage: 'var(--specular-default), var(--glass-l2-tint)',
+              border: `1px solid ${pump.isRunning
+                ? `color-mix(in srgb, ${WATER} 38%, var(--glass-l2-border))`
+                : 'var(--glass-l2-border)'}`,
+              boxShadow: pump.isRunning
+                ? `var(--rim), inset 0 0 18px -5px color-mix(in srgb, ${WATER} 22%, transparent), var(--elev-2)`
+                : 'var(--rim), var(--elev-1)',
+              minWidth: 'clamp(90px, 30cqw, 160px)',
+              padding: 'clamp(0.2rem, 1.8cqmin, 0.45rem)',
+              transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+            }}
           >
             {/* Name + running dot */}
             <div className="flex items-center gap-1 mb-1">
-              <div className={`rounded-full flex-shrink-0 ${pump.isRunning ? 'bg-sky-400' : 'bg-gray-600'}`}
-                style={{ width: 'clamp(5px, 1.8cqmin, 7px)', height: 'clamp(5px, 1.8cqmin, 7px)' }}>
+              <div
+                className="rounded-full flex-shrink-0 relative"
+                style={{
+                  width: 'clamp(5px, 1.8cqmin, 7px)',
+                  height: 'clamp(5px, 1.8cqmin, 7px)',
+                  background: pump.isRunning ? WATER : 'rgba(var(--text) / 0.25)',
+                  boxShadow: pump.isRunning ? `0 0 6px 1px ${WATER}` : 'none',
+                }}
+              >
                 {pump.isRunning && (
-                  <div className="w-full h-full rounded-full bg-sky-400 animate-ping opacity-60" />
+                  <div
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: WATER,
+                      animation: 'glass-pulse-ring 1.8s ease-out infinite',
+                    }}
+                  />
                 )}
               </div>
-              <span className="font-semibold text-gray-200 truncate" style={fluidTextXs}>{pump.name}</span>
+              <span className="font-semibold truncate" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.8)' }}>
+                {pump.name}
+              </span>
             </div>
             {/* Gauges row */}
             <div className="flex items-end justify-center" style={{ gap: 'clamp(0.15rem, 1.5cqmin, 0.4rem)' }}>
@@ -452,10 +658,9 @@ const PumpSection = ({
   );
 };
 
-// Inline speed setpoint control (tap –/+ or display the value)
+// ── Inline speed setpoint control (glass stepper) ────────────────────────────
 const SpeedControl = ({
-  setpoint,
-  onChange,
+  setpoint, onChange,
 }: {
   setpoint: SpeedSetpointState;
   onChange: (v: number) => void;
@@ -466,33 +671,69 @@ const SpeedControl = ({
 
   const dec = () => {
     const next = Math.max(setpoint.min, (displayed ?? setpoint.min) - step);
-    setLocal(next);
-    onChange(next);
+    setLocal(next); onChange(next);
   };
   const inc = () => {
     const next = Math.min(setpoint.max, (displayed ?? setpoint.min) + step);
-    setLocal(next);
-    onChange(next);
+    setLocal(next); onChange(next);
   };
 
+  const StepBead = ({ symbol, onClick }: { symbol: string; onClick: () => void }) => (
+    <button
+      onClick={onClick}
+      style={{
+        width: 'clamp(20px, 5cqmin, 28px)',
+        height: 'clamp(20px, 5cqmin, 28px)',
+        borderRadius: 'var(--radius-pill)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+        border: '1px solid var(--glass-l3-border)',
+        boxShadow: 'var(--rim), var(--elev-1)',
+        color: 'rgb(var(--text))',
+        fontSize: 'clamp(0.75rem, 3.5cqmin, 1rem)',
+        fontWeight: 300, lineHeight: 1,
+        cursor: 'pointer',
+        transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+      }}
+      onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.85)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+    >
+      {symbol}
+    </button>
+  );
+
   return (
-    <div className="flex items-center gap-1 rounded-control border border-white/10 flex-1"
-      style={{ background: 'rgb(0 0 0 / 0.35)', padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)' }}>
-      <span className="text-gray-300 truncate flex-1" style={fluidTextXs}>{setpoint.name}</span>
-      <button onClick={dec} className="text-gray-300 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-lg font-bold leading-none">−</button>
-      <span className="text-white font-bold tabular-nums text-center" style={{ ...fluidTextSm, minWidth: 'clamp(2rem, 6cqmin, 3rem)' }}>
-        {displayed ?? '--'}<span className="text-gray-400 font-normal ml-0.5" style={fluidTextXs}>{setpoint.unit}</span>
+    <div
+      className="flex items-center gap-1 flex-1"
+      style={{
+        borderRadius: 'var(--radius-control)',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+        border: '1px solid var(--glass-l3-border)',
+        boxShadow: 'var(--rim)',
+        padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)',
+      }}
+    >
+      <span className="truncate flex-1" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.65)' }}>{setpoint.name}</span>
+      <StepBead symbol="−" onClick={dec} />
+      <span className="font-bold tabular-nums text-center" style={{ ...fluidTextSm, minWidth: 'clamp(2rem, 6cqmin, 3rem)', color: 'rgb(var(--text))' }}>
+        {displayed ?? '--'}
+        <span className="font-normal ml-0.5" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.4)' }}>{setpoint.unit}</span>
       </span>
-      <button onClick={inc} className="text-gray-300 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-lg font-bold leading-none">+</button>
+      <StepBead symbol="+" onClick={inc} />
     </div>
   );
 };
 
-// ── Chemistry section ────────────────────────────────────────────────────────
-
+// ── Chemistry section ─────────────────────────────────────────────────────────
 const ChemSection = ({
-  chem,
-  onSetSwg,
+  chem, onSetSwg,
 }: {
   chem: ChemState;
   onSetSwg: (entityId: string, v: number) => void;
@@ -510,10 +751,40 @@ const ChemSection = ({
   return (
     <div className="flex flex-col" style={{ gap: 'clamp(0.1rem, 1cqmin, 0.25rem)' }}>
       <SectionLabel>Chemistry</SectionLabel>
+      {/* Salt BuildBar (level-style reading) */}
+      {chem.salt !== null && (
+        <div
+          className="rounded-control"
+          style={{
+            backdropFilter:       'var(--glass-l3-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+            backgroundColor: `color-mix(in srgb, ${WATER} 10%, var(--glass-l3-bg))`,
+            backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+            border: `1px solid color-mix(in srgb, ${WATER} 28%, var(--glass-l3-border))`,
+            boxShadow: 'var(--rim), var(--elev-1)',
+            padding: 'clamp(0.2rem, 1.6cqmin, 0.4rem)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span style={{ fontSize: 'clamp(0.42rem, 3.5cqmin, 0.58rem)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'rgba(var(--text) / 0.5)' }}>
+              Salt
+            </span>
+            <span style={{ fontSize: 'clamp(0.6rem, 5cqmin, 0.88rem)', fontWeight: 700, fontFamily: 'var(--font-numeric)', color: WATER }}>
+              {Math.round(chem.salt)} <span style={{ fontSize: '0.7em', fontWeight: 400, color: 'rgba(var(--text) / 0.45)' }}>{chem.saltUnit}</span>
+            </span>
+          </div>
+          <BuildBar
+            value={chem.salt}
+            min={0}
+            max={4500}
+            colorVar={WATER}
+            active={false}
+            height={5}
+            label={`Salt ${Math.round(chem.salt)} ${chem.saltUnit}`}
+          />
+        </div>
+      )}
       <div className="flex" style={{ gap: 'clamp(0.1rem, 1.2cqmin, 0.3rem)' }}>
-        {chem.salt !== null && (
-          <StatCard label="Salt" value={Math.round(chem.salt)} unit={chem.saltUnit} highlight accent="blue" />
-        )}
         {chem.ph !== null && (
           <StatCard label="pH" value={chem.ph.toFixed(1)} accent={phStatus as any} />
         )}
@@ -521,6 +792,7 @@ const ChemSection = ({
           <StatCard label="ORP" value={Math.round(chem.orp)} unit={chem.orpUnit} accent={orpStatus as any} />
         )}
       </div>
+      {/* SWG output (%) with BuildBar */}
       {chem.swgOutputs.length > 0 && (
         <div className="flex flex-wrap" style={{ gap: 'clamp(0.1rem, 1.2cqmin, 0.3rem)' }}>
           {chem.swgOutputs.map(swg => (
@@ -532,9 +804,9 @@ const ChemSection = ({
   );
 };
 
+// ── SWG Output control with BuildBar ─────────────────────────────────────────
 const SwgControl = ({
-  swg,
-  onChange,
+  swg, onChange,
 }: {
   swg: { entityId: string; name: string; value: number | null; bodyLabel: string };
   onChange: (v: number) => void;
@@ -543,25 +815,76 @@ const SwgControl = ({
   const pct = local ?? swg.value ?? 0;
   const dec = () => { const n = Math.max(0, pct - 5); setLocal(n); onChange(n); };
   const inc = () => { const n = Math.min(100, pct + 5); setLocal(n); onChange(n); };
+
+  const StepBead = ({ symbol, onClick }: { symbol: string; onClick: () => void }) => (
+    <button
+      onClick={onClick}
+      style={{
+        width: 'clamp(20px, 5cqmin, 28px)',
+        height: 'clamp(20px, 5cqmin, 28px)',
+        borderRadius: 'var(--radius-pill)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+        border: '1px solid var(--glass-l3-border)',
+        boxShadow: 'var(--rim)',
+        color: 'rgb(var(--text))',
+        fontSize: 'clamp(0.75rem, 3.5cqmin, 1rem)',
+        fontWeight: 300, lineHeight: 1,
+        cursor: 'pointer',
+        transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+      }}
+      onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.85)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+    >
+      {symbol}
+    </button>
+  );
+
   return (
-    <div className="flex items-center gap-1 rounded-control border border-white/10 flex-1"
-      style={{ background: 'rgb(0 0 0 / 0.35)', padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)' }}>
-      <span className="text-gray-300 truncate flex-1" style={fluidTextXs}>SWG {swg.bodyLabel}</span>
-      <button onClick={dec} className="text-gray-300 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-lg font-bold leading-none">−</button>
-      <span className="text-white font-bold tabular-nums text-center" style={{ ...fluidTextSm, minWidth: 'clamp(2rem, 5cqmin, 2.5rem)' }}>
-        {pct}<span className="text-gray-400 font-normal ml-0.5" style={fluidTextXs}>%</span>
-      </span>
-      <button onClick={inc} className="text-gray-300 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 transition-colors text-lg font-bold leading-none">+</button>
+    <div
+      className="flex flex-col flex-1"
+      style={{
+        borderRadius: 'var(--radius-control)',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: `color-mix(in srgb, var(--accent-plug) 10%, var(--glass-l3-bg))`,
+        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+        border: '1px solid color-mix(in srgb, var(--accent-plug) 28%, var(--glass-l3-border))',
+        boxShadow: 'var(--rim), var(--elev-1)',
+        padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)',
+        gap: 'clamp(0.08rem, 0.8cqmin, 0.2rem)',
+      }}
+    >
+      <div className="flex items-center gap-1">
+        <span className="truncate flex-1" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.65)' }}>
+          SWG {swg.bodyLabel}
+        </span>
+        <StepBead symbol="−" onClick={dec} />
+        <span className="font-bold tabular-nums text-center" style={{ ...fluidTextSm, minWidth: 'clamp(1.8rem, 5cqmin, 2.5rem)', color: 'rgb(var(--text))' }}>
+          {pct}<span className="font-normal ml-0.5" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.4)' }}>%</span>
+        </span>
+        <StepBead symbol="+" onClick={inc} />
+      </div>
+      <BuildBar
+        value={pct}
+        min={0}
+        max={100}
+        colorVar="var(--accent-plug)"
+        active={pct > 0}
+        height={4}
+        label={`SWG ${swg.bodyLabel} ${pct}%`}
+      />
     </div>
   );
 };
 
-// ── Lights section ───────────────────────────────────────────────────────────
-
+// ── Lights section ────────────────────────────────────────────────────────────
 const LightsSection = ({
-  lights,
-  onToggle,
-  onEffect,
+  lights, onToggle, onEffect,
 }: {
   lights: LightState[];
   onToggle: (entityId: string, on: boolean) => void;
@@ -573,21 +896,59 @@ const LightsSection = ({
       <SectionLabel>Lights</SectionLabel>
       <div className="flex flex-wrap" style={{ gap: 'clamp(0.1rem, 1.2cqmin, 0.3rem)' }}>
         {lights.map(light => (
-          <div key={light.entityId}
-            className="flex items-center gap-1.5 rounded-control border border-white/10 flex-1"
-            style={{ background: 'rgb(0 0 0 / 0.3)', padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)', minWidth: 'clamp(80px, 25cqw, 150px)' }}
+          <div
+            key={light.entityId}
+            className="flex items-center gap-1.5 flex-1"
+            style={{
+              borderRadius: 'var(--radius-control)',
+              backdropFilter:       'var(--glass-l3-backdrop)',
+              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+              backgroundColor: light.isOn
+                ? `color-mix(in srgb, ${WARN} 16%, var(--glass-l3-bg))`
+                : 'var(--glass-l3-bg)',
+              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+              border: `1px solid ${light.isOn
+                ? `color-mix(in srgb, ${WARN} 40%, var(--glass-l3-border))`
+                : 'var(--glass-l3-border)'}`,
+              boxShadow: light.isOn
+                ? `var(--rim), inset 0 0 14px -4px color-mix(in srgb, ${WARN} 28%, transparent), 0 0 12px -3px color-mix(in srgb, ${WARN} 36%, transparent)`
+                : 'var(--rim)',
+              padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)',
+              minWidth: 'clamp(80px, 25cqw, 150px)',
+              transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+            }}
           >
             <IconLightbulb
-              className={`flex-shrink-0 ${light.isOn ? 'text-amber-300' : 'text-gray-500'}`}
-              style={{ width: 'clamp(10px, 3.5cqmin, 14px)', height: 'clamp(10px, 3.5cqmin, 14px)', ...(light.isOn ? { filter: 'drop-shadow(0 0 4px #fbbf24)' } : {}) }}
+              className="flex-shrink-0"
+              style={{
+                width: 'clamp(10px, 3.5cqmin, 14px)',
+                height: 'clamp(10px, 3.5cqmin, 14px)',
+                color: light.isOn ? WARN : 'rgba(var(--text) / 0.3)',
+                filter: light.isOn ? `drop-shadow(0 0 4px ${WARN})` : undefined,
+              }}
             />
-            <span className="text-gray-200 truncate flex-1" style={fluidTextXs}>{light.name}</span>
+            <span className="truncate flex-1" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.8)' }}>{light.name}</span>
             <ControlPill label={light.isOn ? 'ON' : 'OFF'} isOn={light.isOn} onClick={() => onToggle(light.entityId, !light.isOn)} accent="amber" />
             {light.effectList.length > 0 && (
               <button
                 onClick={() => onEffect(light)}
-                className="text-sky-400 hover:text-sky-200 transition-colors rounded px-1 hover:bg-sky-400/10"
-                style={fluidTextXs}
+                className="flex-shrink-0 rounded"
+                style={{
+                  ...fluidTextXs,
+                  padding: '2px 5px',
+                  borderRadius: 'var(--radius-chip)',
+                  backdropFilter:       'var(--glass-l3-backdrop)',
+                  WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                  backgroundColor: `color-mix(in srgb, ${WATER} 18%, var(--glass-l3-bg))`,
+                  border: `1px solid color-mix(in srgb, ${WATER} 38%, var(--glass-l3-border))`,
+                  color: WATER,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+                }}
+                onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.88)'; }}
+                onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+                onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
                 title="Choose effect"
               >
                 FX
@@ -600,11 +961,9 @@ const LightsSection = ({
   );
 };
 
-// ── Water features section ───────────────────────────────────────────────────
-
+// ── Water features section ────────────────────────────────────────────────────
 const WaterFeaturesSection = ({
-  features,
-  onToggle,
+  features, onToggle,
 }: {
   features: WaterFeatureState[];
   onToggle: (entityId: string, on: boolean) => void;
@@ -628,8 +987,7 @@ const WaterFeaturesSection = ({
   );
 };
 
-// ── Probe temps section ──────────────────────────────────────────────────────
-
+// ── Probe temps section ───────────────────────────────────────────────────────
 const ProbeTempsSection = ({ probes }: { probes: ProbeTempState[] }) => {
   if (probes.length === 0) return null;
   return (
@@ -651,19 +1009,35 @@ const ProbeTempsSection = ({ probes }: { probes: ProbeTempState[] }) => {
 };
 
 // ── Absent / loading placeholder ─────────────────────────────────────────────
-
 const AbsentPlaceholder = ({ label }: { label: string }) => (
-  <div className="flex flex-col items-center justify-center h-full text-center" style={{ gap: 'clamp(0.25rem, 2cqmin, 0.75rem)', padding: 'clamp(0.5rem, 4cqmin, 1.5rem)' }}>
-    <IconWaves className="text-sky-400/30" style={{ width: 'clamp(1.5rem, 14cqmin, 3.5rem)', height: 'clamp(1.5rem, 14cqmin, 3.5rem)' }} />
-    <span className="font-semibold text-gray-300" style={fluidTextBase}>{label}</span>
-    <span className="text-gray-500 max-w-[24ch]" style={fluidTextXs}>
+  <div
+    className="flex flex-col items-center justify-center h-full text-center"
+    style={{ gap: 'clamp(0.25rem, 2cqmin, 0.75rem)', padding: 'clamp(0.5rem, 4cqmin, 1.5rem)' }}
+  >
+    <div
+      style={{
+        width: 56,
+        height: 56,
+        borderRadius: 'var(--radius-card)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter:       'var(--glass-l3-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+        border: '1px solid var(--glass-l3-border)',
+        boxShadow: 'var(--rim), var(--elev-2)',
+      }}
+    >
+      <IconWaves style={{ width: 24, height: 24, color: `color-mix(in srgb, ${WATER} 40%, transparent)` }} />
+    </div>
+    <span className="font-semibold" style={{ ...fluidTextBase, color: 'rgba(var(--text) / 0.6)' }}>{label}</span>
+    <span className="max-w-[24ch]" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.35)' }}>
       Install the IntelliCenter integration and configure your Pentair system to see live pool data here.
     </span>
   </div>
 );
 
-// ── Main tile ────────────────────────────────────────────────────────────────
-
+// ── Main tile ─────────────────────────────────────────────────────────────────
 interface PoolSurfaceTileProps {
   device: Device;
   tile: TileConfig;
@@ -697,11 +1071,8 @@ const PoolSurfaceTile: React.FC<PoolSurfaceTileProps> = ({
   const tileH = tile.height ?? 1;
   const isLarge = tileW >= 3 || (tileW >= 2 && tileH >= 2);
 
-  // Any body running → tile is "active"
-  const anyBodyOn = surface.bodies.some(b => b.isOn);
-  const anyHeating = surface.bodies.some(b => b.heaterIsOn);
-
-  // Stale indicator — show if data is older than threshold
+  const anyBodyOn    = surface.bodies.some(b => b.isOn);
+  const anyHeating   = surface.bodies.some(b => b.heaterIsOn);
   const staleIndicator = surface.detected && surface.stale;
 
   const handleEffectSelect = useCallback((effect: string) => {
@@ -729,48 +1100,138 @@ const PoolSurfaceTile: React.FC<PoolSurfaceTileProps> = ({
         className={`!p-0 !block overflow-hidden border ${anyBodyOn ? 'border-sky-400/30' : 'border-white/8'} ${cornerClassName ?? ''}`}
         animation={anyHeating ? { enabled: true, effect: 'pulse', color: '#fbbf24' } : tile.animation}
       >
-        <div className="flex flex-col h-full relative">
+        <div
+          className="flex flex-col h-full relative"
+          style={{
+            borderRadius: 'var(--radius-surface)',
+            overflow: 'hidden',
+            // Level-1 glass: luminous backdrop + sheen + rim
+            backdropFilter:       'var(--glass-l1-backdrop)',
+            WebkitBackdropFilter: 'var(--glass-l1-backdrop)',
+            backgroundColor: anyBodyOn
+              ? `color-mix(in srgb, ${WATER} 14%, var(--glass-l1-bg))`
+              : 'var(--glass-l1-bg)',
+            backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l1-tint)',
+            border: `1px solid ${anyBodyOn
+              ? `color-mix(in srgb, ${WATER} 32%, var(--glass-l1-border))`
+              : 'var(--glass-l1-border)'}`,
+            boxShadow: anyBodyOn
+              ? `var(--rim), inset 0 0 40px -10px color-mix(in srgb, ${WATER} 20%, transparent), var(--elev-4)`
+              : 'var(--rim), var(--elev-4)',
+            animation: 'glass-mount var(--dur-enter, 320ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
+            transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), box-shadow var(--dur-medium, 260ms) ease`,
+          }}
+        >
           {/* Animated pool-water background */}
           <PoolBackground active={anyBodyOn} />
 
           {/* Content layer */}
           <div
             className="relative z-10 flex flex-col h-full overflow-y-auto"
-            style={{ padding: 'clamp(0.35rem, 3cqmin, 0.75rem)', gap: 'clamp(0.2rem, 2cqmin, 0.5rem)' }}
+            style={{
+              containerType: 'inline-size',
+              padding: 'clamp(0.35rem, 3cqmin, 0.75rem)',
+              gap: 'clamp(0.2rem, 2cqmin, 0.5rem)',
+            }}
           >
-            {/* ── HEADER ──────────────────────────────────────────────────── */}
-            <div className="flex items-start justify-between flex-shrink-0">
+            {/* ── HEADER ─────────────────────────────────────────────────── */}
+            <div
+              className="flex items-start justify-between flex-shrink-0"
+              style={{
+                paddingBottom: 'clamp(0.2rem, 1.5cqmin, 0.4rem)',
+                borderBottom: `1px solid color-mix(in srgb, ${WATER} 18%, var(--glass-l1-border))`,
+              }}
+            >
               <div className="flex items-center" style={{ gap: 'clamp(0.2rem, 1.5cqmin, 0.5rem)' }}>
-                <IconWaves className="text-sky-300 flex-shrink-0" style={{ width: 'clamp(12px, 4.5cqmin, 20px)', height: 'clamp(12px, 4.5cqmin, 20px)', filter: anyBodyOn ? 'drop-shadow(0 0 6px #38bdf8)' : undefined }} />
-                <h2 className="font-bold text-white leading-none drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]" style={isLarge ? fluidTextXl : fluidTextLg}>
-                  {tile.label ?? device.name ?? 'Pool'}
-                </h2>
+                {/* Icon bead */}
+                <div
+                  style={{
+                    width: 'clamp(24px, 8cqmin, 36px)',
+                    height: 'clamp(24px, 8cqmin, 36px)',
+                    borderRadius: 'var(--radius-control)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter:       'var(--glass-l3-backdrop)',
+                    WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                    backgroundColor: `color-mix(in srgb, ${WATER} 22%, var(--glass-l3-bg))`,
+                    backgroundImage: 'var(--specular-strong)',
+                    border: `1px solid color-mix(in srgb, ${WATER} 48%, var(--glass-l3-border))`,
+                    boxShadow: `var(--rim-light), inset 0 0 14px -4px color-mix(in srgb, ${WATER} 40%, transparent), 0 0 16px -3px color-mix(in srgb, ${WATER} 55%, transparent)`,
+                  }}
+                >
+                  <IconWaves
+                    style={{
+                      width: 'clamp(12px, 4cqmin, 18px)',
+                      height: 'clamp(12px, 4cqmin, 18px)',
+                      color: WATER,
+                      filter: anyBodyOn ? `drop-shadow(0 0 6px ${WATER})` : undefined,
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col" style={{ gap: 1 }}>
+                  <h2
+                    className="font-bold leading-none"
+                    style={{
+                      ...fluidTextXl,
+                      fontFamily: 'var(--font-display)',
+                      letterSpacing: 'var(--tracking-tight)',
+                      color: 'rgb(var(--text))',
+                    }}
+                  >
+                    {tile.label ?? device.name ?? 'Pool'}
+                  </h2>
+                  {surface.bodies.length > 0 && (
+                    <span style={{ fontSize: 'clamp(0.42rem, 3cqmin, 0.6rem)', color: 'rgba(var(--text) / 0.45)' }}>
+                      {surface.bodies.length} {surface.bodies.length === 1 ? 'body' : 'bodies'}
+                      {surface.pumps.length > 0 && ` · ${surface.pumps.length} pump${surface.pumps.length > 1 ? 's' : ''}`}
+                    </span>
+                  )}
+                </div>
               </div>
+
               <div className="flex items-center flex-shrink-0" style={{ gap: 'clamp(0.15rem, 1.2cqmin, 0.3rem)' }}>
                 {/* Freeze protection indicator */}
                 {surface.freezeActive && (
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-sky-300/50 bg-sky-900/40">
-                    <IconSnowflake className="w-3 h-3 text-sky-300" />
-                    <span className="text-sky-200 font-bold uppercase tracking-wide" style={{ fontSize: 'clamp(0.38rem, 2.8cqmin, 0.5rem)' }}>Freeze</span>
+                  <div
+                    className="flex items-center gap-1"
+                    style={{
+                      padding: 'clamp(0.1rem, 1cqmin, 0.2rem) clamp(0.3rem, 2cqmin, 0.5rem)',
+                      borderRadius: 'var(--radius-pill)',
+                      backdropFilter:       'var(--glass-l3-backdrop)',
+                      WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+                      backgroundColor: `color-mix(in srgb, ${WATER} 18%, var(--glass-l3-bg))`,
+                      border: `1px solid color-mix(in srgb, ${WATER} 50%, var(--glass-l3-border))`,
+                      boxShadow: `var(--rim), 0 0 10px -2px color-mix(in srgb, ${WATER} 40%, transparent)`,
+                    }}
+                  >
+                    <IconSnowflake className="w-3 h-3 flex-shrink-0" style={{ color: WATER }} />
+                    <span className="font-bold uppercase tracking-wide" style={{ fontSize: 'clamp(0.38rem, 2.8cqmin, 0.5rem)', color: WATER }}>Freeze</span>
                   </div>
                 )}
                 {/* Stale indicator */}
                 {staleIndicator && (
-                  <div title="Data may be stale" className="w-2 h-2 rounded-full bg-yellow-400/70 border border-yellow-400/50 flex-shrink-0" />
+                  <div
+                    title="Data may be stale"
+                    className="rounded-full flex-shrink-0"
+                    style={{
+                      width: 8, height: 8,
+                      background: WARN,
+                      boxShadow: `0 0 6px 1px ${WARN}`,
+                    }}
+                  />
                 )}
-                {/* Not detected / absent */}
+                {/* Not detected indicator */}
                 {surface.absent && !isEditor && (
-                  <span className="text-gray-500" style={fluidTextXs}>Not detected</span>
+                  <span style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.35)' }}>Not detected</span>
                 )}
               </div>
             </div>
 
-            {/* ── ABSENT PLACEHOLDER ──────────────────────────────────────── */}
+            {/* ── ABSENT PLACEHOLDER ─────────────────────────────────────── */}
             {surface.absent && (
               <AbsentPlaceholder label="IntelliCenter not detected" />
             )}
 
-            {/* ── SURFACE CONTENT ─────────────────────────────────────────── */}
+            {/* ── SURFACE CONTENT ────────────────────────────────────────── */}
             {!surface.absent && (
               <>
                 {/* Body panels */}
