@@ -566,7 +566,9 @@ const HomeOverview: React.FC = () => {
       <div className="flex items-end justify-between" style={{ marginBottom: 24 }}>
         <Greeting />
 
-        {/* Quick stats bar */}
+        {/* Quick stats bar — scoped to the active panel: Outside (weather) is
+            ambient/global so it always shows; Lights/Security/Climate stats only
+            appear when their area is in the active panel's scope. */}
         <div className="flex items-center gap-3 flex-wrap justify-end">
           <QuickStat
             label="Outside"
@@ -574,33 +576,37 @@ const HomeOverview: React.FC = () => {
             icon={<IconThermometer className="w-4 h-4" />}
             color="rgb(var(--accent-water))"
           />
-          <QuickStat
-            label="Lights on"
-            value={lightsOnCount === 0 ? 'All off' : `${lightsOnCount}`}
-            icon={<IconLightbulb className="w-4 h-4" />}
-            color="rgb(var(--accent-light))"
-          />
-          <QuickStat
-            label="Security"
-            value={securityQuickLabel}
-            icon={
-              alarmState?.securityState === 'VIOLATION' ? (
-                <IconAlertTriangle className="w-4 h-4" />
-              ) : alarmState?.armState !== 'disarmed' ? (
-                <IconShieldAlert className="w-4 h-4" />
-              ) : (
-                <IconShieldCheck className="w-4 h-4" />
-              )
-            }
-            color={
-              alarmState?.securityState === 'VIOLATION'
-                ? 'rgb(var(--accent-alert))'
-                : alarmState?.armState !== 'disarmed'
-                ? 'rgb(var(--accent-warn))'
-                : 'rgb(52,211,153)'
-            }
-          />
-          {climateZones > 0 && (
+          {isAreaAllowed('lights') && (
+            <QuickStat
+              label="Lights on"
+              value={lightsOnCount === 0 ? 'All off' : `${lightsOnCount}`}
+              icon={<IconLightbulb className="w-4 h-4" />}
+              color="rgb(var(--accent-light))"
+            />
+          )}
+          {isAreaAllowed('security') && (
+            <QuickStat
+              label="Security"
+              value={securityQuickLabel}
+              icon={
+                alarmState?.securityState === 'VIOLATION' ? (
+                  <IconAlertTriangle className="w-4 h-4" />
+                ) : alarmState?.armState !== 'disarmed' ? (
+                  <IconShieldAlert className="w-4 h-4" />
+                ) : (
+                  <IconShieldCheck className="w-4 h-4" />
+                )
+              }
+              color={
+                alarmState?.securityState === 'VIOLATION'
+                  ? 'rgb(var(--accent-alert))'
+                  : alarmState?.armState !== 'disarmed'
+                  ? 'rgb(var(--accent-warn))'
+                  : 'rgb(52,211,153)'
+              }
+            />
+          )}
+          {isAreaAllowed('climate') && climateZones > 0 && (
             <QuickStat
               label="Climate zones"
               value={`${climateZones}`}
@@ -737,8 +743,42 @@ const HomeOverview: React.FC = () => {
           );
         }
 
-        // Fewer cards: auto-flow grid, 1 or 2 columns depending on count.
-        const cols = count === 1 ? 1 : count <= 4 ? 2 : 3;
+        // LOW COUNTS (1–2 cards): center a constrained, well-proportioned cluster
+        // so a scoped panel (e.g. Pool-only) doesn't leave the right half a void.
+        // The cards keep a sensible max width/height and sit centered in the
+        // available canvas rather than full-bleed or stranded top-left.
+        if (count <= 2) {
+          return (
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
+              <div
+                className="grid gap-4 w-full"
+                style={{
+                  // 1 card → single column; 2 cards → side-by-side on landscape,
+                  // stacking to one column on the narrow (mobile) breakpoint via
+                  // auto-fit with a comfortable min track.
+                  gridTemplateColumns:
+                    count === 1
+                      ? 'minmax(0, 1fr)'
+                      : 'repeat(auto-fit, minmax(min(100%, 22rem), 1fr))',
+                  // Cap the cluster so a lone card is a generous panel, not a
+                  // full-bleed slab. Centered by the flex parent.
+                  maxWidth: count === 1 ? '34rem' : '52rem',
+                  // Bound the height so cards stay well-proportioned (not a tall
+                  // stretched column) while still filling vertical space nicely.
+                  maxHeight: '32rem',
+                  height: '100%',
+                  gridAutoRows: '1fr',
+                  marginInline: 'auto',
+                }}
+              >
+                {visible.map(c => c.el({}))}
+              </div>
+            </div>
+          );
+        }
+
+        // 3–4 cards: responsive multi-column grid filling the full canvas.
+        const cols = count === 3 ? 3 : 2;
         return (
           <div
             className="flex-1 grid gap-4 overflow-hidden"
