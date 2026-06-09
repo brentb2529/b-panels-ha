@@ -320,7 +320,10 @@ export interface AllowedIP {
 export interface AlarmState {
     locationId: string;
     locationName: string;
-    armState: 'disarmed' | 'armedStay' | 'armedAway';
+    // 'unknown' = the panel/entity state could not be determined (unavailable,
+    // socket reconnecting, etc.). NEVER conflate this with 'disarmed' — the UI
+    // must show uncertainty, not a false "safe".
+    armState: 'disarmed' | 'armedStay' | 'armedAway' | 'unknown';
     securityState: 'OK' | 'VIOLATION' | null;
     violatingSensors: { name: string }[];
     trigger?: { name: string; type: string } | null;

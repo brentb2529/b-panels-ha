@@ -543,13 +543,20 @@ const parseRelayState = (type: DeviceType, relayState: Record<string, any>): Par
 
 const normalizeArmState = (raw?: string): AlarmState['armState'] => {
     const a = String(raw || '').toLowerCase();
+    // SAFETY: an unavailable/unknown/empty entity is NOT "disarmed" — it's
+    // unknown. Mapping it to disarmed makes the panel claim "safe" when the
+    // alarm could actually be armed (the exact false-safe bug this guards).
+    if (a === '' || a === 'unavailable' || a === 'unknown' || a === 'none') return 'unknown';
+    if (a === 'disarmed') return 'disarmed';
     // Alarmo / HA-specific modes
     if (a === 'armed_home' || a === 'armed_night' || a === 'armed_custom_bypass') return 'armedStay';
     if (a === 'armed_vacation') return 'armedAway';
     // Generic matching (covers ST strings like 'ARMED_STAY', 'armedStay', and HA 'armed_away')
     if (a.includes('armed') && (a.includes('stay') || a.includes('home') || a.includes('night'))) return 'armedStay';
     if (a.includes('armed') && (a.includes('away') || a.includes('vacation'))) return 'armedAway';
-    return 'disarmed';
+    if (a.includes('disarm')) return 'disarmed';
+    // Anything unrecognized → unknown, never an implicit "disarmed".
+    return 'unknown';
 };
 
 const getMessageLocationId = (message: any): string | undefined => {
@@ -2778,10 +2785,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         : haState === 'triggered' ? 'triggered'
                         : 'idle';
 
-                    // 'arming'/'pending' are transient — resolve the destination armed
-                    // mode for display from the arm_mode attribute.
+                    // 'arming'/'pending'/'triggered' are not arm modes themselves —
+                    // resolve the destination/active armed mode from the arm_mode
+                    // attribute so e.g. a triggered panel still reports armedAway
+                    // (and never falls through to 'unknown').
                     const isTransient = haState === 'arming' || haState === 'pending';
-                    const targetArmState = isTransient
+                    const useArmMode = isTransient || haState === 'triggered';
+                    const targetArmState = useArmMode
                         ? normalizeArmState(attrs.arm_mode || haState)
                         : normalizeArmState(haState);
 
@@ -3004,6 +3014,43 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [haConnection, useDemoMode]);
+
+  // Stale-state guard for the HA socket (the cause of the "armed but the panel
+  // showed disarmed" incident). home-assistant-js-websocket auto-reconnects, but
+  // on a kiosk that sleeps the socket can go zombie and its ping timer freezes,
+  // so the snapshot (incl. the alarm tile) silently goes stale. We actively
+  // detect this and force a reconnect (which re-syncs the full entity collection)
+  // on: tab/app becoming visible (the wake case), the network coming back, and a
+  // periodic liveness ping. A ping-based check (not "no events in N seconds")
+  // avoids false alarms when the house is simply idle overnight.
+  useEffect(() => {
+    if (useDemoMode) return;
+    let checking = false;
+    const checkAndHeal = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const alive = await haClient.pingAlive(3000);
+        if (!alive) {
+          setHaWsState('connecting'); // surface "reconnecting" so the tile isn't trusted
+          await haClient.forceReconnect();
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') checkAndHeal(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', checkAndHeal);
+    window.addEventListener('focus', onVisible);
+    const watchdog = window.setInterval(checkAndHeal, 45000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', checkAndHeal);
+      window.removeEventListener('focus', onVisible);
+      clearInterval(watchdog);
+    };
+  }, [useDemoMode]);
 
   const teardownHa = useCallback(() => {
     haUnsubsRef.current.forEach(unsub => { try { unsub(); } catch { /* ignore */ } });
@@ -3945,7 +3992,33 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const setAlarmStatus = useCallback(async (status: 'DISARMED' | 'ARMED_STAY' | 'ARMED_AWAY', pin?: string) => {
       // HA-only: always route arm/disarm to Home Assistant (Alarmo).
       await setHAAlarmStatus(status, pin ? { pin } : undefined);
-  }, [setHAAlarmStatus]);
+
+      // Confirm the command actually took effect. The PIN pad auto-closes at 4
+      // digits, so without this a no-op/stale command (e.g. arming an
+      // already-armed panel over a zombie socket) "feels" successful. Watch the
+      // live state move toward the intent; if it never does, tell the user.
+      const wantArmed = status === 'ARMED_STAY' || status === 'ARMED_AWAY';
+      const deadline = Date.now() + 9000;
+      const poll = () => {
+          const s = alarmStateRef.current;
+          const arm = s?.armState;
+          const progressing = wantArmed
+              ? (arm === 'armedStay' || arm === 'armedAway' || s?.phase === 'arming')
+              : (arm === 'disarmed');
+          if (progressing) return;                         // applied — done
+          if (Date.now() > deadline) {
+              addNotification(
+                  wantArmed
+                      ? 'Arm may not have applied — the panel state didn’t change. Check the connection and try again.'
+                      : 'Disarm may not have applied — check the connection.',
+                  'error'
+              );
+              return;
+          }
+          setTimeout(poll, 750);
+      };
+      setTimeout(poll, 1500); // let HA transition before judging
+  }, [setHAAlarmStatus, addNotification]);
 
   const updateNotifyingSensorIds = useCallback((ids: string[]) => {
       setConfig(produce(draft => { draft.notifyingSensorIds = ids; }));
