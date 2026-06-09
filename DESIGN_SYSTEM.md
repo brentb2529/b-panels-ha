@@ -473,37 +473,54 @@ PoolCompilationTile
   ├─ useAkvoFloor()           → movable floor monitor + guarded preset
   ├─ useLutronSurface()       → lights/shades/scenes (area-filtered)
   │
-  ├─ PoolWaterBackdrop        → animated SVG caustics + wave scene (decorative)
-  ├─ HeroBand                 → overview strip (temps + status chips)
-  └─ CollapsibleSection ×N    → glass-l2 cards, each wrapping one sub-surface
+  ├─ PoolHeroScene            → FULL-BLEED dive-view centerpiece (see below)
+  ├─ PoolWaterBackdrop        → quiet edge-anchored depth wash behind the deck
+  └─ .pool-comp-deck          → full-width balanced grid of CollapsibleSection cards
 ```
 
-**Key design decisions:**
+**Hero-first composition (the load-bearing layout rule).** A compilation panel
+must NOT be a grid of equal cards floating on a decorative background — that
+left-packs the cards and leaves dead space (e.g. a centered glowing ellipse) on
+wide wall panels. Instead:
 
-1. **Animated immersive backdrop**: full-bleed SVG + CSS caustic shimmer rings,
-   wave ripple lines, refraction blobs, and a periodic surface-glint sweep.
-   Pure `pointer-events: none` decoration; never interferes with controls.
-   Adapts intensity based on `active` (any body on) state.
+1. **A full-bleed HERO scene owns the top of the surface.** `PoolHeroScene` is a
+   real cross-section "pool window": the water column fills the entire hero width,
+   animated caustics + surface waves live HERE (not in a floating blob), and the
+   **AKVO movable-floor plate is drawn at its real depth** (negative = above deck,
+   positive = submerged) with lifting cables, motion arrows, and a depth callout —
+   geometry adapted from `AkvoFloorSurface.CrossSection`, stretched edge-to-edge.
+   Pool/spa temps, body on/off, floor status, and lights-on float over the scene
+   as legible glass HUD chips anchored to BOTH left and right, so the right side is
+   used, not empty. Hero height: `clamp(15rem, 42cqw, 26rem)`. Display-only — it
+   issues no commands.
 
-2. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
-   `device.state` as JSON. All fields optional; sensible defaults cover the
-   common case. Admin sets JSON → tile re-parses on each render.
+2. **Controls lay out FULL-WIDTH below the hero** via `.pool-comp-deck`, a
+   container-query grid with **stretchy `1fr` tracks** (not `auto-fill` capped at a
+   fixed card width). Column count steps with container width — 3 cols ≥ 64rem,
+   2 cols ≥ 40rem, 1 col mobile — and a `data-cols` attribute caps the count to the
+   number of active sections so a lone card still stretches full-width. No dead
+   zones at wall resolution.
 
-3. **Hero band**: frosted-glass header strip (level-1 blur + `opacity: 0.55`)
-   with temperature chips + aggregate status — gives instant at-a-glance
-   readout without opening any section card.
+3. **The decorative backdrop is quiet and edge-anchored.** `PoolWaterBackdrop` is
+   now a vertical depth gradient + two faint caustic washes pinned to the LEFT and
+   RIGHT edges (filling corners), never a central blob. The hero carries the
+   "immersive water," the backdrop just keeps the scroll deck reading underwater.
 
-4. **CollapsibleSection**: `glass-l2` card with a spring chevron toggle and
+4. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
+   `device.state` as JSON. All fields optional; sensible defaults cover the common
+   case. Admin sets JSON → tile re-parses on each render.
+
+5. **CollapsibleSection**: `glass-l2` card with a spring chevron toggle and
    `animation: pool-comp-section-in` entry. Default-open for the three main
    sections; default-collapsed for pumps/sensors (telemetry on demand).
 
-5. **AKVO safety preserved**: `AkvoSectionContent` duplicates the same
+6. **AKVO safety preserved**: `AkvoSectionContent` duplicates the same
    `HOLD_MS = 2000` RAF-based press-and-hold, `evaluateGate` check, and single
-   `requestConfiguration()` call. No raw motion. AKVO is still the authority.
+   `requestConfiguration()` call. The hero floor visualization is display-only.
+   No raw motion anywhere. AKVO is still the authority.
 
-6. **Responsive**: `repeat(auto-fill, minmax(min(100%, 22rem), 1fr))` grid —
-   3 columns on a wide wall panel, 2 on medium, 1 narrow/mobile. Pure CSS;
-   no media queries.
+7. **prefers-reduced-motion**: `useReducedMotion()` gates the hero waves,
+   caustics, bubbles, and cable flow into a static variant.
 
 ### How to author another compilation panel
 
@@ -511,6 +528,8 @@ PoolCompilationTile
 2. Add `MyArea = 'MY_AREA'` to `DeviceType` in `types.ts`.
 3. Register in `tileRegistry.tsx` and `Admin.tsx` (virtualTypes list).
 4. Pull the hooks you need; their data and service calls are already wired.
-5. Choose an immersive backdrop that matches the area's character (water for
-   pool, fire/amber for fireplace, green for garden, etc.).
-6. Wrap sub-surfaces in `CollapsibleSection`s floating over the backdrop.
+5. **Build a full-bleed hero scene** that visualizes the area's defining element
+   (water + floor for pool, flame for a fireplace, plant canopy for a garden) and
+   overlays the key live readouts as glass HUD chips anchored to both edges.
+6. Lay controls in a full-width stretchy grid below the hero — never an auto-fill
+   grid that caps card width and packs to one side.

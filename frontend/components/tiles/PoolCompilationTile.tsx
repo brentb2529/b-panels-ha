@@ -77,7 +77,7 @@ import {
 import type { LutronLightState, LutronCoverState, LutronSceneState } from '../../services/lutron';
 
 // ── Design system ──────────────────────────────────────────────────────────────
-import { BuildBar, GlassPanel, GlassCard, GlassButton } from '../../design-system';
+import { BuildBar, GlassPanel, GlassCard, GlassButton, useReducedMotion } from '../../design-system';
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 import {
@@ -218,6 +218,58 @@ function ensureAnims() {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
+/* Hero scene */
+@keyframes pool-comp-hero-wave-drift {
+  0%   { transform: translateX(0);     }
+  100% { transform: translateX(-120px); }
+}
+@keyframes pool-comp-hero-wave-drift2 {
+  0%   { transform: translateX(0);    }
+  100% { transform: translateX(90px);  }
+}
+@keyframes pool-comp-hero-shimmer {
+  0%   { transform: translateY(0)   scaleY(1);    opacity: 0.5; }
+  50%  { transform: translateY(-4px) scaleY(1.04); opacity: 0.85; }
+  100% { transform: translateY(0)   scaleY(1);    opacity: 0.5; }
+}
+@keyframes pool-comp-bubble-rise {
+  0%   { transform: translateY(0)    scale(1);   opacity: 0;   }
+  15%  { opacity: 0.6; }
+  100% { transform: translateY(-120px) scale(0.4); opacity: 0; }
+}
+@keyframes pool-comp-cable-flow {
+  0%   { stroke-dashoffset: 16; }
+  100% { stroke-dashoffset: 0;  }
+}
+@keyframes pool-comp-plate-arrow {
+  0%,100% { opacity: 0.35; }
+  50%     { opacity: 1;    }
+}
+@keyframes pool-comp-readout-float {
+  0%,100% { transform: translateY(0);    }
+  50%     { transform: translateY(-3px); }
+}
+
+/* ── Full-width balanced control grid ────────────────────────────────────────
+   Stretchy equal columns (NOT auto-fill) so cards fill the row edge-to-edge.
+   Column count steps up with the container width; tracks always 1fr. */
+.pool-comp-deck {
+  display: grid;
+  grid-template-columns: 1fr;             /* mobile: single column */
+  gap: clamp(0.5rem, 2cqw, 0.9rem);
+  align-items: start;
+  width: 100%;
+}
+@container (min-width: 40rem) {
+  .pool-comp-deck { grid-template-columns: 1fr 1fr; }
+  /* A single active section stays full-width even at tablet size. */
+  .pool-comp-deck[data-cols="1"] { grid-template-columns: 1fr; }
+}
+@container (min-width: 64rem) {
+  .pool-comp-deck { grid-template-columns: 1fr 1fr 1fr; }
+  .pool-comp-deck[data-cols="1"] { grid-template-columns: 1fr; }
+  .pool-comp-deck[data-cols="2"] { grid-template-columns: 1fr 1fr; }
+}
 `;
   document.head.appendChild(s);
 }
@@ -227,14 +279,13 @@ function ensureAnims() {
 // =============================================================================
 
 /**
- * Full-bleed animated pool-water scene.
- * Layers (bottom to top):
- *   1. Deep water gradient (navy → teal → dark)
- *   2. Caustic shimmer rings (slow-spinning SVG radial patterns)
- *   3. Refraction lens blobs (large, blurry, animated)
- *   4. Wave ripple lines at surface
- *   5. A surface-glint stripe that sweeps across periodically
- *   6. Shallow depth haze overlay
+ * Subtle deep-water texture behind the CONTROL DECK (below the hero).
+ *
+ * The hero scene now owns the big animated water + caustics. This backdrop is
+ * deliberately quiet — a vertical depth gradient with two faint, edge-anchored
+ * caustic washes (NOT a big centered glowing ellipse, which was the prior dead
+ * blob). It just keeps the scroll area reading as "underwater" without
+ * competing with the hero or leaving a hole in the middle.
  */
 const PoolWaterBackdrop: React.FC<{ active: boolean; reduced: boolean }> = ({ active, reduced }) => (
   <div
@@ -242,136 +293,43 @@ const PoolWaterBackdrop: React.FC<{ active: boolean; reduced: boolean }> = ({ ac
     aria-hidden="true"
     style={{ borderRadius: 'var(--radius-surface)' }}
   >
-    {/* ── Layer 1: deep water gradient ────────────────────────────────────── */}
+    {/* Vertical depth gradient: gets darker toward the bottom (deeper water). */}
     <div
       className="absolute inset-0"
       style={{
-        background: `
-          radial-gradient(ellipse 120% 60% at 50% 0%,
-            rgba(12, 74, 110, 0.92) 0%,
-            rgba(7, 89, 133, 0.75) 35%,
-            rgba(8, 47, 73, 0.88) 70%,
-            rgba(5, 30, 50, 0.96) 100%)
-        `,
+        background: `linear-gradient(180deg,
+          rgba(8, 50, 78, 0.55) 0%,
+          rgba(6, 38, 62, 0.78) 45%,
+          rgba(5, 26, 44, 0.92) 100%)`,
       }}
     />
 
-    {/* ── Layer 2: caustic shimmer rings (SVG) ────────────────────────────── */}
+    {/* Faint edge-anchored caustic washes — pinned to the LEFT and RIGHT edges so
+        they fill the corners (where the old layout was emptiest) and never form a
+        central blob. */}
     <svg
       className="absolute inset-0 w-full h-full"
       viewBox="0 0 800 500"
       preserveAspectRatio="xMidYMid slice"
-      style={{ opacity: active ? 1 : 0.45, transition: 'opacity 1.2s ease' }}
+      style={{ opacity: active ? 0.7 : 0.4, transition: 'opacity 1.2s ease' }}
     >
       <defs>
-        {/* Caustic radial gradients */}
-        <radialGradient id="pcCaustic1" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="#38bdf8" stopOpacity="0.0" />
-          <stop offset="40%"  stopColor="#38bdf8" stopOpacity="0.18" />
-          <stop offset="70%"  stopColor="#0ea5e9" stopOpacity="0.12" />
-          <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.0" />
+        <radialGradient id="pcWashL" cx="0%" cy="30%" r="70%">
+          <stop offset="0%"   stopColor="#2a8fc4" stopOpacity="0.16" />
+          <stop offset="60%"  stopColor="#1c6fa0" stopOpacity="0.05" />
+          <stop offset="100%" stopColor="#1c6fa0" stopOpacity="0.0" />
         </radialGradient>
-        <radialGradient id="pcCaustic2" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="#7dd3fc" stopOpacity="0.0" />
-          <stop offset="45%"  stopColor="#7dd3fc" stopOpacity="0.14" />
-          <stop offset="80%"  stopColor="#38bdf8" stopOpacity="0.08" />
-          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+        <radialGradient id="pcWashR" cx="100%" cy="60%" r="75%">
+          <stop offset="0%"   stopColor="#3aa0d8" stopOpacity="0.14" />
+          <stop offset="60%"  stopColor="#1c6fa0" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="#1c6fa0" stopOpacity="0.0" />
         </radialGradient>
-        <radialGradient id="pcCaustic3" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="#bae6fd" stopOpacity="0.0" />
-          <stop offset="35%"  stopColor="#bae6fd" stopOpacity="0.22" />
-          <stop offset="60%"  stopColor="#7dd3fc" stopOpacity="0.10" />
-          <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.0" />
-        </radialGradient>
-
-        {/* Water wave pattern */}
-        <pattern id="pcWavePat" x="0" y="0" width="80" height="14" patternUnits="userSpaceOnUse"
-          style={!reduced && active ? { animation: 'pool-comp-wave-drift 2.2s linear infinite' } : {}}>
-          <path d="M0 7 Q10 2 20 7 Q30 12 40 7 Q50 2 60 7 Q70 12 80 7"
-            fill="none" stroke="#bae6fd" strokeWidth="1.4" strokeOpacity="0.45" />
-        </pattern>
       </defs>
-
-      {/* Big caustic ring 1 — slow spin, upper-left */}
-      <ellipse cx="200" cy="160" rx="180" ry="140" fill="url(#pcCaustic1)"
-        style={!reduced ? {
-          animation: 'pool-comp-caustic-spin 18s linear infinite',
-          transformOrigin: '200px 160px',
-        } : {}}
-      />
-
-      {/* Big caustic ring 2 — opposite spin, right */}
-      <ellipse cx="600" cy="240" rx="220" ry="170" fill="url(#pcCaustic2)"
-        style={!reduced ? {
-          animation: 'pool-comp-caustic-spin2 24s linear infinite',
-          transformOrigin: '600px 240px',
-        } : {}}
-      />
-
-      {/* Small caustic accent — center bottom */}
-      <ellipse cx="400" cy="380" rx="120" ry="90" fill="url(#pcCaustic3)"
-        style={!reduced ? {
-          animation: 'pool-comp-caustic-spin 30s linear infinite reverse',
-          transformOrigin: '400px 380px',
-        } : {}}
-      />
-
-      {/* Wave ripples at top edge */}
-      <rect x="0" y="0" width="800" height="40" fill="url(#pcWavePat)" opacity="0.75" />
-      <rect x="0" y="38" width="800" height="20" fill="url(#pcWavePat)"
-        style={{ opacity: 0.5, transform: 'translateX(40px)' }} />
-
-      {/* Expanding ripple circles (active) */}
-      {active && !reduced && (
-        <>
-          <circle cx="280" cy="180" r="60" fill="none" stroke="#38bdf8" strokeWidth="1.5"
-            strokeOpacity="0.22"
-            style={{ animation: 'pool-comp-ripple-expand 4s ease-out infinite' }} />
-          <circle cx="520" cy="220" r="45" fill="none" stroke="#7dd3fc" strokeWidth="1.2"
-            strokeOpacity="0.18"
-            style={{ animation: 'pool-comp-ripple-expand 5.5s ease-out infinite 1.2s' }} />
-          <circle cx="380" cy="340" r="50" fill="none" stroke="#bae6fd" strokeWidth="1"
-            strokeOpacity="0.15"
-            style={{ animation: 'pool-comp-ripple-expand 6s ease-out infinite 2.4s' }} />
-        </>
-      )}
-
-      {/* Lens-blob refraction highlights */}
-      <ellipse cx="140" cy="80" rx="60" ry="30" fill="#38bdf8" opacity="0.055"
-        style={!reduced ? { animation: 'pool-comp-depth-pulse 6s ease-in-out infinite' } : {}}
-      />
-      <ellipse cx="660" cy="120" rx="80" ry="35" fill="#7dd3fc" opacity="0.045"
-        style={!reduced ? { animation: 'pool-comp-depth-pulse 8s ease-in-out infinite 1s' } : {}}
-      />
+      <rect x="0" y="0" width="800" height="500" fill="url(#pcWashL)"
+        style={!reduced ? { animation: 'pool-comp-depth-pulse 9s ease-in-out infinite' } : {}} />
+      <rect x="0" y="0" width="800" height="500" fill="url(#pcWashR)"
+        style={!reduced ? { animation: 'pool-comp-depth-pulse 11s ease-in-out infinite 1.5s' } : {}} />
     </svg>
-
-    {/* ── Layer 3: surface glint sweep ─────────────────────────────────────── */}
-    {!reduced && active && (
-      <div
-        className="absolute"
-        style={{
-          top: 0, left: '-60%', right: '-60%', height: '2px',
-          background: 'linear-gradient(90deg, transparent 0%, rgba(186, 230, 253, 0.6) 50%, transparent 100%)',
-          animation: 'pool-comp-surface-glint 9s ease-in-out infinite',
-        }}
-      />
-    )}
-
-    {/* ── Layer 4: depth haze ──────────────────────────────────────────────── */}
-    <div
-      className="absolute inset-0"
-      style={{
-        background: 'linear-gradient(180deg, transparent 0%, rgba(5, 25, 45, 0.35) 75%, rgba(5, 20, 38, 0.65) 100%)',
-      }}
-    />
-
-    {/* ── Layer 5: subtle vignette ─────────────────────────────────────────── */}
-    <div
-      className="absolute inset-0"
-      style={{
-        background: 'radial-gradient(ellipse 90% 80% at 50% 30%, transparent 40%, rgba(5, 15, 30, 0.5) 100%)',
-      }}
-    />
   </div>
 );
 
@@ -900,6 +858,464 @@ function akvoOverall(s: AkvoState): { label: string; color: string } {
   if (s.systemReady === true || s.readyForExternalCommands === true) return { label: 'READY', color: PLUG };
   return { label: 'STANDBY', color: 'var(--accent)' };
 }
+
+// AKVO floor plate color by state (mirrors AkvoFloorSurface.floorColor).
+function akvoFloorColor(s: AkvoState): { plate: string; glow: string } {
+  if (s.emergencyStop === true || s.systemFault === true) return { plate: 'rgb(248 113 113)', glow: 'rgb(248 113 113 / 0.5)' };
+  if (s.badModbusComm === true) return { plate: 'rgb(251 146 60)', glow: 'rgb(251 146 60 / 0.4)' };
+  if (s.floorsMoving === true) return { plate: 'rgb(251 191 36)', glow: 'rgb(251 191 36 / 0.45)' };
+  if (s.systemReady === true || s.readyForExternalCommands === true) return { plate: 'rgb(52 211 153)', glow: 'rgb(52 211 153 / 0.32)' };
+  return { plate: 'rgb(148 163 184)', glow: 'rgb(148 163 184 / 0.22)' };
+}
+
+// =============================================================================
+// HERO — POOL DIVE-VIEW SCENE (the centerpiece)
+// =============================================================================
+//
+// A full-bleed cross-section "pool window": you are looking at the pool in
+// profile. The water column fills the whole hero; animated caustics and surface
+// waves live HERE (not in a separate floating blob). The AKVO movable-floor
+// plate is suspended at its REAL depth in the water (negative = above deck,
+// positive = submerged), with lifting cables, motion arrows, and a depth
+// callout. Glass readout chips (pool/spa temp, floor status, lights) float over
+// the scene as legible HUD overlays — so the immersive water IS the UI, edge to
+// edge, with no dead zone.
+//
+// SAFETY: display-only. This scene renders AKVO state; it issues no commands.
+// The geometry/animation is adapted from AkvoFloorSurface.CrossSection but
+// stretched to fill the hero width.
+
+interface PoolHeroSceneProps {
+  areaName: string;
+  poolSurface: ReturnType<typeof usePoolSurface>['surface'];
+  akvoState: AkvoState;
+  lutronLightsOn: number;
+  config: Required<PoolAreaConfig>;
+  showAkvo: boolean;
+  onToggleBody: (entityId: string, on: boolean) => void;
+  reduced: boolean;
+}
+
+// Hero SVG coordinate system: 1000 wide x 460 tall.
+// Deck line at y = HERO_DECK_Y; positive depth goes DOWN.
+const HERO_VB_W = 1000;
+const HERO_VB_H = 460;
+const HERO_DECK_Y = 120;            // water surface / deck reference
+const HERO_PX_PER_M = 70;           // 1 m of floor travel = 70 px
+const HERO_PLATE_W = 420;           // main floor plate width
+const HERO_PLATE_H = 18;
+const HERO_BAJA_W = 230;
+const HERO_BAJA_H = 12;
+
+function heroDepthToPx(m: number | null): number {
+  const v = m ?? 0;
+  // Clamp so an out-of-range reading never escapes the water box.
+  const px = HERO_DECK_Y + v * HERO_PX_PER_M;
+  return Math.max(HERO_DECK_Y - 80, Math.min(HERO_VB_H - 40, px));
+}
+
+const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
+  areaName, poolSurface, akvoState, lutronLightsOn, config, showAkvo, onToggleBody, reduced,
+}) => {
+  const anyBodyOn  = poolSurface.bodies.some(b => b.isOn);
+  const anyHeating = poolSurface.bodies.some(b => b.heaterIsOn);
+  const poolBody = poolSurface.bodies.find(b => b.name.toLowerCase().includes('pool')) ?? poolSurface.bodies[0] ?? null;
+  const spaBody  = poolSurface.bodies.find(b => b.name.toLowerCase().includes('spa')) ?? null;
+  const tempUnit = (poolSurface.bodies[0]?.waterTempUnit ?? '°F').replace('°', '');
+
+  const akvoInfo = akvoOverall(akvoState);
+  const isMoving = akvoState.floorsMoving === true;
+  const isFault  = akvoState.emergencyStop === true || akvoState.systemFault === true;
+  const showFloor = showAkvo && akvoState.present;
+  const { plate: plateColor, glow: glowColor } = akvoFloorColor(akvoState);
+
+  const mainY = heroDepthToPx(akvoState.mainFloorPosition);
+  const bajaY = akvoState.bajaPosition != null ? heroDepthToPx(akvoState.bajaPosition) : null;
+  const motionDir: 'up' | 'down' | null = isMoving
+    ? (akvoState.mainFloorPosition != null && akvoState.mainFloorPosition < 0 ? 'up' : 'down')
+    : null;
+
+  // Water tint warms slightly when heating, cools when idle.
+  const waterTop = anyHeating ? 'rgb(45 130 165)' : 'rgb(38 150 200)';
+
+  return (
+    <div
+      className="relative w-full flex-shrink-0 overflow-hidden"
+      style={{
+        // Hero is tall on a wide wall, shorter on mobile via aspect clamp.
+        height: 'clamp(15rem, 42cqw, 26rem)',
+        borderTopLeftRadius: 'var(--radius-surface)',
+        borderTopRightRadius: 'var(--radius-surface)',
+        borderBottom: `1px solid color-mix(in srgb, ${WATER} 22%, rgba(255,255,255,0.08))`,
+      }}
+    >
+      {/* ── The dive-view SVG (full bleed) ──────────────────────────────────── */}
+      <svg
+        className="absolute inset-0 w-full h-full"
+        viewBox={`0 0 ${HERO_VB_W} ${HERO_VB_H}`}
+        preserveAspectRatio="xMidYMid slice"
+        aria-label={`${areaName} pool cross-section`}
+      >
+        <defs>
+          {/* Deep water column gradient */}
+          <linearGradient id="heroWater" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={waterTop}      stopOpacity="0.55" />
+            <stop offset="45%"  stopColor="rgb(12 92 135)" stopOpacity="0.78" />
+            <stop offset="100%" stopColor="rgb(6 38 62)"   stopOpacity="0.95" />
+          </linearGradient>
+          {/* Sky / above-deck soft glow */}
+          <linearGradient id="heroSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="rgb(10 40 64)" stopOpacity="0.0" />
+            <stop offset="100%" stopColor="rgb(14 70 102)" stopOpacity="0.25" />
+          </linearGradient>
+          {/* Caustic light shafts */}
+          <radialGradient id="heroCaustic1" cx="50%" cy="0%" r="80%">
+            <stop offset="0%"   stopColor="#7dd3fc" stopOpacity="0.22" />
+            <stop offset="55%"  stopColor="#38bdf8" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+          </radialGradient>
+          <radialGradient id="heroCaustic2" cx="50%" cy="50%" r="55%">
+            <stop offset="0%"   stopColor="#bae6fd" stopOpacity="0.16" />
+            <stop offset="60%"  stopColor="#7dd3fc" stopOpacity="0.06" />
+            <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.0" />
+          </radialGradient>
+          {/* Surface wave pattern */}
+          <pattern id="heroWavePat" x="0" y="0" width="120" height="20" patternUnits="userSpaceOnUse"
+            style={!reduced && anyBodyOn ? { animation: 'pool-comp-hero-wave-drift 5s linear infinite' } : {}}>
+            <path d="M0 10 Q15 3 30 10 Q45 17 60 10 Q75 3 90 10 Q105 17 120 10"
+              fill="none" stroke="#cdeefe" strokeWidth="2" strokeOpacity="0.5" />
+          </pattern>
+          <pattern id="heroWavePat2" x="0" y="0" width="90" height="16" patternUnits="userSpaceOnUse"
+            style={!reduced && anyBodyOn ? { animation: 'pool-comp-hero-wave-drift2 7s linear infinite' } : {}}>
+            <path d="M0 8 Q11 3 22 8 Q34 13 45 8 Q56 3 68 8 Q79 13 90 8"
+              fill="none" stroke="#7dd3fc" strokeWidth="1.4" strokeOpacity="0.32" />
+          </pattern>
+          {/* Plate glow */}
+          <filter id="heroPlateGlow" x="-30%" y="-150%" width="160%" height="400%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="b" />
+            <feFlood floodColor={plateColor} floodOpacity="0.7" result="c" />
+            <feComposite in="c" in2="b" operator="in" result="g" />
+            <feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Above-deck region */}
+        <rect x="0" y="0" width={HERO_VB_W} height={HERO_DECK_Y} fill="url(#heroSky)" />
+
+        {/* Water column */}
+        <rect x="0" y={HERO_DECK_Y} width={HERO_VB_W} height={HERO_VB_H - HERO_DECK_Y} fill="url(#heroWater)" />
+
+        {/* Caustic light shafts in the water */}
+        <ellipse cx="320" cy={HERO_DECK_Y + 40} rx="380" ry="220" fill="url(#heroCaustic1)"
+          style={!reduced ? { animation: 'pool-comp-depth-pulse 7s ease-in-out infinite' } : {}} />
+        <ellipse cx="760" cy={HERO_DECK_Y + 120} rx="320" ry="200" fill="url(#heroCaustic2)"
+          style={!reduced ? { animation: 'pool-comp-depth-pulse 9s ease-in-out infinite 1.5s' } : {}} />
+
+        {/* Rising bubbles when a pump/body is running */}
+        {anyBodyOn && !reduced && (
+          <g>
+            {[
+              { x: 180, r: 4, dur: 6, delay: 0 },
+              { x: 250, r: 3, dur: 7.5, delay: 1.2 },
+              { x: 820, r: 5, dur: 5.5, delay: 0.6 },
+              { x: 880, r: 3, dur: 8, delay: 2 },
+              { x: 520, r: 3.5, dur: 6.8, delay: 1.8 },
+            ].map((b, i) => (
+              <circle key={i} cx={b.x} cy={HERO_VB_H - 30} r={b.r}
+                fill="#cdeefe" fillOpacity="0.4"
+                style={{ animation: `pool-comp-bubble-rise ${b.dur}s ease-in infinite`, animationDelay: `${b.delay}s` }} />
+            ))}
+          </g>
+        )}
+
+        {/* Water surface — animated wave bands */}
+        <g style={!reduced ? { animation: 'pool-comp-hero-shimmer 4s ease-in-out infinite' } : {}}>
+          <rect x="-120" y={HERO_DECK_Y - 10} width={HERO_VB_W + 240} height="20" fill="url(#heroWavePat)" opacity="0.85" />
+          <rect x="-120" y={HERO_DECK_Y - 2}  width={HERO_VB_W + 240} height="16" fill="url(#heroWavePat2)" opacity="0.6" />
+        </g>
+
+        {/* Deck reference line + label */}
+        <line x1="0" y1={HERO_DECK_Y} x2={HERO_VB_W} y2={HERO_DECK_Y}
+          stroke="rgba(205,238,254,0.35)" strokeWidth="1.5" strokeDasharray="8 6" />
+        <text x="22" y={HERO_DECK_Y - 12} fontSize="13" fontFamily="var(--font-numeric, monospace)"
+          fill="rgba(205,238,254,0.55)" letterSpacing="2" fontWeight="600">
+          WATER LINE · 0.00 m
+        </text>
+
+        {/* Depth ruler on the right edge */}
+        {[0, 1, 2, 3, 4].map((m) => {
+          const y = HERO_DECK_Y + m * HERO_PX_PER_M;
+          if (y > HERO_VB_H - 20) return null;
+          return (
+            <g key={m}>
+              <line x1={HERO_VB_W - 44} y1={y} x2={HERO_VB_W - 30} y2={y}
+                stroke="rgba(205,238,254,0.25)" strokeWidth="1.5" />
+              <text x={HERO_VB_W - 26} y={y + 4} fontSize="11" fontFamily="var(--font-numeric, monospace)"
+                fill="rgba(205,238,254,0.4)">{m}m</text>
+            </g>
+          );
+        })}
+
+        {/* ── AKVO floor plate (display only) ──────────────────────────────── */}
+        {showFloor && (
+          <>
+            {/* Baja shelf (secondary floor), if present */}
+            {bajaY != null && (
+              <g style={{
+                transition: isMoving ? 'transform 0.6s linear' : 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)',
+                transform: `translateY(${bajaY - HERO_DECK_Y}px)`,
+              }}>
+                <g transform={`translate(${HERO_VB_W / 2 - HERO_BAJA_W / 2 - 60}, ${HERO_DECK_Y})`}>
+                  <rect x="0" y="0" width={HERO_BAJA_W} height={HERO_BAJA_H} rx="3"
+                    fill="rgb(71 85 105)" stroke="rgb(148 163 184)" strokeWidth="1" opacity="0.72" />
+                  <text x={HERO_BAJA_W / 2} y={HERO_BAJA_H / 2 + 4} textAnchor="middle"
+                    fontSize="9" fill="rgb(186 230 253)" fontFamily="monospace" letterSpacing="2">BAJA</text>
+                </g>
+              </g>
+            )}
+
+            {/* Main floor plate — the hero element */}
+            <g style={{
+              transition: isMoving ? 'transform 0.6s linear' : 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)',
+              transform: `translateY(${mainY - HERO_DECK_Y}px)`,
+            }}>
+              <g transform={`translate(${HERO_VB_W / 2 - HERO_PLATE_W / 2}, ${HERO_DECK_Y})`}>
+                {/* Drop glow */}
+                <ellipse cx={HERO_PLATE_W / 2} cy={HERO_PLATE_H + 7} rx={HERO_PLATE_W / 2 - 8} ry="9"
+                  fill={glowColor}
+                  style={isFault ? { animation: 'pool-comp-akvo-alert 1s ease-in-out infinite' } : {}} />
+                {/* Lifting cables */}
+                {[40, HERO_PLATE_W - 40].map((cx, i) => (
+                  <line key={i} x1={cx} y1="0" x2={cx} y2={-(mainY - HERO_DECK_Y) - 4}
+                    stroke="rgb(120 140 165)" strokeWidth="2" strokeOpacity="0.5"
+                    strokeDasharray={isMoving ? '6 4' : 'none'}
+                    style={isMoving && !reduced ? { animation: `pool-comp-cable-flow 0.5s linear infinite ${i * 0.2}s` } : {}} />
+                ))}
+                {/* Plate body */}
+                <rect x="0" y="0" width={HERO_PLATE_W} height={HERO_PLATE_H} rx="4"
+                  fill={plateColor} filter="url(#heroPlateGlow)"
+                  opacity={isFault ? undefined : 0.94}
+                  style={isFault ? { animation: 'pool-comp-akvo-alert 1s ease-in-out infinite' } : {}} />
+                {/* Surface grip lines */}
+                {Array.from({ length: 9 }, (_, k) => 40 + k * 42).map(x => (
+                  <line key={x} x1={x} y1="3" x2={x} y2={HERO_PLATE_H - 3}
+                    stroke="rgba(0,0,0,0.18)" strokeWidth="1.5" />
+                ))}
+                {/* Label */}
+                <text x={HERO_PLATE_W / 2} y={HERO_PLATE_H / 2 + 4} textAnchor="middle"
+                  fontSize="11" fill="rgba(0,0,0,0.72)" fontFamily="monospace" fontWeight="bold" letterSpacing="3">
+                  MOVABLE FLOOR
+                </text>
+                {/* Motion arrows */}
+                {motionDir === 'up' && [0, 1].map(k => (
+                  <polygon key={k}
+                    points={`${HERO_PLATE_W / 2 - 9},${-6 - k * 16} ${HERO_PLATE_W / 2 + 9},${-6 - k * 16} ${HERO_PLATE_W / 2},${-18 - k * 16}`}
+                    fill={plateColor} style={{ animation: `pool-comp-plate-arrow 0.7s ease-in-out infinite ${k * 0.2}s` }} />
+                ))}
+                {motionDir === 'down' && [0, 1].map(k => (
+                  <polygon key={k}
+                    points={`${HERO_PLATE_W / 2 - 9},${HERO_PLATE_H + 6 + k * 16} ${HERO_PLATE_W / 2 + 9},${HERO_PLATE_H + 6 + k * 16} ${HERO_PLATE_W / 2},${HERO_PLATE_H + 18 + k * 16}`}
+                    fill={plateColor} style={{ animation: `pool-comp-plate-arrow 0.7s ease-in-out infinite ${k * 0.2}s` }} />
+                ))}
+              </g>
+            </g>
+
+            {/* Depth callout for the main floor */}
+            {akvoState.mainFloorPosition != null && (
+              <g style={{ transition: 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)', transform: `translateY(${mainY - HERO_DECK_Y}px)` }}>
+                <line x1={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 10} y1={HERO_DECK_Y + HERO_PLATE_H / 2}
+                  x2={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 44} y2={HERO_DECK_Y + HERO_PLATE_H / 2}
+                  stroke="rgba(205,238,254,0.4)" strokeWidth="1.5" />
+                <text x={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 50} y={HERO_DECK_Y + HERO_PLATE_H / 2 + 5}
+                  textAnchor="end" fontSize="15" fill={plateColor} fontFamily="var(--font-numeric, monospace)" fontWeight="bold">
+                  {akvoState.mainFloorPosition.toFixed(2)} m
+                </text>
+              </g>
+            )}
+          </>
+        )}
+      </svg>
+
+      {/* ── HUD overlay: title + readout chips (legible glass over the scene) ─ */}
+      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none"
+        style={{ padding: 'clamp(0.6rem, 3cqw, 1.25rem)' }}>
+
+        {/* Top row: area title (left) + lights/floor status (right) */}
+        <div className="flex items-start justify-between gap-3">
+          {/* Title bead */}
+          <div className="flex items-center pointer-events-auto" style={{ gap: 'clamp(0.4rem, 2cqw, 0.75rem)' }}>
+            <div style={{
+              width: 'clamp(34px, 4.5cqw, 48px)', height: 'clamp(34px, 4.5cqw, 48px)',
+              borderRadius: 'var(--radius-control)', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+              backgroundColor: `color-mix(in srgb, ${WATER} 30%, var(--glass-l3-bg))`,
+              backgroundImage: 'var(--specular-strong)',
+              border: `1px solid color-mix(in srgb, ${WATER} 58%, var(--glass-l3-border))`,
+              boxShadow: `var(--rim-light), inset 0 0 18px -4px color-mix(in srgb, ${WATER} 48%, transparent), 0 0 24px -4px color-mix(in srgb, ${WATER} 62%, transparent)`,
+            }}>
+              <IconWaves style={{ width: 'clamp(18px, 2.6cqw, 24px)', height: 'clamp(18px, 2.6cqw, 24px)', color: WATER }} />
+            </div>
+            <div className="flex flex-col" style={{ gap: 2 }}>
+              <h2 style={{
+                margin: 0, fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(1.1rem, 3cqw, 1.9rem)', fontWeight: 700, lineHeight: 1.1,
+                color: 'rgb(245 250 255)', letterSpacing: 'var(--tracking-tight)',
+                textShadow: '0 2px 12px rgba(0,0,0,0.55)',
+              }}>{areaName}</h2>
+              <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)' }}>
+                {anyBodyOn && <HeroTag label="Pool Active" color={WATER} />}
+                {anyHeating && <HeroTag label="Heating" color={WARN} />}
+                {showFloor && isMoving && <HeroTag label="Floor Moving" color={WARN} pulse />}
+                {showFloor && isFault && <HeroTag label="Floor Fault" color={ALERT} pulse />}
+              </div>
+            </div>
+          </div>
+
+          {/* Right-side chips: lights + floor status (fills the previously-empty right) */}
+          <div className="flex items-center flex-wrap justify-end pointer-events-auto" style={{ gap: 'var(--space-2)' }}>
+            {config.showLighting && lutronLightsOn > 0 && (
+              <HeroChip color={WARN}>
+                <IconLightbulb style={{ width: 15, height: 15, color: WARN, filter: `drop-shadow(0 0 4px ${WARN})` }} />
+                <span style={{ fontSize: 'var(--type-sm)', fontWeight: 700, color: WARN }}>{lutronLightsOn} on</span>
+              </HeroChip>
+            )}
+            {showFloor && (
+              <HeroChip color={akvoInfo.color} stacked label="Floor">
+                <span style={{ fontSize: 'clamp(0.7rem, 1.4cqw, 0.95rem)', fontWeight: 800, color: akvoInfo.color }}>
+                  {akvoInfo.label}
+                </span>
+              </HeroChip>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom row: temperature readouts + body toggles (the legible HUD) */}
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex items-end flex-wrap pointer-events-auto" style={{ gap: 'clamp(0.4rem, 1.5cqw, 0.75rem)' }}>
+            {poolBody && (
+              <HeroTempReadout
+                body={poolBody}
+                accent={WATER}
+                tempUnit={tempUnit}
+                onToggle={(on) => onToggleBody(poolBody.entityId, on)}
+                reduced={reduced}
+              />
+            )}
+            {spaBody && (
+              <HeroTempReadout
+                body={spaBody}
+                accent={WARN}
+                tempUnit={tempUnit}
+                onToggle={(on) => onToggleBody(spaBody.entityId, on)}
+                reduced={reduced}
+              />
+            )}
+          </div>
+
+          {/* AKVO active config (bottom-right, anchors the right side) */}
+          {showFloor && (
+            <div className="pointer-events-auto" style={{
+              borderRadius: 'var(--radius-control)',
+              padding: 'clamp(0.3rem, 1.2cqw, 0.5rem) clamp(0.5rem, 2cqw, 0.85rem)',
+              backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+              backgroundColor: `color-mix(in srgb, ${akvoInfo.color} 14%, var(--glass-l3-bg))`,
+              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+              border: `1px solid color-mix(in srgb, ${akvoInfo.color} 38%, var(--glass-l3-border))`,
+              boxShadow: `var(--rim), 0 0 14px -4px color-mix(in srgb, ${akvoInfo.color} 32%, transparent)`,
+            }}>
+              <div className="flex flex-col items-end">
+                <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
+                  Configuration
+                </span>
+                <span style={{ fontSize: 'clamp(0.75rem, 1.5cqw, 1rem)', fontWeight: 700, color: 'rgb(245 250 255)' }}>
+                  {akvoState.activeConfiguration ?? '—'}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Small HUD tag (status word)
+const HeroTag: React.FC<{ label: string; color: string; pulse?: boolean }> = ({ label, color, pulse }) => (
+  <span style={{
+    fontSize: 'var(--type-2xs)', fontWeight: 700, color,
+    letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const,
+    textShadow: '0 1px 6px rgba(0,0,0,0.5)',
+    animation: pulse ? 'pool-comp-akvo-alert 0.8s ease-in-out infinite' : 'none',
+  }}>{label}</span>
+);
+
+// HUD chip wrapper (glass)
+const HeroChip: React.FC<{ color: string; children: React.ReactNode; stacked?: boolean; label?: string }> = ({
+  color, children, stacked, label,
+}) => (
+  <div style={{
+    borderRadius: 'var(--radius-control)',
+    padding: 'clamp(0.25rem, 1cqw, 0.45rem) clamp(0.4rem, 1.8cqw, 0.75rem)',
+    backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+    backgroundColor: `color-mix(in srgb, ${color} 16%, var(--glass-l3-bg))`,
+    backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+    border: `1px solid color-mix(in srgb, ${color} 40%, var(--glass-l3-border))`,
+    boxShadow: `var(--rim), 0 0 12px -3px color-mix(in srgb, ${color} 32%, transparent)`,
+  }}>
+    {stacked ? (
+      <div className="flex flex-col items-center">
+        {label && <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>{label}</span>}
+        {children}
+      </div>
+    ) : (
+      <div className="flex items-center" style={{ gap: 'var(--space-1)' }}>{children}</div>
+    )}
+  </div>
+);
+
+// HUD temperature readout with an integrated body on/off control.
+const HeroTempReadout: React.FC<{
+  body: BodyState; accent: string; tempUnit: string;
+  onToggle: (on: boolean) => void; reduced: boolean;
+}> = ({ body, accent, tempUnit, onToggle, reduced }) => {
+  const isPool = body.name.toLowerCase().includes('pool');
+  return (
+    <div style={{
+      borderRadius: 'var(--radius-card)',
+      padding: 'clamp(0.35rem, 1.4cqw, 0.6rem) clamp(0.5rem, 2cqw, 0.85rem)',
+      backdropFilter: 'var(--glass-l2-backdrop)', WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+      backgroundColor: body.isOn ? `color-mix(in srgb, ${accent} 18%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
+      backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
+      border: `1px solid ${body.isOn ? `color-mix(in srgb, ${accent} 48%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
+      boxShadow: body.isOn
+        ? `var(--rim), inset 0 0 26px -8px color-mix(in srgb, ${accent} 26%, transparent), 0 0 18px -4px color-mix(in srgb, ${accent} 36%, transparent)`
+        : 'var(--rim), var(--elev-1)',
+      transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+      animation: !reduced ? 'pool-comp-readout-float 6s ease-in-out infinite' : 'none',
+    }}>
+      <div className="flex items-center" style={{ gap: 'clamp(0.4rem, 1.5cqw, 0.7rem)' }}>
+        <div className="flex flex-col">
+          <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
+            {body.name}
+          </span>
+          <div className="flex items-baseline" style={{ gap: 2 }}>
+            <span style={{ fontSize: 'clamp(1.3rem, 3.4cqw, 2.4rem)', fontWeight: 800, lineHeight: 1, color: 'rgb(245 250 255)', fontVariantNumeric: 'tabular-nums' as const, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+              {body.waterTempC !== null ? Math.round(body.waterTempC) : '--'}
+            </span>
+            <span style={{ fontSize: 'clamp(0.7rem, 1.2cqw, 1rem)', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>°{tempUnit}</span>
+          </div>
+          {body.heaterIsOn && body.heaterTarget !== null && (
+            <span className="flex items-center" style={{ gap: 3, fontSize: 'var(--type-2xs)', color: WARN, fontWeight: 600, marginTop: 1 }}>
+              <IconFlame style={{ width: 10, height: 10 }} /> → {body.heaterTarget}°
+            </span>
+          )}
+        </div>
+        <ControlPill label={body.isOn ? 'ON' : 'OFF'} isOn={body.isOn} onClick={() => onToggle(!body.isOn)} accent={accent} />
+      </div>
+    </div>
+  );
+};
 
 /**
  * AKVO Hold-to-request button.
@@ -1447,168 +1863,6 @@ const EffectPickerModal: React.FC<{
   document.body,
 );
 
-// =============================================================================
-// HERO BAND — top-of-surface overview strip
-// =============================================================================
-
-const HeroBand: React.FC<{
-  areaName: string;
-  poolSurface: ReturnType<typeof usePoolSurface>['surface'];
-  akvoState: AkvoState;
-  lutronLightsOn: number;
-  config: Required<PoolAreaConfig>;
-}> = ({ areaName, poolSurface, akvoState, lutronLightsOn, config }) => {
-  const anyBodyOn = poolSurface.bodies.some(b => b.isOn);
-  const anyHeating = poolSurface.bodies.some(b => b.heaterIsOn);
-  const poolTemp = poolSurface.bodies.find(b => b.name.toLowerCase().includes('pool'))?.waterTempC ?? null;
-  const spaTemp = poolSurface.bodies.find(b => b.name.toLowerCase().includes('spa'))?.waterTempC ?? null;
-  const tempUnit = poolSurface.bodies[0]?.waterTempUnit ?? '°F';
-
-  const akvoOverallInfo = akvoOverall(akvoState);
-  const isMoving = akvoState.floorsMoving === true;
-  const isFault = akvoState.emergencyStop === true || akvoState.systemFault === true;
-
-  return (
-    <div
-      className="relative flex-shrink-0"
-      style={{
-        backdropFilter: 'blur(16px) saturate(1.6)',
-        WebkitBackdropFilter: 'blur(16px) saturate(1.6)',
-        backgroundColor: 'rgba(7, 40, 66, 0.55)',
-        borderBottom: `1px solid color-mix(in srgb, ${WATER} 18%, rgba(255,255,255,0.08))`,
-        padding: 'clamp(0.6rem, 3cqmin, 1rem) clamp(0.75rem, 4cqmin, 1.25rem)',
-      }}
-    >
-      <div className="flex items-center justify-between flex-wrap" style={{ gap: 'var(--space-3)' }}>
-        {/* Left: title + status */}
-        <div className="flex items-center" style={{ gap: 'clamp(0.5rem, 2.5cqmin, 0.85rem)' }}>
-          {/* Icon bead */}
-          <div style={{
-            width: 'clamp(32px, 10cqmin, 44px)', height: 'clamp(32px, 10cqmin, 44px)',
-            borderRadius: 'var(--radius-control)', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'var(--glass-l3-backdrop)',
-            WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-            backgroundColor: `color-mix(in srgb, ${WATER} 28%, var(--glass-l3-bg))`,
-            backgroundImage: 'var(--specular-strong)',
-            border: `1px solid color-mix(in srgb, ${WATER} 55%, var(--glass-l3-border))`,
-            boxShadow: `var(--rim-light), inset 0 0 16px -4px color-mix(in srgb, ${WATER} 45%, transparent), 0 0 20px -4px color-mix(in srgb, ${WATER} 60%, transparent)`,
-          }}>
-            <IconWaves style={{ width: 'clamp(16px, 5cqmin, 22px)', height: 'clamp(16px, 5cqmin, 22px)', color: WATER }} />
-          </div>
-          <div className="flex flex-col" style={{ gap: 2 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'clamp(1rem, 5.5cqmin, 1.5rem)', fontWeight: 700, color: 'rgb(var(--text))', letterSpacing: 'var(--tracking-tight)', lineHeight: 1.15 }}>
-              {areaName}
-            </h2>
-            <div className="flex items-center" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              {anyBodyOn && (
-                <span style={{ fontSize: 'var(--type-2xs)', color: WATER, fontWeight: 700, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
-                  Pool Active
-                </span>
-              )}
-              {anyHeating && (
-                <span style={{ fontSize: 'var(--type-2xs)', color: WARN, fontWeight: 700, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
-                  Heating
-                </span>
-              )}
-              {config.showAkvo && isMoving && (
-                <span style={{ fontSize: 'var(--type-2xs)', color: WARN, fontWeight: 700, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const, animation: 'pool-comp-akvo-alert 0.8s ease-in-out infinite' }}>
-                  Floor Moving
-                </span>
-              )}
-              {config.showAkvo && isFault && (
-                <span style={{ fontSize: 'var(--type-2xs)', color: ALERT, fontWeight: 700, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const, animation: 'pool-comp-akvo-alert 0.6s ease-in-out infinite' }}>
-                  Floor Fault
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right: stat chips */}
-        <div className="flex items-center flex-wrap" style={{ gap: 'var(--space-2)' }}>
-          {poolTemp !== null && (
-            <div style={{
-              borderRadius: 'var(--radius-control)',
-              padding: 'clamp(0.2rem, 1.5cqmin, 0.4rem) clamp(0.4rem, 2.5cqmin, 0.75rem)',
-              backdropFilter: 'var(--glass-l3-backdrop)',
-              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${WATER} 16%, var(--glass-l3-bg))`,
-              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${WATER} 42%, var(--glass-l3-border))`,
-              boxShadow: `var(--rim), 0 0 12px -3px color-mix(in srgb, ${WATER} 36%, transparent)`,
-            }}>
-              <div className="flex flex-col items-center">
-                <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(var(--text) / 0.45)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>Pool</span>
-                <span style={{ fontSize: 'clamp(1rem, 5cqmin, 1.4rem)', fontWeight: 700, color: WATER, tabularNums: true } as any}>
-                  {Math.round(poolTemp)}°<span style={{ fontSize: '0.65em', color: 'rgba(var(--text) / 0.4)' }}>{tempUnit.replace('°', '')}</span>
-                </span>
-              </div>
-            </div>
-          )}
-
-          {spaTemp !== null && (
-            <div style={{
-              borderRadius: 'var(--radius-control)',
-              padding: 'clamp(0.2rem, 1.5cqmin, 0.4rem) clamp(0.4rem, 2.5cqmin, 0.75rem)',
-              backdropFilter: 'var(--glass-l3-backdrop)',
-              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${WARN} 16%, var(--glass-l3-bg))`,
-              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${WARN} 42%, var(--glass-l3-border))`,
-              boxShadow: `var(--rim), 0 0 12px -3px color-mix(in srgb, ${WARN} 36%, transparent)`,
-            }}>
-              <div className="flex flex-col items-center">
-                <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(var(--text) / 0.45)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>Spa</span>
-                <span style={{ fontSize: 'clamp(1rem, 5cqmin, 1.4rem)', fontWeight: 700, color: WARN, tabularNums: true } as any}>
-                  {Math.round(spaTemp)}°<span style={{ fontSize: '0.65em', color: 'rgba(var(--text) / 0.4)' }}>{tempUnit.replace('°', '')}</span>
-                </span>
-              </div>
-            </div>
-          )}
-
-          {config.showLighting && lutronLightsOn > 0 && (
-            <div style={{
-              borderRadius: 'var(--radius-control)',
-              padding: 'clamp(0.2rem, 1.5cqmin, 0.4rem) clamp(0.4rem, 2.5cqmin, 0.75rem)',
-              backdropFilter: 'var(--glass-l3-backdrop)',
-              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${WARN} 16%, var(--glass-l3-bg))`,
-              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${WARN} 40%, var(--glass-l3-border))`,
-              boxShadow: `var(--rim), 0 0 10px -3px color-mix(in srgb, ${WARN} 30%, transparent)`,
-            }}>
-              <div className="flex items-center" style={{ gap: 'var(--space-1)' }}>
-                <IconLightbulb style={{ width: 14, height: 14, color: WARN, filter: `drop-shadow(0 0 3px ${WARN})` }} />
-                <span style={{ fontSize: 'var(--type-sm)', fontWeight: 700, color: WARN }}>{lutronLightsOn}</span>
-              </div>
-            </div>
-          )}
-
-          {config.showAkvo && akvoState.present && (
-            <div style={{
-              borderRadius: 'var(--radius-control)',
-              padding: 'clamp(0.2rem, 1.5cqmin, 0.4rem) clamp(0.4rem, 2.5cqmin, 0.75rem)',
-              backdropFilter: 'var(--glass-l3-backdrop)',
-              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${akvoOverallInfo.color} 16%, var(--glass-l3-bg))`,
-              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${akvoOverallInfo.color} 42%, var(--glass-l3-border))`,
-              boxShadow: `var(--rim), 0 0 10px -3px color-mix(in srgb, ${akvoOverallInfo.color} 30%, transparent)`,
-            }}>
-              <div className="flex flex-col items-center">
-                <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(var(--text) / 0.45)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>Floor</span>
-                <span style={{ fontSize: 'var(--type-xs)', fontWeight: 700, color: akvoOverallInfo.color }}>
-                  {akvoOverallInfo.label}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // =============================================================================
 // COLLAPSIBLE SECTION WRAPPER
@@ -1693,7 +1947,17 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
   }, [lutronState, config.lutronAreaFilter]);
 
   const anyBodyOn = surface.bodies.some(b => b.isOn);
-  const reduced = false; // could wire useReducedMotion() if desired
+  // Respect prefers-reduced-motion: the hero scene + backdrop fall back to a
+  // static (no-loop) variant, mirroring the standalone surfaces' behavior.
+  const reduced = useReducedMotion();
+
+  // Count how many control sections are active — drives the balanced grid so the
+  // cards STRETCH edge-to-edge instead of left-packing at fixed width. When fewer
+  // than 3 sections are enabled we cap the column count so a lone card doesn't
+  // leave a hole on the right.
+  const hasPumps = config.showPool && (surface.pumps.length > 0 || surface.probeTemps.length > 0);
+  const activeSectionCount =
+    (config.showPool ? 1 : 0) + (config.showAkvo ? 1 : 0) + (config.showLighting ? 1 : 0);
 
   return (
     <>
@@ -1701,6 +1965,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
         className="relative flex flex-col h-full overflow-hidden"
         style={{
           borderRadius: 'var(--radius-surface)',
+          containerType: 'inline-size',
           // Base: dark pool-blue glass
           backdropFilter: 'var(--glass-l1-backdrop)',
           WebkitBackdropFilter: 'var(--glass-l1-backdrop)',
@@ -1717,48 +1982,46 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
           transition: `background-color var(--dur-slow, 420ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-slow, 420ms) ease, box-shadow var(--dur-slow, 420ms) ease`,
         }}
       >
-        {/* ── Animated water backdrop (purely decorative) ────────────────── */}
+        {/* Faint decorative caustics in the control region below the hero, so the
+            scroll area still reads as "underwater" without a dead blob. */}
         <PoolWaterBackdrop active={anyBodyOn} reduced={reduced} />
 
-        {/* ── Hero band ─────────────────────────────────────────────────── */}
-        <HeroBand
+        {/* ── HERO: full-bleed pool dive-view scene (the centerpiece) ─────── */}
+        <PoolHeroScene
           areaName={tile.label || config.areaName}
           poolSurface={surface}
           akvoState={akvoState}
           lutronLightsOn={lutronLightsOn}
           config={config}
+          showAkvo={config.showAkvo}
+          onToggleBody={toggleBody}
+          reduced={reduced}
         />
 
-        {/* ── Scrollable body ───────────────────────────────────────────── */}
+        {/* ── Scrollable control deck (full-width balanced grid) ──────────── */}
         <div
           className="relative z-10 flex-1 overflow-y-auto min-h-0"
           style={{
-            containerType: 'inline-size',
-            padding: 'clamp(0.6rem, 3cqmin, 1rem)',
-            gap: 'clamp(0.5rem, 2.5cqmin, 0.85rem)',
+            padding: 'clamp(0.6rem, 2.5cqw, 1.1rem)',
             display: 'flex',
             flexDirection: 'column',
+            gap: 'clamp(0.5rem, 2cqw, 0.9rem)',
           }}
         >
           {/*
-            Responsive grid: 3 columns on wide surfaces, 2 on medium, 1 on narrow.
-            Container query breakpoints via cqw:
-              ≥ 900cqw-ish  → 3 columns
-              ≥ 560cqw-ish  → 2 columns
-              < 560cqw-ish  → 1 column
+            FULL-WIDTH balanced grid. Unlike the old auto-fill (which capped cards
+            at 22rem and packed them left, leaving the right empty), this uses a
+            fixed responsive column count whose tracks STRETCH to fill the row:
+              wall (≥ 64rem container)  → 3 equal columns
+              tablet (≥ 40rem)          → 2 equal columns
+              mobile                    → 1 column
+            Driven by container queries on `.pool-comp-deck`.
           */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 22rem), 1fr))',
-              gap: 'clamp(0.5rem, 2.5cqmin, 0.85rem)',
-              alignItems: 'start',
-            }}
-          >
-            {/* ── COLUMN 1: Pool Controls ──────────────────────────────── */}
+          <div className="pool-comp-deck" data-cols={activeSectionCount}>
+            {/* Pool & Spa controls + chemistry */}
             {config.showPool && (
               <CollapsibleSection
-                title="Pool & Spa"
+                title="Pool & Spa Controls"
                 icon={<IconWaves style={{ width: 16, height: 16 }} />}
                 accent={WATER}
                 defaultOpen={true}
@@ -1779,10 +2042,10 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
               </CollapsibleSection>
             )}
 
-            {/* ── COLUMN 2: AKVO Floor ─────────────────────────────────── */}
+            {/* AKVO preset console (guarded) */}
             {config.showAkvo && (
               <CollapsibleSection
-                title="Movable Floor"
+                title="Movable Floor Console"
                 icon={<IconLayers style={{ width: 16, height: 16 }} />}
                 accent={WARN}
                 defaultOpen={true}
@@ -1791,7 +2054,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
               </CollapsibleSection>
             )}
 
-            {/* ── COLUMN 3: Lighting ───────────────────────────────────── */}
+            {/* Pool-area Lutron lights & shades */}
             {config.showLighting && (
               <CollapsibleSection
                 title="Lighting & Shades"
@@ -1804,8 +2067,8 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
             )}
           </div>
 
-          {/* ── Pumps + Sensors — full width below main grid ─────────────── */}
-          {config.showPool && (surface.pumps.length > 0 || surface.probeTemps.length > 0) && (
+          {/* ── Pumps + Sensors — full-width band below the grid ──────────── */}
+          {hasPumps && (
             <CollapsibleSection
               title="Pumps & Sensors"
               icon={<IconActivity style={{ width: 16, height: 16 }} />}

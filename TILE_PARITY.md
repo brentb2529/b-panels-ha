@@ -470,10 +470,19 @@ wiring is delegated to the three sub-hooks already verified above.
 | `lutronAreaFilter` | string[] | `['pool','patio','spa','cabana','outdoor']` | Area name contains-match filter |
 | `areaName` | string | `'Pool Area'` | Hero header display name (overridden by `tile.label`) |
 
+**Layout (hero-first, full-width)**: a full-bleed `PoolHeroScene` cross-section
+"pool window" is the centerpiece — animated water column with the AKVO floor plate
+drawn at its real depth, plus pool/spa temps, body on/off, floor status and
+lights-on as glass HUD chips anchored to both edges. Controls lay out full-width
+below in a stretchy container-query grid (`1fr` tracks, 3/2/1 columns by width,
+capped to active-section count) so there is no left-packing or right-side dead
+space at wall resolution.
+
 **AKVO safety**: `AkvoSectionContent` replicates the same `HOLD_MS = 2000`
 press-and-hold gate + `evaluateGate` check + single `requestConfiguration()` call
-(which issues `select.select_option`) that `AkvoFloorSurface` uses. Display-only
-for floor position/motion/faults. No raw motion commands.
+(which issues `select.select_option`) that `AkvoFloorSurface` uses. The hero floor
+visualization is display-only (position/motion/faults). No raw motion commands.
 
-**Status**: ✅ built. Needs runtime verification that area filter matches expected
-Lutron areas and that all three sub-surfaces populate in the same panel instance.
+**Status**: ✅ built (hero-centric rebalance). Needs runtime verification that the
+area filter matches expected Lutron areas, that all three sub-surfaces populate in
+the same panel instance, and that the hero floor plate tracks real AKVO depth.
