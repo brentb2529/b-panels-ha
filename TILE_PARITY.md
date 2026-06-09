@@ -510,6 +510,61 @@ the certified E-stop is on the AKVO controller (not implied here). Starting moti
 stays guarded press-and-hold; only stopping is one-tap (asymmetric by design).
 `cancelMovement` added to `services/akvo.ts` and `useAkvoFloor`.
 
+---
+
+## Climate Area Compilation Panel — `DeviceType.ClimateArea` / `ClimateCompilationTile`
+
+A flagship multi-integration HVAC dashboard composing three HVAC sources into one
+immersive, dark charcoal/slate climate overview. **No new data plumbing** — all
+entity wiring delegates to the existing hooks and services.
+
+| Sub-surface | Hook / Source | Entities | Status |
+| --- | --- | --- | --- |
+| Airzone per-room zones + master/slave clusters | `useClimateZones()` | `climate.*` (Airzone, grouped by topology) | ✅ (delegates to verified hook) |
+| Mitsubishi AE-200E City Multi groups | `useDashboard().devices` (DeviceType.AE200) | `climate.ae200_*`, `sensor.*_inlet/outdoor_temp`, `binary_sensor.*_filter/error` | ✅ (reads from existing device state) |
+| CoolMaster VRF units | `useDashboard().devices` (DeviceType.CoolMaster) | `climate.l<n>_*`, `sensor.*_error_code`, `binary_sensor.*_clean_filter` | ✅ (reads from existing device state) |
+
+**Configurable filters** (set via `device.state` JSON `ClimateAreaConfig`):
+
+| Field | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `showAirzone` | boolean | `true` | Show Airzone section |
+| `showAe200` | boolean | `true` | Show AE-200E section |
+| `showCoolMaster` | boolean | `true` | Show CoolMaster section |
+| `airzoneFilter` | string[] | `[]` | Zone name contains-match filter (empty = all) |
+| `ae200Filter` | string[] | `[]` | Controller id/name contains-match filter |
+| `coolMasterFilter` | string[] | `[]` | Line id filter (e.g. `['L1']`) |
+| `areaName` | string | `'Climate'` | Hero header display name (overridden by `tile.label`) |
+| `showQuickActions` | boolean | `true` | Show the one-tap routines bar |
+| `quickActions` | ClimateQuickAction[] | sensible default set | Routines fanned out to all three integrations |
+
+**Layout (iPad-landscape 1366×1024 first)**: `climate-comp-root` dark charcoal/slate
+base; container-query 3-column balanced grid (`data-cols`). Sections scroll if many
+zones.
+
+**Hero** (`ClimateHeroScene`): outdoor temp chip (from AE-200E outdoor sensor, averaged
+across controllers); zone count summary (Total / Heating / Cooling / Idle); tinted
+heating (amber) / cooling (cyan) thermal-mesh backdrop (`ClimateHeroBackdrop`) — very
+slow air-flow gradient drift, fine direction lines, slow specular travel; connection
+status chip (Live/Stale/Connecting); glass HUD throughout.
+
+**Quick-actions bar** (`QuickActionsBar`): four default routines fan-out to all three
+integrations via `svcAirzoneSetTemp`/`svcAirzoneSetMode`, `haClient.callService`, direct:
+- `All → 72°` — `setTargetTemperature` on every active zone/group/unit
+- `Comfort` — 74°C/70°H preset per mode
+- `Eco / Setback` — 78°C/66°H preset per mode
+- `All Off` — `set_hvac_mode: off` across all; master-routed for Airzone
+
+**State-reactive**: ambient tint on outer surface glow and hero backdrop shifts between
+heating amber, cooling cyan, and neutral slate based on dominant zone mode count.
+Fans animate (`AnimatedFan`) when running; `BuildBar` shows current temp as fraction
+of min/max range.
+
+**Light-mode pin**: `body.light-mode .climate-comp-root` overrides `--text` and all
+`--glass-l*` tokens with pinned dark context (matching Pool compilation pattern).
+
+**Status**: ✅ built, `npx tsc --noEmit` clean, `npm run build` green.
+
 **AKVO safety (unchanged start path)**: `AkvoSectionContent` AND the quick-action
 `floor` path replicate the same `HOLD_MS = 2000` press-and-hold gate +
 `evaluateGate` check + single `requestConfiguration()` call (which issues
