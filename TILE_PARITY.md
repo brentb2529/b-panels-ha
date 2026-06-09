@@ -306,12 +306,62 @@ Source: `components/tiles/AkvoFloorSurface.tsx`, `hooks/useAkvoFloor.ts`,
 `services/akvo.ts` (model + gate + the one gated command; `akvo.ts` and
 `useAkvoFloor.ts` are unchanged by feat/akvo-anim).
 
+## Lutron HomeWorks QSX (`lutron_caseta`, core) — LutronSurface ✅
+
+Self-driven surface tile (DeviceType.LutronSurface). Discovers entities dynamically
+via subscribeEntities; groups by area token from entity_id slug; graceful degradation
+when absent.
+
+Animation/richness pass (feat/lutron-anim) upgrades over v1:
+- Light card: live colour/brightness swatch disk scales + glows with level; ambient colour
+  halo behind the bulb; power button breathing ring when on; bulb icon drop-shadow glow.
+- Brightness slider: fill gradient matches live swatch colour; dragging class adds focus ring.
+- CCT strip: improved gradient (warm amber → cool blue); thumb transitions smoothly.
+- Shade glyph: translucent light-ray shaft scales with open position; light-leak below shade
+  panel; window cross-brace detail; richer fabric stripe + rail shadow.
+- Blind slats: smooth cubic-bezier tilt transition; translucent light-leak between slats.
+- Scene button: icon circle pulses on hover/press; multi-layer ripple + flash state.
+- Keypad LED: activity (green) flash on button press in addition to on/off states.
+- Stale state: whole surface dims (opacity) + amber pulsing border ring.
+- Cover move buttons: active state highlights opening/closing direction.
+- Light/dark theme: full CSS variable set overriding all hardcoded colors for light mode
+  (`prefers-color-scheme: light`).
+- Mobile reflow: collapse grids to 1–2 columns below 420 px.
+- Entity bindings and service calls unchanged.
+
+| Original field | HA entity | In surface? |
+| --- | --- | --- |
+| Light on/off + level (0–100%) | `light.<area>_<name>` state + `brightness` | ✅ animated dimmer slider + swatch disk + power toggle |
+| Light color (HS) | `light.*` `hs_color` | ✅ live colour swatch disk + ambient halo |
+| Light color temperature (K) | `light.*` `color_temp_kelvin` / `min/max_color_temp_kelvin` | ✅ CCT slider with warm→cool gradient; halo tinted by K |
+| Shade position (0–100%) | `cover.*` `current_position` / `is_closed` | ✅ animated shade glyph; light ray; open/stop/close buttons |
+| Blind tilt (0–100%) | `cover.*` `current_tilt_position` | ✅ animated slat tilt with light-leak; tilt-open/close buttons |
+| Scene activation | `scene.*` | ✅ tactile scene buttons with ripple + icon-pulse feedback |
+| Keypad buttons | `button.<keypad>_<button>` | ✅ grouped by keypad; tap to press |
+| Keypad LED state | `binary_sensor.<keypad>_<button>_led` | ✅ glowing amber dot (on) + green flash on press (display-only; LED control deferred) |
+| Connection health | live HA subscription | ✅ live/connecting/stale pill |
+| Stale indicator | subscribeEntities heartbeat | ✅ dim overlay + amber pulsing border after 30 s silence |
+
+Sources: `services/lutron.ts`, `hooks/useLutronSurface.ts`, `components/tiles/LutronSurface.tsx`.
+
+Binding assumptions:
+- Area names are derived from the entity_id slug (all tokens except the last).
+  e.g. `light.living_room_overhead` → area "Living Room", device "Overhead".
+- LED entities are matched by the convention `binary_sensor.<button_slug>_led`.
+  If the convention differs on the actual installation, the LED dot renders "unknown" (dim)
+  but the button still works.
+- All light/cover entities in HA are shown (no integration-filter); non-Lutron entities
+  that share a domain are also displayed. This is acceptable for an opt-in surface tile.
+- LED control (writing to binary_sensor or related switch) is explicitly deferred per
+  ENTITY_CONTRACT.md; the surface is display-only for LED state.
+
 ---
 
 ### Build order (each verified for parity before next)
 1. **Grouping foundation** (entity→device) — prerequisite for all composites.
-2. ✅ **IntelliCenter Pool/Spa surface** — `PoolSurfaceTile` + `usePoolSurface` (this PR).
+2. ✅ **IntelliCenter Pool/Spa surface** — `PoolSurfaceTile` + `usePoolSurface`.
 3. Litter-Robot composite (verify waste/litter/status stats).
-4. CoolMaster + Flair composites (climate-based).
+4. CoolMaster + Flair + Jandy pool composites (climate-based).
 5. Generator composite + Tempest weather + Sonos player.
-6. Keypad / Panic if applicable.
+6. ✅ **Lutron HomeWorks QSX surface** — `LutronSurface`.
+7. Keypad / Panic if applicable.

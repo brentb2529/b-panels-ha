@@ -50,6 +50,11 @@ export enum DeviceType {
   // gated request path (select.select_option on the configuration-request
   // select). Self-driven via services/haClient.ts; never commands raw motion.
   AkvoFloor = 'AKVO_FLOOR',
+  // Lutron HomeWorks QSX self-driven surface. Discovers lights/covers/scenes/
+  // buttons/keypad-LEDs by domain, groups by area, and renders rich controls
+  // (dimmer+CCT/color, animated shade/blind, scene buttons, keypad+LED indicators).
+  // Contract: ENTITY_CONTRACT.md "Lighting / shades / scenes / keypads" (LOCKED).
+  LutronSurface = 'LUTRON_SURFACE',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type

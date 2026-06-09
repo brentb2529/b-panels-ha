@@ -28,6 +28,7 @@ import AirControlSurface from './tiles/AirControlSurface';
 import PoolSurfaceTile from './tiles/PoolSurfaceTile';
 import AkvoFloorSurface from './tiles/AkvoFloorSurface';
 import CoolMasterTile from './tiles/CoolMasterTile';
+import LutronSurface from './tiles/LutronSurface';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -90,6 +91,9 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // Self-driven composite: resolves all IntelliCenter entities at runtime.
   // Add a tile of this type to any panel to get the full pool dashboard.
   [DeviceType.IntelliCenterPool]: PoolSurfaceTile,
+  // Lutron HomeWorks QSX: self-driven surface rendering lights/covers/scenes/keypads.
+  // Placed as a virtual tile in the dashboard config; discovers entities dynamically.
+  [DeviceType.LutronSurface]: LutronSurface,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a
   // bespoke tile above; presentation is derived from the entity's inferred
