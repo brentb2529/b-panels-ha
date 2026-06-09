@@ -27,6 +27,37 @@ Navigation layer (added on this branch):
 `/` now redirects to `/home` (previously redirected to first dashboard panel).
 Dashboard panels remain accessible via `/dashboard/:panelId` and the header dropdown.
 
+### AreaView route → tile mapping (all 6 routes render with sensible defaults)
+
+| Route | areaKey | DeviceType | Tile | Default device.state | Renders without setup? |
+| --- | --- | --- | --- | --- | --- |
+| `/home` | — | — | `HomeOverview` | n/a | ✅ |
+| `/area/pool` | `pool` | `PoolArea` | `PoolCompilationTile` | `{}` → all DEFAULTS | ✅ |
+| `/area/climate` | `climate` | `ClimateArea` | `ClimateCompilationTile` | `{}` → all DEFAULTS | ✅ |
+| `/area/security` | `security` | `SecurityArea` | `SecurityCompilationTile` | `{}` → all DEFAULTS | ✅ |
+| `/area/lights` | `lights` | `LutronSurface` | `LutronSurface` | self-driven (ignores state) | ✅ |
+| `/area/generator` | `generator` | `GeneratorRehlko` | `KohlerGeneratorTile` | `{}` → graceful degradation | ✅ |
+
+**Note:** `generator` maps to `DeviceType.GeneratorRehlko` (KohlerGeneratorTile), NOT `DeviceType.Generator`
+(legacy EnergyTrak tile). The legacy tile requires a configured HTTP endpoint and will spin indefinitely
+on `device.state = {}`. KohlerGeneratorTile's graceful degradation renders "Generator — loading…"
+inside a proper TileWrapper when no `engineState` key is present in state.
+
+### HomeOverview empty/standby card states
+
+All 5 area cards now render as deliberate, clean states when live HA data is absent:
+
+| Area | No-data summary | Dot style |
+| --- | --- | --- |
+| Pool | "Waiting for controller" | muted ring (offline/idle) |
+| Climate | "Zones not yet discovered" | muted ring |
+| Security | "Monitoring · Not yet armed" | muted ring |
+| Lights | "All off · Lutron ready" | green (LutronSurface is self-driven, always live) |
+| Generator | "Standby · Offline" | muted ring |
+
+Dot vocabulary: green glow = active/ok, amber glow = warn, red glow = alert, empty ring = standby/offline.
+This makes "not connected" states read as deliberate system states rather than errors.
+
 
 > Verification method: composite cards group an HA **device's** entities (via
 > the entity registry) and render them, so data parity = "every entity of the

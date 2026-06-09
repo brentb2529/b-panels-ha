@@ -35,7 +35,10 @@ const AREA_DEVICE_TYPE: Record<string, DeviceType> = {
   climate: DeviceType.ClimateArea,
   security: DeviceType.SecurityArea,
   lights: DeviceType.LutronSurface,
-  generator: DeviceType.Generator,
+  // GeneratorRehlko → KohlerGeneratorTile (the built-in rich tile with graceful
+  // degradation for empty state). The legacy GeneratorTile (DeviceType.Generator)
+  // requires a configured HTTP endpoint and will spin forever on an empty device.
+  generator: DeviceType.GeneratorRehlko,
 };
 
 const AREA_LABELS: Record<string, string> = {

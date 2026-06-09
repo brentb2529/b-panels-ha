@@ -100,7 +100,8 @@ function usePoolStatus(devices: any[], deviceMap: Map<string, any>): AreaStatus 
     if (poolTemp) {
       return { summary: 'Pool available', ok: true, alertLevel: 'ok' };
     }
-    return { summary: 'No pool data', ok: false, alertLevel: 'ok' };
+    // No IntelliCenter entities yet — standby/offline ring dot, deliberate state
+    return { summary: 'Waiting for controller', ok: false, alertLevel: 'ok' };
   }, [devices, deviceMap]);
 }
 
@@ -109,7 +110,8 @@ function useClimateStatus(devices: any[], deviceMap: Map<string, any>): AreaStat
     // Gather all climate entities
     const climateDevices = devices.filter(d => d.type === DeviceType.Thermostat);
     if (climateDevices.length === 0) {
-      return { summary: 'No climate data', ok: false, alertLevel: 'ok' };
+      // No zones discovered yet — standby ring dot, deliberate state
+      return { summary: 'Zones not yet discovered', ok: false, alertLevel: 'ok' };
     }
     let heating = 0, cooling = 0, idle = 0;
     let temps: number[] = [];
@@ -152,7 +154,8 @@ function useSecurityStatus(alarmState: any, devices: any[]): AreaStatus {
     if (cameras.length > 0) {
       return { summary: `${cameras.length} camera${cameras.length > 1 ? 's' : ''} active`, ok: true, alertLevel: 'ok' };
     }
-    return { summary: 'No security data', ok: false, alertLevel: 'ok' };
+    // No alarm or camera entities yet — standby ring dot, deliberate state
+    return { summary: 'Monitoring · Not yet armed', ok: false, alertLevel: 'ok' };
   }, [alarmState, devices]);
 }
 
@@ -161,7 +164,9 @@ function useLightStatus(devices: any[]): AreaStatus {
     const lights = devices.filter(d =>
       d.type === DeviceType.Light || d.type === DeviceType.Dimmer || d.type === DeviceType.LutronSurface
     );
-    if (lights.length === 0) return { summary: 'No lights found', ok: false, alertLevel: 'ok' };
+    // LutronSurface is self-driven — it discovers entities live even without
+    // explicit device entries. Show a clean "all off" state, not an error.
+    if (lights.length === 0) return { summary: 'All off · Lutron ready', ok: true, alertLevel: 'ok' };
 
     let on = 0;
     lights.forEach(d => {
@@ -180,8 +185,13 @@ function useLightStatus(devices: any[]): AreaStatus {
 
 function useGeneratorStatus(devices: any[]): AreaStatus {
   return useMemo(() => {
-    const gen = devices.find(d => d.type === DeviceType.Generator || (d.id && /generator|kohler|rehlko/i.test(d.id)));
-    if (!gen) return { summary: 'No generator data', ok: false, alertLevel: 'ok' };
+    const gen = devices.find(d =>
+      d.type === DeviceType.Generator ||
+      d.type === DeviceType.GeneratorRehlko ||
+      (d.id && /generator|kohler|rehlko/i.test(d.id))
+    );
+    // Generator not yet connected — standby ring dot, deliberate state
+    if (!gen) return { summary: 'Standby · Offline', ok: false, alertLevel: 'ok' };
     const s = gen.state;
     if (typeof s === 'object' && s !== null) {
       const status = (s as any).status || (s as any).normalizedStatus || '';
@@ -302,27 +312,37 @@ const AreaCard: React.FC<AreaCardProps> = ({
           {icon}
         </div>
 
-        {/* Status dot */}
+        {/* Status dot — 3 states: active (green glow), alert/warn (coloured glow),
+             standby/offline (muted ring — intentional, not broken) */}
         <div
           style={{
-            width: 10,
-            height: 10,
+            width: 9,
+            height: 9,
             borderRadius: '50%',
-            backgroundColor:
-              status.alertLevel === 'alert'
-                ? 'rgb(var(--accent-alert))'
-                : status.alertLevel === 'warn'
-                ? 'rgb(var(--accent-warn))'
-                : status.ok
-                ? 'rgb(52,211,153)'
-                : 'rgb(var(--surface-control))',
             flexShrink: 0,
-            boxShadow:
-              status.alertLevel === 'alert'
-                ? '0 0 8px rgb(var(--accent-alert))'
-                : status.ok
-                ? '0 0 6px rgba(52,211,153,0.7)'
-                : 'none',
+            ...(status.alertLevel === 'alert'
+              ? {
+                  backgroundColor: 'rgb(var(--accent-alert))',
+                  boxShadow: '0 0 8px rgb(var(--accent-alert))',
+                }
+              : status.alertLevel === 'warn'
+              ? {
+                  backgroundColor: 'rgb(var(--accent-warn))',
+                  boxShadow: '0 0 6px rgba(251,146,60,0.7)',
+                }
+              : status.ok
+              ? {
+                  backgroundColor: 'rgb(52,211,153)',
+                  boxShadow: '0 0 6px rgba(52,211,153,0.65)',
+                }
+              : {
+                  // Standby / not configured — muted ring, reads as "offline/idle", not error
+                  // Use opacity on --text so the ring is visible in both light and dark mode
+                  backgroundColor: 'transparent',
+                  border: '1.5px solid rgb(var(--text) / 0.22)',
+                  width: 8,
+                  height: 8,
+                }),
           }}
         />
       </div>
