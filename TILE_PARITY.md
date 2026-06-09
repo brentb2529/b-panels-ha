@@ -469,6 +469,8 @@ wiring is delegated to the three sub-hooks already verified above.
 | `showLighting` | boolean | `true` | Show Lutron lighting section |
 | `lutronAreaFilter` | string[] | `['pool','patio','spa','cabana','outdoor']` | Area name contains-match filter |
 | `areaName` | string | `'Pool Area'` | Hero header display name (overridden by `tile.label`) |
+| `showQuickActions` | boolean | `true` | Show the one-tap routines bar |
+| `quickActions` | QuickAction[] | sensible default set | Routines (heat/body/lights/feature one-tap; floor = guarded hold) |
 
 **Layout (sophisticated / tight / high-def; iPad-landscape first)**: a high-
 fidelity CSS gradient-mesh water hero (`PoolHeroScene`, NOT an SVG diagram) is the
@@ -486,10 +488,23 @@ SWG% and pump-speed `VisualSlider` (track + fill + stepper beads); lights
 `LightSwatchCard` (live hs/CCT color swatch + brightness); shades `ShadeGlyphCard`
 (window glyph with shade at real position).
 
-**AKVO safety (unchanged)**: `AkvoSectionContent` replicates the same
-`HOLD_MS = 2000` press-and-hold gate + `evaluateGate` check + single
-`requestConfiguration()` call (which issues `select.select_option`) that
-`AkvoFloorSurface` uses. The hero floor depth gauge is display-only. No raw motion.
+**State-reactive UX**: (1) when `floors_moving`, the hero depth-gauge marker
+travels smoothly toward target + glows + shows directional chevrons (up rising /
+down lowering), settling at real depth when stopped; (2) when a body is heating,
+a warm amber gradient rises through that body's water in the hero (positioned to
+the heating body's side) and on its temp readout + deck card.
+
+**Quick-actions / routines bar** (`QuickActionsBar`, between hero and deck):
+configurable one-tap routines wired to real services — `heat`/`heatOff`
+(water_heater), `body` (e.g. Spa Mode), `feature`, `lights` (IntelliCenter +
+area-filtered Lutron). `floor` routines command AKVO motion and are rendered as a
+GUARDED press-and-hold (`QuickHoldChip`) — never one-tap.
+
+**AKVO safety (unchanged)**: `AkvoSectionContent` AND the quick-action `floor`
+path replicate the same `HOLD_MS = 2000` press-and-hold gate + `evaluateGate`
+check + single `requestConfiguration()` call (which issues `select.select_option`)
+that `AkvoFloorSurface` uses. The hero floor depth gauge is display-only. No raw
+motion; floor motion is never a bare tap.
 
 **Status**: ✅ built (sophisticated/tight/high-def pass). Needs runtime
 verification at 1366×1024 @2× that the deck fits with minimal scroll, the area

@@ -134,7 +134,52 @@ export interface PoolAreaConfig {
    * Default: 'Pool Area'
    */
   areaName?: string;
+
+  /**
+   * Show the one-tap quick-actions / routines bar between the hero and the
+   * control deck. Default: true.
+   */
+  showQuickActions?: boolean;
+
+  /**
+   * The routines shown in the quick-actions bar, in order. Each entry is a
+   * `QuickAction`. Omit to use a sensible default set (see DEFAULT_QUICK_ACTIONS).
+   * Pass [] to hide the bar entirely (equivalent to showQuickActions:false).
+   *
+   * SAFETY: a `{ kind: 'floor' }` action commands AKVO floor MOTION and is ALWAYS
+   * rendered as a guarded press-and-hold gated by the AKVO ready/fault/enable
+   * state — never a bare one-tap. Heat / lights / feature / body actions are
+   * low-hazard one-tap.
+   */
+  quickActions?: QuickAction[];
 }
+
+/**
+ * A single quick-action / routine. `kind` selects how it is wired to real HA
+ * service calls and (for `floor`) whether it must use the guarded path.
+ */
+export type QuickAction =
+  // Set a heat setpoint on the matching body's water_heater (one-tap).
+  | { kind: 'heat'; label?: string; body?: string; temp: number; turnOn?: boolean }
+  // Turn the matching body's heater off (one-tap).
+  | { kind: 'heatOff'; label?: string; body?: string }
+  // Turn ALL pool-area + IntelliCenter lights on/off (one-tap).
+  | { kind: 'lights'; label?: string; on: boolean }
+  // Turn a body on/off, e.g. "Spa Mode" (one-tap).
+  | { kind: 'body'; label?: string; body: string; on: boolean }
+  // Toggle a water feature by name match (one-tap).
+  | { kind: 'feature'; label?: string; match: string; on: boolean }
+  // Request an AKVO floor configuration preset (GUARDED press-and-hold).
+  | { kind: 'floor'; label?: string; preset: string };
+
+const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
+  { kind: 'floor',   preset: 'Deep',  label: 'Floor → Deep' },
+  { kind: 'floor',   preset: 'Deck',  label: 'Floor → Deck' },
+  { kind: 'heat',    body: 'pool', temp: 84, turnOn: true, label: 'Pool Heat 84°' },
+  { kind: 'body',    body: 'spa',  on: true, label: 'Spa Mode' },
+  { kind: 'lights',  on: true,  label: 'Lights On' },
+  { kind: 'lights',  on: false, label: 'Lights Off' },
+];
 
 const DEFAULTS: Required<PoolAreaConfig> = {
   showPool:         true,
@@ -142,6 +187,8 @@ const DEFAULTS: Required<PoolAreaConfig> = {
   showLighting:     true,
   lutronAreaFilter: ['pool', 'patio', 'spa', 'cabana', 'outdoor'],
   areaName:         'Pool Area',
+  showQuickActions: true,
+  quickActions:     DEFAULT_QUICK_ACTIONS,
 };
 
 function parseConfig(raw: unknown): Required<PoolAreaConfig> {
@@ -155,6 +202,10 @@ function parseConfig(raw: unknown): Required<PoolAreaConfig> {
         ? (r.lutronAreaFilter as string[]).map(String)
         : DEFAULTS.lutronAreaFilter,
       areaName:         typeof r.areaName === 'string' ? r.areaName : DEFAULTS.areaName,
+      showQuickActions: typeof r.showQuickActions === 'boolean' ? r.showQuickActions : DEFAULTS.showQuickActions,
+      quickActions:     Array.isArray(r.quickActions)
+        ? (r.quickActions as QuickAction[])
+        : DEFAULTS.quickActions,
     };
   }
   return { ...DEFAULTS };
@@ -208,6 +259,28 @@ function ensureAnims() {
 @keyframes pool-comp-gauge-sweep {
   from { stroke-dashoffset: var(--gauge-circ); }
   to   { stroke-dashoffset: var(--gauge-target); }
+}
+/* Floor MOVING: directional chevrons travel + fade (purposeful state cue). */
+@keyframes pool-comp-chev-up {
+  0%   { opacity: 0;   transform: translateY(4px);  }
+  40%  { opacity: 0.95; }
+  100% { opacity: 0;   transform: translateY(-7px); }
+}
+@keyframes pool-comp-chev-down {
+  0%   { opacity: 0;   transform: translateY(-4px); }
+  40%  { opacity: 0.95; }
+  100% { opacity: 0;   transform: translateY(7px);  }
+}
+/* Moving marker glow breathes brighter while in motion. */
+@keyframes pool-comp-floor-move {
+  0%,100% { box-shadow: 0 0 8px 1px currentColor; }
+  50%     { box-shadow: 0 0 16px 4px currentColor; }
+}
+/* Heating: warm caustic glow rises + breathes through the heated body's water. */
+@keyframes pool-comp-heat-rise {
+  0%   { opacity: 0.35; transform: translateY(8%)  scale(1.02); }
+  50%  { opacity: 0.7;  transform: translateY(-2%) scale(1.05); }
+  100% { opacity: 0.35; transform: translateY(8%)  scale(1.02); }
 }
 
 /* ── Tight, full-width control grid (iPad-landscape first) ────────────────────
@@ -785,19 +858,27 @@ const PoolBodyPanel: React.FC<{
   body: BodyState;
   onToggle: (on: boolean) => void;
   onHeaterMode: (mode: string) => void;
-}> = ({ body, onToggle, onHeaterMode }) => {
+  reduced?: boolean;
+}> = ({ body, onToggle, onHeaterMode, reduced }) => {
   const isPool = body.name.toLowerCase().includes('pool');
   const bodyColor = isPool ? WATER : 'var(--accent)';
+  const heating = body.heaterIsOn;
   return (
     <div
-      className="flex flex-col rounded-control"
+      className="relative flex flex-col rounded-control overflow-hidden"
       style={{
         backdropFilter: 'var(--glass-l2-backdrop)',
         WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
-        backgroundColor: body.isOn ? `color-mix(in srgb, ${bodyColor} 18%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
+        backgroundColor: heating
+          ? `color-mix(in srgb, ${WARN} 16%, var(--glass-l2-bg))`
+          : body.isOn ? `color-mix(in srgb, ${bodyColor} 18%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
         backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
-        border: `1px solid ${body.isOn ? `color-mix(in srgb, ${bodyColor} 48%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
-        boxShadow: body.isOn
+        border: `1px solid ${heating
+          ? `color-mix(in srgb, ${WARN} 50%, var(--glass-l2-border))`
+          : body.isOn ? `color-mix(in srgb, ${bodyColor} 48%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
+        boxShadow: heating
+          ? `var(--rim), inset 0 0 26px -8px color-mix(in srgb, ${WARN} 30%, transparent), 0 0 18px -4px color-mix(in srgb, ${WARN} 42%, transparent), var(--elev-2)`
+          : body.isOn
           ? `var(--rim), inset 0 0 28px -8px color-mix(in srgb, ${bodyColor} 28%, transparent), 0 0 18px -4px color-mix(in srgb, ${bodyColor} 36%, transparent), var(--elev-2)`
           : 'var(--rim), var(--elev-1)',
         padding: 'clamp(0.25rem, 2cqmin, 0.5rem)',
@@ -805,7 +886,15 @@ const PoolBodyPanel: React.FC<{
         transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
       }}
     >
-      <div className="flex items-center justify-between">
+      {/* warm heating bloom rising through the body card */}
+      {heating && (
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
+          background: 'radial-gradient(100% 80% at 50% 120%, rgba(255,150,60,0.34), rgba(255,120,40,0.10) 48%, transparent 72%)',
+          mixBlendMode: 'screen',
+          animation: reduced ? 'none' : 'pool-comp-heat-rise 4.5s ease-in-out infinite',
+        }} />
+      )}
+      <div className="relative flex items-center justify-between">
         <div className="flex items-center gap-1.5 min-w-0">
           <IconWaves className="flex-shrink-0"
             style={{ width: 'clamp(10px, 4cqmin, 16px)', height: 'clamp(10px, 4cqmin, 16px)',
@@ -821,7 +910,7 @@ const PoolBodyPanel: React.FC<{
         </div>
       </div>
       {body.heaterId && (
-        <div className="flex items-center gap-1 flex-wrap">
+        <div className="relative flex items-center gap-1 flex-wrap">
           <IconFlame className="flex-shrink-0"
             style={{ width: 'clamp(9px, 3.5cqmin, 14px)', height: 'clamp(9px, 3.5cqmin, 14px)',
               color: body.heaterIsOn ? WARN : 'rgba(var(--text) / 0.3)',
@@ -878,6 +967,7 @@ const PoolSectionContent: React.FC<{
               <PoolBodyPanel
                 key={body.entityId}
                 body={body}
+                reduced={reduced}
                 onToggle={(on) => toggleBody(body.entityId, on)}
                 onHeaterMode={(mode) => {
                   if (body.heaterId) setWaterHeaterMode(body.heaterId, mode);
@@ -1138,6 +1228,16 @@ function depthFraction(m: number | null): number {
   return Math.max(0, Math.min(1, (m - min) / (max - min)));
 }
 
+// A small directional chevron used as the floor-motion indicator.
+const ChevronMark: React.FC<{ dir: 'up' | 'down'; color: string; style?: React.CSSProperties }> = ({ dir, color, style }) => (
+  <svg width="11" height="6" viewBox="0 0 11 6" style={{ display: 'block', ...style }} aria-hidden="true">
+    <path
+      d={dir === 'up' ? 'M1 5 L5.5 1 L10 5' : 'M1 1 L5.5 5 L10 1'}
+      fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
   areaName, poolSurface, akvoState, lutronLightsOn, config, showAkvo, onToggleBody, reduced,
 }) => {
@@ -1154,6 +1254,15 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
   const { plate: plateColor } = akvoFloorColor(akvoState);
 
   const floorFrac = depthFraction(akvoState.mainFloorPosition);
+  // Direction the floor is travelling (for moving chevrons): a rising floor
+  // (toward deck, value decreasing / negative) shows up-chevrons, else down.
+  const movingDir: 'up' | 'down' = (akvoState.mainFloorPosition ?? 0) < 0 ? 'up' : 'down';
+
+  // Heating signal: which body (if any) is actively calling for heat, and where
+  // it sits in the hero (pool → left half, spa → right half). Drives the warm
+  // heating gradient so it reads at a glance which body is heating.
+  const poolHeating = !!poolBody?.heaterIsOn;
+  const spaHeating  = !!spaBody?.heaterIsOn;
 
   return (
     <div
@@ -1222,6 +1331,22 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
           radial-gradient(140% 100% at 50% 120%, rgba(2,16,32,0.66), transparent 60%)`,
       }} />
 
+      {/* ── Layer 5b: HEATING gradient — a warm amber/orange glow rising from the
+          bottom of the heating body's side of the pool. Reads "this body is
+          calling for heat" at a glance. Pool=left half, spa=right half; both
+          → full-width warm bloom. Breathes slowly when not reduced-motion. */}
+      {(poolHeating || spaHeating) && (
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
+          background: poolHeating && spaHeating
+            ? `radial-gradient(120% 90% at 50% 118%, rgba(255,150,60,0.40), rgba(255,120,40,0.16) 38%, transparent 66%)`
+            : poolHeating
+            ? `radial-gradient(95% 95% at 24% 120%, rgba(255,150,60,0.44), rgba(255,120,40,0.16) 40%, transparent 64%)`
+            : `radial-gradient(95% 95% at 76% 120%, rgba(255,150,60,0.44), rgba(255,120,40,0.16) 40%, transparent 64%)`,
+          mixBlendMode: 'screen',
+          animation: reduced ? 'none' : 'pool-comp-heat-rise 4.5s ease-in-out infinite',
+        }} />
+      )}
+
       {/* ── Layer 6: AKVO depth indicator — elegant, NOT a diagram ───────────
           A slim vertical depth gauge pinned to the right; a thin luminous rule
           marks the movable-floor's real depth. Display-only. */}
@@ -1239,16 +1364,42 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
               background: 'rgba(190,232,255,0.35)',
             }} />
           ))}
-          {/* floor marker — luminous rule at real depth, color reflects state */}
+          {/* floor marker — luminous rule at real depth, color reflects state.
+              When MOVING it travels smoothly toward target, glows brighter, and
+              shows directional chevrons; when stopped it settles at real depth. */}
           <div className="absolute" style={{
-            top: `${floorFrac * 100}%`, left: -5, right: -10, height: 2,
-            background: plateColor,
-            boxShadow: `0 0 8px 1px ${plateColor}`,
-            borderRadius: 999,
+            top: `${floorFrac * 100}%`, left: -7, right: -12,
+            color: plateColor,
             transform: 'translateY(-50%)',
             transition: isMoving ? 'top 0.6s linear' : 'top 1.1s cubic-bezier(0.34,1.18,0.64,1)',
-            animation: isFault && !reduced ? 'pool-comp-akvo-alert 1.1s ease-in-out infinite' : 'none',
-          }} />
+          }}>
+            {/* up chevrons (shown when rising) */}
+            {isMoving && movingDir === 'up' && !reduced && (
+              <div className="absolute" style={{ left: 0, right: 0, bottom: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, marginBottom: 2 }}>
+                {[0, 1].map(k => (
+                  <ChevronMark key={k} dir="up" color={plateColor}
+                    style={{ animation: `pool-comp-chev-up 1s ease-in-out infinite`, animationDelay: `${k * 0.22}s` }} />
+                ))}
+              </div>
+            )}
+            {/* the rule itself */}
+            <div style={{
+              height: 2, borderRadius: 999, background: plateColor,
+              boxShadow: `0 0 8px 1px ${plateColor}`,
+              animation: isFault && !reduced
+                ? 'pool-comp-akvo-alert 1.1s ease-in-out infinite'
+                : (isMoving && !reduced ? 'pool-comp-floor-move 1.2s ease-in-out infinite' : 'none'),
+            }} />
+            {/* down chevrons (shown when lowering) */}
+            {isMoving && movingDir === 'down' && !reduced && (
+              <div className="absolute" style={{ left: 0, right: 0, top: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, marginTop: 2 }}>
+                {[0, 1].map(k => (
+                  <ChevronMark key={k} dir="down" color={plateColor}
+                    style={{ animation: `pool-comp-chev-down 1s ease-in-out infinite`, animationDelay: `${k * 0.22}s` }} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1413,21 +1564,34 @@ const HeroChip: React.FC<{ color: string; children: React.ReactNode; stacked?: b
 const HeroTempReadout: React.FC<{
   body: BodyState; accent: string; tempUnit: string;
   onToggle: (on: boolean) => void; reduced: boolean;
-}> = ({ body, accent, tempUnit, onToggle }) => {
+}> = ({ body, accent, tempUnit, onToggle, reduced }) => {
+  const heating = body.heaterIsOn;
   return (
-    <div style={{
+    <div className="relative overflow-hidden" style={{
       borderRadius: 'var(--radius-card)',
       padding: 'clamp(0.3rem, 1.2cqw, 0.5rem) clamp(0.45rem, 1.8cqw, 0.75rem)',
       backdropFilter: 'var(--glass-l2-backdrop)', WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
-      backgroundColor: body.isOn ? `color-mix(in srgb, ${accent} 16%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
+      backgroundColor: heating
+        ? `color-mix(in srgb, ${WARN} 18%, var(--glass-l2-bg))`
+        : body.isOn ? `color-mix(in srgb, ${accent} 16%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
       backgroundImage: 'var(--specular-default), var(--glass-l2-tint)',
-      border: `1px solid ${body.isOn ? `color-mix(in srgb, ${accent} 44%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
-      boxShadow: body.isOn
-        ? `var(--rim), 0 0 16px -5px color-mix(in srgb, ${accent} 34%, transparent)`
-        : 'var(--rim), var(--elev-1)',
+      border: `1px solid ${heating
+        ? `color-mix(in srgb, ${WARN} 50%, var(--glass-l2-border))`
+        : body.isOn ? `color-mix(in srgb, ${accent} 44%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
+      boxShadow: heating
+        ? `var(--rim), 0 0 18px -4px color-mix(in srgb, ${WARN} 45%, transparent)`
+        : body.isOn ? `var(--rim), 0 0 16px -5px color-mix(in srgb, ${accent} 34%, transparent)` : 'var(--rim), var(--elev-1)',
       transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
     }}>
-      <div className="flex items-center" style={{ gap: 'clamp(0.4rem, 1.5cqw, 0.7rem)' }}>
+      {/* warm heating bloom rising from the bottom of the card */}
+      {heating && (
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{
+          background: 'radial-gradient(90% 80% at 50% 118%, rgba(255,150,60,0.42), rgba(255,120,40,0.12) 45%, transparent 70%)',
+          mixBlendMode: 'screen',
+          animation: reduced ? 'none' : 'pool-comp-heat-rise 4s ease-in-out infinite',
+        }} />
+      )}
+      <div className="relative flex items-center" style={{ gap: 'clamp(0.4rem, 1.5cqw, 0.7rem)' }}>
         <div className="flex flex-col">
           <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.55)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
             {body.name}
@@ -1984,6 +2148,267 @@ const CollapsibleSection: React.FC<{
 };
 
 // =============================================================================
+// QUICK-ACTIONS / ROUTINES BAR
+// =============================================================================
+//
+// A prominent one-tap routines band between the hero and the control deck.
+// Each action is wired to REAL HA service calls via the live surfaces.
+//
+// SAFETY: a `floor` action commands AKVO motion, so it is rendered as a GUARDED
+// press-and-hold (AkvoHoldButton) gated by the live AKVO gate (ready / no
+// fault / requests-enabled) — never a bare tap. It calls the same
+// requestConfiguration() path as the console (which re-evaluates the gate
+// server-side too). All other actions are low-hazard one-tap.
+
+interface QuickActionsBarProps {
+  actions: QuickAction[];
+  surface: ReturnType<typeof usePoolSurface>['surface'];
+  lutronAreaFilter: string[];
+  toggleBody: (entityId: string, on: boolean) => void;
+  toggleLight: (entityId: string, on: boolean) => void;
+  toggleWaterFeature: (entityId: string, on: boolean) => void;
+  setWaterHeaterMode: (heaterId: string, mode: string) => void;
+  setWaterHeaterTemp: (heaterId: string, temp: number) => void;
+}
+
+const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
+  actions, surface, lutronAreaFilter,
+  toggleBody, toggleLight, toggleWaterFeature, setWaterHeaterMode, setWaterHeaterTemp,
+}) => {
+  // Self-contained live feeds (same pattern as the section components).
+  const { state: lutronState } = useLutronSurface();
+  const { state: akvoState, gate, requestingPreset, requestConfiguration } = useAkvoFloor();
+
+  // Resolve a body by name fragment (pool/spa), falling back to the first body.
+  const findBody = useCallback((match?: string): BodyState | undefined => {
+    if (!match) return surface.bodies[0];
+    const m = match.toLowerCase();
+    return surface.bodies.find(b => b.name.toLowerCase().includes(m)) ?? undefined;
+  }, [surface.bodies]);
+
+  // The pool-area Lutron lights (area-filtered), for the lights routine.
+  const areaLights = useMemo(() => {
+    if (!lutronState.present) return [] as LutronLightState[];
+    return lutronState.areas
+      .filter(area => lutronAreaFilter.length === 0 || lutronAreaFilter.some(s => area.name.toLowerCase().includes(s.toLowerCase())))
+      .flatMap(area => area.lights);
+  }, [lutronState, lutronAreaFilter]);
+
+  // One-tap dispatch for low-hazard actions. Returns false if not actionable.
+  const runOneTap = useCallback((a: QuickAction): boolean => {
+    switch (a.kind) {
+      case 'heat': {
+        const b = findBody(a.body);
+        if (!b?.heaterId) return false;
+        if (a.turnOn !== false) setWaterHeaterMode(b.heaterId, 'on');
+        setWaterHeaterTemp(b.heaterId, a.temp);
+        return true;
+      }
+      case 'heatOff': {
+        const b = findBody(a.body);
+        if (!b?.heaterId) return false;
+        setWaterHeaterMode(b.heaterId, 'off');
+        return true;
+      }
+      case 'body': {
+        const b = findBody(a.body);
+        if (!b) return false;
+        toggleBody(b.entityId, a.on);
+        return true;
+      }
+      case 'feature': {
+        const m = a.match.toLowerCase();
+        const feats = surface.waterFeatures.filter(f => f.name.toLowerCase().includes(m));
+        if (feats.length === 0) return false;
+        feats.forEach(f => toggleWaterFeature(f.entityId, a.on));
+        return true;
+      }
+      case 'lights': {
+        // IntelliCenter pool lights + area-filtered Lutron lights together.
+        let acted = false;
+        surface.lights.forEach(l => { toggleLight(l.entityId, a.on); acted = true; });
+        areaLights.forEach(l => { void lutronToggleLight(l.entityId, a.on); acted = true; });
+        return acted;
+      }
+      default:
+        return false;
+    }
+  }, [findBody, surface.waterFeatures, surface.lights, areaLights, toggleBody, toggleLight, toggleWaterFeature, setWaterHeaterMode, setWaterHeaterTemp]);
+
+  if (!actions || actions.length === 0) return null;
+
+  // Does a floor preset exist as a real AKVO option? (only enable if so)
+  const floorOptions = akvoState.requestSelect?.options ?? [];
+
+  return (
+    <div
+      className="relative z-10 flex-shrink-0 flex items-center"
+      style={{
+        gap: 'clamp(0.35rem, 1.2cqw, 0.6rem)',
+        padding: 'clamp(0.4rem, 1.4cqw, 0.7rem) clamp(0.45rem, 1.6cqw, 0.8rem)',
+        overflowX: 'auto',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        backdropFilter: 'var(--glass-l2-backdrop)', WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+        backgroundColor: 'color-mix(in srgb, var(--accent-water) 6%, var(--glass-l2-bg))',
+        backgroundImage: 'var(--specular-default), var(--glass-l2-tint)',
+        scrollbarWidth: 'none',
+      }}
+    >
+      <span className="flex-shrink-0" style={{
+        fontSize: 'var(--type-2xs)', fontWeight: 700, letterSpacing: 'var(--tracking-caps)',
+        textTransform: 'uppercase' as const, color: 'rgba(var(--text) / 0.45)',
+        marginRight: 'clamp(0.15rem, 0.6cqw, 0.35rem)',
+      }}>
+        Routines
+      </span>
+
+      {actions.map((a, i) => {
+        if (a.kind === 'floor') {
+          // GUARDED floor-motion routine: press-and-hold, gated by AKVO state.
+          const presetExists = floorOptions.includes(a.preset);
+          const isActiveCfg = akvoState.activeConfiguration === a.preset;
+          const isReq = requestingPreset === a.preset;
+          const disabled = !gate.enabled || !presetExists || isActiveCfg;
+          return (
+            <div key={i} className="flex-shrink-0" style={{ minWidth: 'clamp(7rem, 16cqw, 9rem)' }}>
+              <QuickHoldChip
+                label={a.label ?? `Floor → ${a.preset}`}
+                disabled={disabled}
+                requesting={isReq}
+                reason={isActiveCfg ? 'current' : !presetExists ? 'unavailable' : !gate.enabled ? gate.reason : ''}
+                onComplete={() => { void requestConfiguration(a.preset); }}
+              />
+            </div>
+          );
+        }
+
+        // One-tap low-hazard routine.
+        const { label, icon, accent } = describeAction(a);
+        return (
+          <QuickTapChip key={i} label={label} icon={icon} accent={accent}
+            onClick={() => runOneTap(a)} />
+        );
+      })}
+    </div>
+  );
+};
+
+// Label/icon/accent for a one-tap action.
+function describeAction(a: QuickAction): { label: string; icon: React.ReactNode; accent: string } {
+  switch (a.kind) {
+    case 'heat':
+      return { label: a.label ?? `Heat ${a.temp}°`, icon: <IconFlame style={{ width: 13, height: 13 }} />, accent: WARN };
+    case 'heatOff':
+      return { label: a.label ?? 'Heat Off', icon: <IconFlame style={{ width: 13, height: 13 }} />, accent: 'rgba(var(--text) / 0.5)' };
+    case 'body':
+      return { label: a.label ?? `${a.body} ${a.on ? 'On' : 'Off'}`, icon: <IconWaves style={{ width: 13, height: 13 }} />, accent: WATER };
+    case 'feature':
+      return { label: a.label ?? a.match, icon: <IconDroplets style={{ width: 13, height: 13 }} />, accent: WATER };
+    case 'lights':
+      return { label: a.label ?? `Lights ${a.on ? 'On' : 'Off'}`, icon: <IconLightbulb style={{ width: 13, height: 13 }} />, accent: WARN };
+    default:
+      return { label: 'Action', icon: <IconActivity style={{ width: 13, height: 13 }} />, accent: WATER };
+  }
+}
+
+// One-tap quick-action chip (low hazard).
+const QuickTapChip: React.FC<{ label: string; icon: React.ReactNode; accent: string; onClick: () => void }> = ({
+  label, icon, accent, onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className="flex-shrink-0 flex items-center"
+    style={{
+      gap: 6, whiteSpace: 'nowrap',
+      padding: 'clamp(0.32rem, 1.1cqw, 0.5rem) clamp(0.5rem, 1.8cqw, 0.85rem)',
+      borderRadius: 'var(--radius-pill)', cursor: 'pointer',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: `color-mix(in srgb, ${accent} 16%, var(--glass-l3-bg))`,
+      backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+      border: `1px solid color-mix(in srgb, ${accent} 40%, var(--glass-l3-border))`,
+      boxShadow: `var(--rim), 0 0 10px -4px color-mix(in srgb, ${accent} 34%, transparent)`,
+      color: accent,
+      transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+    }}
+    onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.94)'; }}
+    onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+    onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+  >
+    {icon}
+    <span style={{ fontSize: 'var(--type-xs)', fontWeight: 700 }}>{label}</span>
+  </button>
+);
+
+// Guarded press-and-hold quick-action for AKVO floor MOTION. Reuses the same
+// HOLD_MS + RAF + requestConfiguration safety pattern as AkvoHoldButton, in a
+// compact chip form factor.
+const QuickHoldChip: React.FC<{
+  label: string; disabled: boolean; requesting: boolean; reason: string; onComplete: () => void;
+}> = ({ label, disabled, requesting, reason, onComplete }) => {
+  const [progress, setProgress] = useState(0);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number>(0);
+  const stop = () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    setProgress(0);
+  };
+  useEffect(() => stop, []);
+  const tick = () => {
+    const elapsed = Date.now() - startRef.current;
+    const p = Math.min(1, elapsed / AKVO_HOLD_MS);
+    setProgress(p);
+    if (p >= 1) { stop(); onComplete(); return; }
+    rafRef.current = requestAnimationFrame(tick);
+  };
+  const begin = (e: React.PointerEvent) => {
+    if (disabled || requesting) return;
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    startRef.current = Date.now();
+    rafRef.current = requestAnimationFrame(tick);
+  };
+  return (
+    <button
+      type="button"
+      disabled={disabled || requesting}
+      onPointerDown={begin}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      className="relative w-full flex flex-col items-center justify-center select-none touch-none overflow-hidden"
+      style={{
+        gap: 1, borderRadius: 'var(--radius-pill)',
+        padding: 'clamp(0.28rem, 1cqw, 0.45rem) clamp(0.5rem, 1.6cqw, 0.8rem)',
+        backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+        backgroundColor: !disabled ? `color-mix(in srgb, ${WARN} 16%, var(--glass-l3-bg))` : 'var(--glass-l3-bg)',
+        backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+        border: `1px solid ${!disabled ? `color-mix(in srgb, ${WARN} 44%, var(--glass-l3-border))` : 'var(--glass-l3-border)'}`,
+        boxShadow: !disabled ? `var(--rim), 0 0 10px -4px color-mix(in srgb, ${WARN} 36%, transparent)` : 'var(--rim)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled && !requesting ? 0.5 : 1,
+        transition: 'all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))',
+      }}
+      title={disabled ? (reason || 'AKVO not ready') : `Hold to request ${label}`}
+    >
+      <div className="absolute inset-0 origin-left pointer-events-none" style={{
+        transform: `scaleX(${progress})`,
+        background: `color-mix(in srgb, ${WARN} 34%, transparent)`,
+        transition: progress === 0 ? 'transform 120ms ease-out' : 'none',
+        borderRadius: 'inherit',
+      }} />
+      <span className="relative z-10 flex items-center" style={{ gap: 5, whiteSpace: 'nowrap' }}>
+        {requesting ? <IconLoader2 className="w-3 h-3 animate-spin" /> : <IconHand style={{ width: 12, height: 12 }} />}
+        <span style={{ fontSize: 'var(--type-xs)', fontWeight: 700, color: !disabled ? WARN : 'rgba(var(--text) / 0.55)' }}>{label}</span>
+      </span>
+      <span className="relative z-10" style={{ fontSize: '0.5rem', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const, color: 'rgba(var(--text) / 0.45)' }}>
+        {requesting ? 'requesting…' : reason ? reason : progress > 0 ? 'keep holding…' : 'hold to set'}
+      </span>
+    </button>
+  );
+};
+
+// =============================================================================
 // MAIN: PoolCompilationTile
 // =============================================================================
 
@@ -2082,6 +2507,20 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
           onToggleBody={toggleBody}
           reduced={reduced}
         />
+
+        {/* ── Quick-actions / routines bar (one-tap; floor presets guarded) ── */}
+        {config.showQuickActions && config.quickActions.length > 0 && (
+          <QuickActionsBar
+            actions={config.quickActions}
+            surface={surface}
+            lutronAreaFilter={config.lutronAreaFilter}
+            toggleBody={toggleBody}
+            toggleLight={poolToggleLight}
+            toggleWaterFeature={toggleWaterFeature}
+            setWaterHeaterMode={setWaterHeaterMode}
+            setWaterHeaterTemp={setWaterHeaterTemp}
+          />
+        )}
 
         {/* ── Scrollable control deck (full-width balanced grid) ──────────── */}
         <div

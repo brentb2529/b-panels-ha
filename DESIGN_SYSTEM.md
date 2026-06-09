@@ -513,17 +513,41 @@ scroll.**
    cap so a lone section still fills the row. Tight, consistent gaps/padding
    (clamped ~0.4–0.85rem) keep the deck dense and on one iPad-landscape screen.
 
-5. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
+5. **State-reactive cues (UX).** The surface visibly reacts to live state:
+   • **Floor moving** — when `floors_moving` is true the hero depth-gauge marker
+     travels smoothly toward target (linear transition), glows brighter
+     (`pool-comp-floor-move`), and shows directional **chevrons** (up when rising
+     toward deck, down when lowering, `pool-comp-chev-up/down`); it settles at the
+     real depth when stopped.
+   • **Heating** — when a body's heater is on, a warm amber **heating gradient
+     rises** through that body's water (`pool-comp-heat-rise`): in the hero
+     positioned to the heating body's side (pool = left, spa = right, both =
+     center bloom), and on the body's temp readout + deck card. Reads at a glance
+     which body is calling for heat.
+
+6. **Quick-actions / routines bar.** A one-tap routines band (`QuickActionsBar`)
+   sits between hero and deck, wired to real service calls. `QuickAction` kinds:
+   `heat` / `heatOff` (water_heater set_operation_mode + set_temperature),
+   `body` (toggle a body, e.g. "Spa Mode"), `feature` (water-feature toggle),
+   `lights` (IntelliCenter + area-filtered Lutron lights together), and `floor`
+   (AKVO preset). **SAFETY:** `floor` actions command motion, so they render as a
+   GUARDED press-and-hold chip (`QuickHoldChip`, same `HOLD_MS=2000` + RAF +
+   `requestConfiguration` path, gated by the live AKVO gate) — never one-tap.
+   All other kinds are low-hazard one-tap. The action list is configurable via
+   `PoolAreaConfig.quickActions` (defaults in `DEFAULT_QUICK_ACTIONS`).
+
+7. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
    `device.state` as JSON. All fields optional; sensible defaults cover the common
    case. Admin sets JSON → tile re-parses on each render.
 
-6. **AKVO safety preserved (unchanged):** `AkvoSectionContent` duplicates the same
-   `HOLD_MS = 2000` RAF-based press-and-hold, `evaluateGate` check, and single
-   `requestConfiguration()` call. The hero floor visualization is display-only.
-   No raw motion anywhere. AKVO is still the authority.
+8. **AKVO safety preserved (unchanged):** `AkvoSectionContent` and the quick-action
+   `floor` path both use the same `HOLD_MS = 2000` RAF-based press-and-hold,
+   `evaluateGate` gate, and single `requestConfiguration()` call. The hero floor
+   visualization is display-only. No raw motion anywhere. AKVO is still the authority.
 
-7. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
-   drift / specular travel / breathe into a static variant.
+9. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
+   drift / specular travel / breathe AND the new floor-motion + heating-rise loops
+   into static variants.
 
 ### How to author another compilation panel
 
