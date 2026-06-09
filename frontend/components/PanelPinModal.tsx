@@ -1,19 +1,26 @@
 /**
- * PanelPinModal — PIN entry modal for switching to a PIN-gated scoped panel.
+ * PanelPinModal — generic "Enter your PIN" entry modal.
+ *
+ * The PIN is per-USER, not per-panel, so this modal is intentionally generic:
+ * it does not name a target panel. The caller's `validatePin` callback decides
+ * whether the entered PIN unlocks the requested action (i.e. matches a user who
+ * has access to the target panel).
  *
  * Glass-styled numeric keypad consistent with the liquid-glass design system.
  * Rendered via React createPortal into document.body to avoid being clipped
  * by any backdrop-filter ancestor.
  *
  * IMPORTANT: This is convenience-grade security, NOT a hard access boundary.
- * PINs live in config/panels.ts. See that module for the full disclaimer.
- * Do NOT log the entered PIN.
+ * PINs live in config/panels.ts (per user). See that module for the full
+ * disclaimer. Do NOT log the entered PIN.
  *
  * Props:
- *   panelName — displayed in the header so the user knows what they're unlocking
- *   onSuccess — called after the correct PIN is entered
- *   onCancel  — called when the user dismisses without entering the correct PIN
- *   validatePin — callback that checks the entered pin; returns true if correct
+ *   title       — header text. Default 'Enter your PIN'.
+ *   subtitle    — secondary line. Default 'Enter your PIN to continue'.
+ *   onSuccess   — called after a valid PIN is entered
+ *   onCancel    — called when the user dismisses without a valid PIN
+ *   validatePin — callback that checks the entered pin; returns true if it
+ *                 unlocks the requested action
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -23,7 +30,8 @@ import { useReducedMotion } from '../design-system/useReducedMotion';
 import { IconX, IconLock } from './icons';
 
 interface PanelPinModalProps {
-  panelName: string;
+  title?: string;
+  subtitle?: string;
   onSuccess: () => void;
   onCancel: () => void;
   validatePin: (pin: string) => boolean;
@@ -33,7 +41,8 @@ const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫
 const PIN_LENGTH = 4;
 
 const PanelPinModal: React.FC<PanelPinModalProps> = ({
-  panelName,
+  title = 'Enter your PIN',
+  subtitle = 'Enter your PIN to continue',
   onSuccess,
   onCancel,
   validatePin,
@@ -220,7 +229,7 @@ const PanelPinModal: React.FC<PanelPinModalProps> = ({
                 marginBottom: 4,
               }}
             >
-              {panelName}
+              {title}
             </div>
             <div
               style={{
@@ -229,7 +238,7 @@ const PanelPinModal: React.FC<PanelPinModalProps> = ({
                 fontWeight: 500,
               }}
             >
-              Enter PIN to continue
+              {subtitle}
             </div>
           </div>
 

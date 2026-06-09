@@ -1,10 +1,18 @@
 /**
- * Panel definitions — the named "scoped views" system for b-panels.
+ * Panel + user definitions — the named "scoped views" system for b-panels.
  *
  * A "panel" is a named, hand-specified subset of areas/sections that a
  * particular physical device (iPad) boots into and stays within. The scope
  * keys MUST match the NavRail / HomeOverview / AreaView area keys exactly:
  *   home, pool, climate, security, lights, generator
+ *
+ * ACCESS MODEL — per USER, not per panel:
+ *   - A USER (access profile) has a PIN and a list of panel ids they may access.
+ *   - Panels themselves have NO pin. Any panel a device boots into is open.
+ *   - Switching to a panel that isn't already unlocked prompts for a PIN. The
+ *     entered PIN must match a user whose `panels` list includes the requested
+ *     target panel. On success the WHOLE user is unlocked for the session —
+ *     all of that user's panels become freely switchable until page reload.
  *
  * IMPORTANT: This is convenience-grade UI scoping, NOT a tamper-proof security
  * boundary. A sufficiently motivated user could reach out-of-scope routes
@@ -37,16 +45,25 @@ export interface PanelDef {
    */
   scope: string[];
   /**
-   * Optional PIN string. If set, switching TO this panel requires this PIN.
-   * Leave undefined for panels that can be freely selected (no prompt).
-   * Never log this value.
-   */
-  pin?: string;
-  /**
    * If true, this panel may be offered as a device-default candidate on first
    * setup. All panels are candidates unless you want to hide some from setup.
    */
   isDefaultCandidate?: boolean;
+}
+
+/**
+ * A USER is an access profile: a PIN plus the set of panels it can reach.
+ * The PIN belongs to the user, never to a panel.
+ */
+export interface UserDef {
+  /** Unique stable user id. */
+  id: string;
+  /** Human-readable name (shown after unlock, optional). */
+  name: string;
+  /** This user's PIN. Convenience-grade. Never log this value. */
+  pin: string;
+  /** Panel ids this user is allowed to access/switch to. */
+  panels: string[];
 }
 
 /**
@@ -62,13 +79,6 @@ export const ALL_AREA_KEYS: string[] = [
   'generator',
 ];
 
-/**
- * The admin/setup PIN used to protect the device-setup screen itself.
- * Reuses the Full Home panel's pin for simplicity. Override here if you want
- * a different setup pin independent of any panel pin.
- */
-export const SETUP_PIN_OVERRIDE: string | undefined = undefined; // undefined = use Full Home pin
-
 const PANELS: PanelDef[] = [
   {
     id: 'full-home',
@@ -76,8 +86,6 @@ const PANELS: PanelDef[] = [
     subtitle: 'All areas',
     icon: 'Home',
     scope: ALL_AREA_KEYS,
-    // The owner / admin panel. PIN-gated so guests can't casually reach it.
-    pin: '2580',
     isDefaultCandidate: true,
   },
   {
@@ -86,7 +94,6 @@ const PANELS: PanelDef[] = [
     subtitle: 'Pool area only',
     icon: 'Waves',
     scope: ['home', 'pool'],
-    // No PIN — pool-room iPad can be used freely.
     isDefaultCandidate: true,
   },
   {
@@ -110,14 +117,13 @@ const PANELS: PanelDef[] = [
 export default PANELS;
 
 /**
- * Resolve the setup PIN: use SETUP_PIN_OVERRIDE if set, otherwise fall back to
- * the Full Home panel's pin, or undefined if neither is configured.
+ * Users (access profiles). The PIN belongs to the user. Never log pins.
+ * Seeded with two example profiles so the model is reviewable.
  */
-export function getSetupPin(): string | undefined {
-  if (SETUP_PIN_OVERRIDE !== undefined) return SETUP_PIN_OVERRIDE;
-  const adminPanel = PANELS.find(p => p.id === 'full-home');
-  return adminPanel?.pin;
-}
+export const USERS: UserDef[] = [
+  { id: 'owner', name: 'Owner', pin: '2580', panels: ['full-home', 'pool', 'entry', 'climate'] },
+  { id: 'guest', name: 'Guest', pin: '1379', panels: ['pool'] },
+];
 
 /**
  * Constant-time-like PIN comparison. Not cryptographically guaranteed, but
@@ -131,4 +137,23 @@ export function pinsMatch(a: string, b: string): boolean {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
+}
+
+/**
+ * Find the user whose PIN matches AND whose `panels` list includes the
+ * requested target panel. Returns the matching user, or null.
+ *
+ *   - PIN matches a user that includes targetPanelId → that user.
+ *   - PIN matches a user that does NOT include targetPanelId → null (denied).
+ *   - No user matches the PIN → null.
+ *
+ * Never log the entered pin or the matched user's pin.
+ */
+export function findUserForPanel(enteredPin: string, targetPanelId: string): UserDef | null {
+  for (const user of USERS) {
+    if (pinsMatch(enteredPin, user.pin) && user.panels.includes(targetPanelId)) {
+      return user;
+    }
+  }
+  return null;
 }

@@ -2,19 +2,25 @@
  * PanelSwitcher — flyout in the NavRail footer for switching scoped panels.
  *
  * Renders a small button in the NavRail that opens a panel picker list.
- * Selecting a panel:
- *   - No pin → switches immediately.
- *   - Has pin, not yet unlocked this session → shows PanelPinModal.
- *   - Has pin, already unlocked this session → switches immediately (no re-prompt).
+ * Access is per-USER (see config/panels.ts). Selecting a panel:
+ *   - Panel already unlocked this session (device default, or belongs to an
+ *     unlocked user) → switches immediately.
+ *   - Otherwise → shows a generic "Enter your PIN" modal. On submit we look for
+ *     a user whose PIN matches AND whose `panels` includes the requested panel.
+ *       · Match → unlock that whole user for the session (all their panels
+ *         become freely switchable), then switch to the requested panel.
+ *       · PIN valid but user lacks this panel, or no user matches → error/shake,
+ *         no switch.
  *
  * IMPORTANT: UI-level convenience only. See config/panels.ts for the disclaimer.
+ * Never log pins.
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { glassMaterial, glassMaterialActive } from '../design-system/theme';
 import { useReducedMotion } from '../design-system/useReducedMotion';
 import { useScopedPanel } from '../hooks/useScopedPanel';
-import { pinsMatch, type PanelDef } from '../config/panels';
+import { findUserForPanel, type PanelDef } from '../config/panels';
 import PanelPinModal from './PanelPinModal';
 import {
   IconHome,
@@ -50,8 +56,8 @@ const PanelSwitcher: React.FC = () => {
     activePanelDef,
     allPanels,
     setActivePanel,
-    sessionUnlocked,
-    addSessionUnlock,
+    isPanelUnlocked,
+    unlockUser,
   } = useScopedPanel();
   const reducedMotion = useReducedMotion();
 
@@ -74,34 +80,39 @@ const PanelSwitcher: React.FC = () => {
   const handlePanelSelect = useCallback(
     (panel: PanelDef) => {
       setOpen(false);
-      const needsPin = !!panel.pin && !sessionUnlocked.has(panel.id);
-      if (needsPin) {
-        setPendingPanel(panel);
-      } else {
+      if (isPanelUnlocked(panel.id)) {
+        // Already reachable (device default or belongs to an unlocked user).
         setActivePanel(panel.id);
+      } else {
+        setPendingPanel(panel);
       }
     },
-    [sessionUnlocked, setActivePanel]
+    [isPanelUnlocked, setActivePanel]
+  );
+
+  // On PIN entry, find a user whose pin matches AND who has the target panel.
+  // Returns true (success) and performs the unlock+switch as a side effect, so
+  // the modal closes with its success animation. Never log the entered pin.
+  const validatePin = useCallback(
+    (entered: string): boolean => {
+      if (!pendingPanel) return false;
+      const user = findUserForPanel(entered, pendingPanel.id);
+      if (!user) return false; // bad pin, or pin valid but no access to this panel
+      unlockUser(user);
+      setActivePanel(pendingPanel.id);
+      return true;
+    },
+    [pendingPanel, unlockUser, setActivePanel]
   );
 
   const handlePinSuccess = useCallback(() => {
-    if (!pendingPanel) return;
-    addSessionUnlock(pendingPanel.id);
-    setActivePanel(pendingPanel.id);
+    // The switch already happened inside validatePin; just clear the pending state.
     setPendingPanel(null);
-  }, [pendingPanel, addSessionUnlock, setActivePanel]);
+  }, []);
 
   const handlePinCancel = useCallback(() => {
     setPendingPanel(null);
   }, []);
-
-  const validatePin = useCallback(
-    (entered: string): boolean => {
-      if (!pendingPanel?.pin) return true;
-      return pinsMatch(entered, pendingPanel.pin);
-    },
-    [pendingPanel]
-  );
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
@@ -190,8 +201,7 @@ const PanelSwitcher: React.FC = () => {
 
           {allPanels.map(panel => {
             const isActive = panel.id === activePanelDef.id;
-            const isUnlocked = sessionUnlocked.has(panel.id);
-            const hasPin = !!panel.pin;
+            const unlocked = isPanelUnlocked(panel.id);
 
             return (
               <button
@@ -225,13 +235,14 @@ const PanelSwitcher: React.FC = () => {
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {panel.name}
                 </span>
-                {hasPin && (
-                  <span style={{ flexShrink: 0, opacity: 0.5 }}>
-                    {isUnlocked
-                      ? <IconLockOpen className="w-3 h-3" />
-                      : <IconLock className="w-3 h-3" />}
-                  </span>
-                )}
+                {/* Lock indicator: open when the panel is currently reachable
+                    (device default or belongs to an unlocked user), locked
+                    otherwise. PINs are per-user, not per-panel. */}
+                <span style={{ flexShrink: 0, opacity: 0.5 }}>
+                  {unlocked
+                    ? <IconLockOpen className="w-3 h-3" />
+                    : <IconLock className="w-3 h-3" />}
+                </span>
                 {isActive && (
                   <span style={{ flexShrink: 0 }}>
                     <IconChevronRight className="w-3 h-3" style={{ opacity: 0.4 }} />
@@ -243,10 +254,9 @@ const PanelSwitcher: React.FC = () => {
         </div>
       )}
 
-      {/* PIN modal for pending panel switch */}
+      {/* Generic per-user PIN modal for a pending panel switch */}
       {pendingPanel && (
         <PanelPinModal
-          panelName={pendingPanel.name}
           onSuccess={handlePinSuccess}
           onCancel={handlePinCancel}
           validatePin={validatePin}

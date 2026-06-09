@@ -4,19 +4,20 @@
  * Shown once per physical device (iPad), keyed by localStorage. Once a
  * default is saved the device boots straight into its panel on every reload.
  *
- * If any panel has a PIN, the setup screen itself requires the admin/setup PIN
- * before letting the user save a default. The setup PIN is resolved from
- * config/panels.ts (getSetupPin). This prevents an untrusted user from
- * setting up the device on first boot.
+ * The setup action is gated behind a valid PIN of a USER who has access to the
+ * chosen panel (per-user access model — see config/panels.ts). On confirm we
+ * show the generic "Enter your PIN" modal and accept it only if it matches a
+ * user whose `panels` list includes the selected panel. This prevents a guest
+ * from setting the device default to a panel they can't actually unlock.
  *
- * IMPORTANT: UI-level convenience only — not a security boundary.
+ * IMPORTANT: UI-level convenience only — not a security boundary. Never log pins.
  */
 
 import React, { useState, useCallback } from 'react';
 import { glassMaterial, glassMaterialActive } from '../design-system/theme';
 import { useReducedMotion } from '../design-system/useReducedMotion';
 import { useScopedPanel } from '../hooks/useScopedPanel';
-import { getSetupPin, pinsMatch, type PanelDef } from '../config/panels';
+import { findUserForPanel, type PanelDef } from '../config/panels';
 import PanelPinModal from './PanelPinModal';
 import {
   IconHome,
@@ -25,7 +26,6 @@ import {
   IconShieldAlert,
   IconLightbulb,
   IconDoorOpen,
-  IconLock,
 } from './icons';
 
 // ── Icon resolver ─────────────────────────────────────────────────────────────
@@ -107,12 +107,6 @@ const PanelCard: React.FC<PanelCardProps> = ({ panel, selected, onSelect }) => {
           }}
         >
           {panel.name}
-          {panel.pin && (
-            <IconLock
-              className="w-3 h-3"
-              style={{ display: 'inline', marginLeft: 6, opacity: 0.5 }}
-            />
-          )}
         </div>
         {panel.subtitle && (
           <div
@@ -167,35 +161,30 @@ const DeviceSetup: React.FC = () => {
   const { allPanels, setDeviceDefault } = useScopedPanel();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [pinVerified, setPinVerified] = useState(false);
 
-  const setupPin = getSetupPin();
-  const requiresPin = !!setupPin;
   const candidatePanels = allPanels.filter(p => p.isDefaultCandidate !== false);
 
   const handleSave = useCallback(() => {
     if (!selectedId) return;
-    if (requiresPin && !pinVerified) {
-      setShowPinModal(true);
-      return;
-    }
-    setDeviceDefault(selectedId);
-  }, [selectedId, requiresPin, pinVerified, setDeviceDefault]);
+    // Setup is always gated behind a valid user PIN for the chosen panel.
+    setShowPinModal(true);
+  }, [selectedId]);
 
   const handlePinSuccess = useCallback(() => {
-    setPinVerified(true);
     setShowPinModal(false);
     if (selectedId) {
       setDeviceDefault(selectedId);
     }
   }, [selectedId, setDeviceDefault]);
 
+  // Accept the PIN only if it belongs to a user who can access the selected
+  // panel. Same outcome as a normal panel switch. Never log the entered pin.
   const validateSetupPin = useCallback(
     (entered: string): boolean => {
-      if (!setupPin) return true;
-      return pinsMatch(entered, setupPin);
+      if (!selectedId) return false;
+      return findUserForPanel(entered, selectedId) !== null;
     },
-    [setupPin]
+    [selectedId]
   );
 
   return (
@@ -261,10 +250,8 @@ const DeviceSetup: React.FC = () => {
               lineHeight: 1.5,
             }}
           >
-            Choose which view this iPad will show by default.
-            {requiresPin && (
-              <> A setup PIN will be required to confirm.</>
-            )}
+            Choose which view this iPad will show by default. Your PIN will be
+            required to confirm.
           </p>
         </div>
 
@@ -301,13 +288,13 @@ const DeviceSetup: React.FC = () => {
             transition: 'background-color 160ms ease, color 160ms ease',
           }}
         >
-          {requiresPin ? 'Confirm with PIN' : 'Set as Default'}
+          Confirm with PIN
         </button>
       </div>
 
       {showPinModal && (
         <PanelPinModal
-          panelName="Setup"
+          subtitle="Enter your PIN to set this default"
           onSuccess={handlePinSuccess}
           onCancel={() => setShowPinModal(false)}
           validatePin={validateSetupPin}

@@ -1,19 +1,25 @@
 /**
  * useScopedPanel — React context + hook for the scoped-panels system.
  *
+ * ACCESS MODEL — per USER, not per panel. See config/panels.ts.
+ *
  * Provides:
- *   activePanelDef   — the currently active PanelDef
- *   setActivePanel   — switch to a panel (by id). Does NOT persist as default.
- *   deviceDefault    — the device-default panel id (from localStorage, per-device)
- *   setDeviceDefault — persist a new device default (requires prior PIN check)
- *   isAreaAllowed    — check whether an area key is within the active scope
- *   sessionUnlocked  — Set of panel ids whose PIN was entered this session.
- *                      Resets on page reload (in-memory only, by design).
- *   addSessionUnlock — mark a panel as PIN-unlocked for this session
- *   needsDeviceSetup — true when no device default is stored (first launch)
+ *   activePanelDef     — the currently active PanelDef
+ *   setActivePanel     — switch to a panel (by id). Does NOT persist as default.
+ *   deviceDefault      — the device-default panel id (from localStorage, per-device)
+ *   setDeviceDefault   — persist a new device default (requires prior PIN check)
+ *   isAreaAllowed      — check whether an area key is within the active scope
+ *   unlockedPanels     — Set of panel ids reachable without a (re-)prompt this
+ *                        session: the device default + every panel belonging to
+ *                        any unlocked user. Resets on page reload (in-memory).
+ *   isPanelUnlocked    — convenience: is this panel id currently reachable?
+ *   unlockUser         — mark a whole USER as unlocked for the session (all of
+ *                        their panels become freely switchable).
+ *   needsDeviceSetup   — true when no device default is stored (first launch)
+ *   allPanels          — the panel definitions
  *
  * IMPORTANT: This is UI-level convenience scoping, NOT a security boundary.
- * See frontend/config/panels.ts for full rationale.
+ * See frontend/config/panels.ts for full rationale. Never log pins.
  */
 
 import React, {
@@ -24,7 +30,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import PANELS, { type PanelDef } from '../config/panels';
+import PANELS, { USERS, type PanelDef, type UserDef } from '../config/panels';
 
 // ── Storage key ───────────────────────────────────────────────────────────────
 
@@ -38,8 +44,9 @@ interface ScopedPanelContextValue {
   deviceDefault: string | null;
   setDeviceDefault: (panelId: string) => void;
   isAreaAllowed: (areaKey: string) => boolean;
-  sessionUnlocked: Set<string>;
-  addSessionUnlock: (panelId: string) => void;
+  unlockedPanels: Set<string>;
+  isPanelUnlocked: (panelId: string) => boolean;
+  unlockUser: (user: UserDef) => void;
   needsDeviceSetup: boolean;
   allPanels: PanelDef[];
 }
@@ -75,16 +82,17 @@ export const ScopedPanelProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [activePanelId, setActivePanelId] = useState<string | null>(initialPanelId);
 
-  // In-memory session unlock set — resets on page reload intentionally.
-  const sessionUnlockedRef = useRef<Set<string>>(new Set<string>());
-  const [sessionUnlockedSnapshot, setSessionUnlockedSnapshot] = useState<Set<string>>(
+  // In-memory unlocked-USER set — resets on page reload intentionally.
+  // Unlocking a user grants free access to ALL of their panels for the session.
+  const unlockedUsersRef = useRef<Set<string>>(new Set<string>());
+  const [unlockedUsersSnapshot, setUnlockedUsersSnapshot] = useState<Set<string>>(
     new Set<string>()
   );
 
-  const addSessionUnlock = useCallback((panelId: string) => {
-    sessionUnlockedRef.current.add(panelId);
+  const unlockUser = useCallback((user: UserDef) => {
+    unlockedUsersRef.current.add(user.id);
     // Re-render consumers by replacing the set reference.
-    setSessionUnlockedSnapshot(new Set(sessionUnlockedRef.current));
+    setUnlockedUsersSnapshot(new Set(unlockedUsersRef.current));
   }, []);
 
   const setActivePanel = useCallback((panelId: string) => {
@@ -107,6 +115,25 @@ export const ScopedPanelProvider: React.FC<{ children: React.ReactNode }> = ({
     [activePanelDef]
   );
 
+  // The set of panels reachable without a (re-)prompt this session:
+  //   - The device default panel (the open landing).
+  //   - Every panel belonging to any unlocked user.
+  const unlockedPanels = useMemo(() => {
+    const set = new Set<string>();
+    if (deviceDefault) set.add(deviceDefault);
+    for (const user of USERS) {
+      if (unlockedUsersSnapshot.has(user.id)) {
+        for (const pid of user.panels) set.add(pid);
+      }
+    }
+    return set;
+  }, [deviceDefault, unlockedUsersSnapshot]);
+
+  const isPanelUnlocked = useCallback(
+    (panelId: string) => unlockedPanels.has(panelId),
+    [unlockedPanels]
+  );
+
   const needsDeviceSetup = !deviceDefault || !PANELS.find(p => p.id === deviceDefault);
 
   const value = useMemo<ScopedPanelContextValue>(
@@ -116,8 +143,9 @@ export const ScopedPanelProvider: React.FC<{ children: React.ReactNode }> = ({
       deviceDefault,
       setDeviceDefault,
       isAreaAllowed,
-      sessionUnlocked: sessionUnlockedSnapshot,
-      addSessionUnlock,
+      unlockedPanels,
+      isPanelUnlocked,
+      unlockUser,
       needsDeviceSetup,
       allPanels: PANELS,
     }),
@@ -127,8 +155,9 @@ export const ScopedPanelProvider: React.FC<{ children: React.ReactNode }> = ({
       deviceDefault,
       setDeviceDefault,
       isAreaAllowed,
-      sessionUnlockedSnapshot,
-      addSessionUnlock,
+      unlockedPanels,
+      isPanelUnlocked,
+      unlockUser,
       needsDeviceSetup,
     ]
   );
