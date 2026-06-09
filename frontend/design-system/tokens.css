@@ -506,3 +506,53 @@ body.ambient-night {
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(320%);  }
 }
+
+/* ── Climate instrument-card responsive layout (RoomClimateTile) ───────────
+   The card is a container (container-type: inline-size). Mobile-first:
+   STACK the telemetry rail over a full-width control console so the console
+   never gets crammed (the −/+ steppers were colliding with the setpoint at
+   narrow widths). Only go side-by-side once the card is wide enough (>=20rem)
+   to comfortably fit both regions. These class hooks let inline-styled tiles
+   use a real @container query (inline styles can't carry @container rules). */
+
+.bp-clim-body {
+  display: flex;
+  flex-direction: column;   /* mobile-first: stacked */
+  gap: var(--space-3);
+}
+.bp-clim-rail,
+.bp-clim-console {
+  width: 100%;              /* full card width when stacked */
+}
+/* Stacked setpoint row: centered with guaranteed gaps so the steppers and the
+   big number always have breathing room and never touch. */
+.bp-clim-setpoint-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+/* Wide cards (wall grid / desktop): two regions side-by-side. */
+@container (min-width: 20rem) {
+  .bp-clim-body {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .bp-clim-rail {
+    flex: 1 1 7.5rem;
+    width: auto;
+    min-width: 7rem;
+  }
+  .bp-clim-console {
+    flex: 1 1 9rem;
+    width: auto;
+    min-width: 8.5rem;
+  }
+  /* In the narrower side-by-side console, keep the steppers pinned to the edges
+     with the number centered between them — still a real gap on both sides. */
+  .bp-clim-setpoint-row {
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+}

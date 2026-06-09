@@ -428,20 +428,18 @@ const RoomClimateTile = ({
                 holds the setpoint hero and its controls. flex-wrap + min-widths
                 give a responsive two-region layout with no media query. */}
             <div
+                className="bp-clim-body"
                 style={{
                     flex: 1,
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 'var(--space-3)',
-                    alignItems: 'stretch',
                     minHeight: 0,
                 }}
             >
-                {/* Telemetry rail */}
+                {/* Telemetry rail. Sizing (full-width stacked vs. flex side-by-side)
+                    is driven by the .bp-clim-rail @container rule; internal column
+                    layout stays inline. */}
                 <div
+                    className="bp-clim-rail"
                     style={{
-                        flex: '1 1 7.5rem',
-                        minWidth: '7rem',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
@@ -532,26 +530,22 @@ const RoomClimateTile = ({
                     )}
                 </div>
 
-                {/* Control console */}
+                {/* Control console. Sizing driven by .bp-clim-console @container
+                    rule; internal column layout stays inline. */}
                 <div
+                    className="bp-clim-console"
                     style={{
-                        flex: '1 1 9rem',
-                        minWidth: '8.5rem',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 'var(--space-3)',
                         justifyContent: 'center',
                     }}
                 >
-                    {/* Setpoint hero with +/- steppers */}
-                    <div
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 'var(--space-2)',
-                        }}
-                    >
+                    {/* Setpoint hero with +/- steppers. The row's justify/gap is
+                        owned by .bp-clim-setpoint-row so the steppers and number
+                        always keep a real gap: centered with wide gaps when stacked,
+                        edge-pinned with the number centered when side-by-side. */}
+                    <div className="bp-clim-setpoint-row">
                         <StepBtn
                             label="Lower setpoint"
                             symbol="−"
@@ -559,12 +553,14 @@ const RoomClimateTile = ({
                             onClick={() => step(-zone.tempStep)}
                         />
 
-                        {/* Setpoint digit. flex:1 + minWidth:0 + overflow:hidden so
-                            the number column takes the space BETWEEN the two fixed
-                            steppers and can never push or overlap them. */}
+                        {/* Setpoint digit. flex:0 1 auto so it's content-sized and
+                            the row's gap/justify (from .bp-clim-setpoint-row) keeps a
+                            real space to both steppers — centered with wide gaps when
+                            stacked, centered between edge-pinned beads when side-by-side.
+                            minWidth:0 + overflow:hidden keep it from ever pushing them. */}
                         <div
                             style={{
-                                flex: 1,
+                                flex: '0 1 auto',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
