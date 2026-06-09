@@ -652,8 +652,32 @@ Five liquid-glass area cards in a 3-column / 2-row CSS grid. Each card:
 - Hover: lift (`translateY(-2px) scale(1.008)`) + expanded accent glow shadow
 - Alert overlay: red/amber tint when security violation / generator running
 
-Quick-stats bar (top right): Outside temp · Lights on count · Security state · Zone count.
-Sourced from `useDashboard().devices` + `useWeather()` — no new data fetching.
+Quick-stats bar (top right): Outside temp · Lights on count · Security state (real UniFi) · Zone count.
+Sourced from `useDashboard().devices` + `useWeather()` + `useSecurityIndicator()` — no new data fetching.
+
+### Global security indicator pattern
+
+`useSecurityIndicator` derives a tri-state `SecurityAlertLevel` from `useUnifiSurface()`
+live UniFi data. Three placements consume it:
+
+| Placement | Component | Variant |
+| --- | --- | --- |
+| Header right-side chrome | `SecurityStatusIndicator` | `pill` — labeled badge |
+| NavRail Security item | `NavRail` (inline) | color-coded icon + badge dot |
+| HomeOverview security card | `SecurityCard` | full area card with pulsing treatments |
+
+Color mapping (never fabricated — only from real HA entity state):
+- `clear`  → `rgb(52 211 153)` green
+- `recent` → `rgb(251 146 60)` amber (activity within last 3 min)
+- `active` → `rgb(239 68 68)` red, pulsing ring + glow
+
+`SecurityModal` is the full overlay — camera grid, events timeline, floodlight state.
+Auto-surfaces when level transitions to `'active'`; also tap-openable from the pill.
+Always display-only. No arm/disarm/siren/floodlight control (equipment-gated, deferred).
+
+Light-mode: `SecurityModal` and its `sec-modal-root` scoped CSS block pins a dark
+surface context (mirrors Pool/Security compilation tile pattern), so the dark
+surveillance aesthetic stays legible regardless of app theme.
 
 ### AreaView design
 

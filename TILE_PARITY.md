@@ -23,6 +23,9 @@ Navigation layer (added on this branch):
 | `HomeOverview` | `/home` | Landing page with 5 area status cards |
 | `AreaView` | `/area/:areaKey` | Full-screen area compilation panel wrapper |
 | `NavRail` | all nav routes | Persistent left-side 72px icon + label rail |
+| `SecurityStatusIndicator` | global (Header + HomeOverview) | Always-visible color-coded security pill |
+| `SecurityModal` | overlay (all nav routes) | Full-screen security overview; auto-surfaces on ACTIVE |
+| `useSecurityIndicator` | hook | Tri-state (clear/recent/active) from real UniFi data |
 
 `/` now redirects to `/home` (previously redirected to first dashboard panel).
 Dashboard panels remain accessible via `/dashboard/:panelId` and the header dropdown.
@@ -51,12 +54,44 @@ All 5 area cards now render as deliberate, clean states when live HA data is abs
 | --- | --- | --- |
 | Pool | "Waiting for controller" | muted ring (offline/idle) |
 | Climate | "Zones not yet discovered" | muted ring |
-| Security | "Monitoring · Not yet armed" | muted ring |
+| Security | Uses SecurityCard + useSecurityIndicator — see below | live color dot |
 | Lights | "All off · Lutron ready" | green (LutronSurface is self-driven, always live) |
 | Generator | "Standby · Offline" | muted ring |
 
 Dot vocabulary: green glow = active/ok, amber glow = warn, red glow = alert, empty ring = standby/offline.
 This makes "not connected" states read as deliberate system states rather than errors.
+
+### Global security indicator — tri-state, always visible
+
+The Security area card (`SecurityCard`), the Header pill (`SecurityStatusIndicator`),
+and the NavRail Security item are all driven by `useSecurityIndicator`, which derives
+state from real UniFi Protect data only (never fabricated):
+
+| Level | Trigger | Color | Behavior |
+| --- | --- | --- | --- |
+| `clear` | No active detections; no activity within 3 min | Green | Calm, static |
+| `recent` | Activity within last 3 min, not currently active | Amber | Indicator present |
+| `active` | `hasAnyActivity` true (motion/person/vehicle/animal/package/doorbell/LP) | RED, pulsing | Expanding ring; auto-surfaces SecurityModal |
+
+**No arm/disarm state is shown or fabricated**: there is no `alarm_control_panel`
+integration wired. The existing `ArmingStatusIndicator` remains in the Header for
+the Alarmo arm state (when present). `useSecurityIndicator` explicitly ignores any
+`alarmState` that is null (the common case today), and escalates to `active` ONLY
+on a real `securityState === 'VIOLATION'` if/when a panel is connected.
+
+### SecurityModal — front-and-center overlay
+
+Opened by: tapping the Header pill, the Home SecurityCard, or the NavRail Security
+item (via the SecurityStatusIndicator compact variant in NavRail badge).
+Auto-surfaces: when `level` transitions into `'active'` (one auto-open per transition).
+
+Contents (display-only, no hardware control):
+- Camera thumbnails (HA-proxied `entity_picture` snapshots; no RTSP)
+- Live detection chips per camera (PERSON / VEHICLE / RING / etc.)
+- Recent-events timeline across all cameras (newest first, up to 16)
+- Floodlight state (display only; "DISPLAY ONLY · control deferred" note shown)
+- "Full View" button → navigates to `/area/security`
+- Footer disclaimer: "Display only · No arm/disarm control (no alarm panel integrated)"
 
 
 > Verification method: composite cards group an HA **device's** entities (via

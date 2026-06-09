@@ -41,6 +41,31 @@ import {
   IconCheckCircle,
   IconAlertTriangle,
 } from './icons';
+import { useSecurityIndicator } from '../hooks/useSecurityIndicator';
+import { SECURITY_LEVEL_CONFIG } from './SecurityStatusIndicator';
+import SecurityStatusIndicator from './SecurityStatusIndicator';
+
+// ── Security card animation keyframes (injected once) ─────────────────────────
+const HOME_SEC_STYLE_ID = 'home-sec-card-anims';
+if (typeof document !== 'undefined' && !document.getElementById(HOME_SEC_STYLE_ID)) {
+  const s = document.createElement('style');
+  s.id = HOME_SEC_STYLE_ID;
+  s.textContent = `
+@keyframes home-sec-active-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.72; }
+}
+@keyframes home-sec-ring-out {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0;   }
+}
+@keyframes home-sec-dot-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+  `;
+  document.head.appendChild(s);
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -137,25 +162,28 @@ function useClimateStatus(devices: any[], deviceMap: Map<string, any>): AreaStat
   }, [devices, deviceMap]);
 }
 
+/**
+ * useSecurityStatus is now a thin shim that maps SecurityAlertLevel from
+ * useSecurityIndicator (real UniFi data) to an AreaStatus for the generic
+ * AreaCard. The enhanced SecurityCard below renders its own richer UI.
+ */
 function useSecurityStatus(alarmState: any, devices: any[]): AreaStatus {
   return useMemo(() => {
-    if (alarmState) {
-      const arm = alarmState.armState;
-      const violation = alarmState.securityState === 'VIOLATION';
-      if (violation) {
-        return { summary: 'Intrusion detected', ok: false, alertLevel: 'alert' };
-      }
-      if (arm === 'armedAway') return { summary: 'Armed Away', ok: true, alertLevel: 'warn' };
-      if (arm === 'armedStay') return { summary: 'Armed Stay', ok: true, alertLevel: 'warn' };
-      return { summary: 'Disarmed · All clear', ok: true, alertLevel: 'ok' };
+    // Keep the alarmState VIOLATION path for the legacy alarm panel (if ever wired).
+    if (alarmState?.securityState === 'VIOLATION') {
+      return { summary: 'Intrusion detected', ok: false, alertLevel: 'alert' };
     }
-    // Fallback: count cameras
-    const cameras = devices.filter(d => d.type === DeviceType.Camera || d.type === DeviceType.CameraGroup || d.type === DeviceType.UnifiSecurity);
+    if (alarmState?.armState === 'armedAway') return { summary: 'Armed Away', ok: true, alertLevel: 'warn' };
+    if (alarmState?.armState === 'armedStay') return { summary: 'Armed Stay', ok: true, alertLevel: 'warn' };
+
+    // Fallback: count cameras from device registry
+    const cameras = devices.filter(d =>
+      d.type === DeviceType.Camera || d.type === DeviceType.CameraGroup || d.type === DeviceType.UnifiSecurity
+    );
     if (cameras.length > 0) {
       return { summary: `${cameras.length} camera${cameras.length > 1 ? 's' : ''} active`, ok: true, alertLevel: 'ok' };
     }
-    // No alarm or camera entities yet — standby ring dot, deliberate state
-    return { summary: 'Monitoring · Not yet armed', ok: false, alertLevel: 'ok' };
+    return { summary: 'Monitoring · All clear', ok: true, alertLevel: 'ok' };
   }, [alarmState, devices]);
 }
 
@@ -519,6 +547,192 @@ const QuickStat: React.FC<QuickStatProps> = ({ label, value, icon, color }) => (
   </div>
 );
 
+// ── Security card — enhanced, always color-coded by real UniFi state ──────────
+/**
+ * SecurityCard replaces the generic AreaCard for the security area.
+ * It consumes useSecurityIndicator directly so it shows:
+ *   - CLEAR  → green, calm
+ *   - RECENT → amber, subtle pulse ring
+ *   - ACTIVE → RED, impossible to miss: pulsing glow, red background bloom,
+ *               detection count badge, doorbell flash
+ *
+ * No arm/disarm state fabricated — that requires a real alarm_control_panel.
+ * Opening this card taps the SecurityStatusIndicator (which shows the modal
+ * and navigates to /area/security from there).
+ */
+const SecurityCard: React.FC<{ onClick: () => void; style?: React.CSSProperties }> = ({ onClick, style }) => {
+  const secIndicator = useSecurityIndicator();
+  const { level, summary, activeCameraCount, doorbellActive, hasCameras, isLoading } = secIndicator;
+  const cfg = SECURITY_LEVEL_CONFIG[level];
+
+  const [hovered, setHovered] = React.useState(false);
+  const MONO = '"JetBrains Mono", "Fira Code", "Courier New", monospace';
+
+  const cardBorderColor = level === 'active'
+    ? `color-mix(in srgb, ${cfg.accent} 65%, rgba(255,255,255,0.1))`
+    : level === 'recent'
+    ? `color-mix(in srgb, ${cfg.accent} 42%, var(--tile-border))`
+    : 'var(--tile-border)';
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="relative flex flex-col justify-between text-left transition-all overflow-hidden"
+      style={{
+        backgroundColor: `rgb(var(--surface) / var(--tile-alpha))`,
+        backdropFilter: `blur(var(--tile-blur))`,
+        WebkitBackdropFilter: `blur(var(--tile-blur))`,
+        border: `1px solid ${cardBorderColor}`,
+        borderRadius: 'var(--radius-tile)',
+        boxShadow: level === 'active'
+          ? [
+              hovered ? 'var(--elev-2)' : 'var(--elev-1)',
+              `0 0 ${hovered ? '48px' : '28px'} -6px ${cfg.accent}88`,
+              `inset 0 0 32px -8px ${cfg.accent}33`,
+            ].join(', ')
+          : level === 'recent'
+          ? [
+              hovered ? 'var(--elev-2)' : 'var(--elev-1)',
+              `0 0 20px -6px ${cfg.accent}66`,
+            ].join(', ')
+          : hovered ? `var(--elev-2), 0 0 24px -8px ${cfg.accent}55` : 'var(--elev-1)',
+        transform: hovered ? 'translateY(-2px) scale(1.008)' : 'translateY(0) scale(1)',
+        padding: '24px',
+        cursor: 'pointer',
+        outline: 'none',
+        animation: level === 'active' ? 'home-sec-active-pulse 2s ease-in-out infinite' : 'none',
+        transition: 'all 280ms cubic-bezier(0.22,1,0.36,1)',
+        ...style,
+      }}
+      aria-label={`Security: ${summary}. Open security overview.`}
+    >
+      {/* Background color bloom for active state */}
+      {level !== 'clear' && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 'inherit', pointerEvents: 'none',
+          background: level === 'active'
+            ? `radial-gradient(130% 80% at 50% 120%, ${cfg.accent}22, transparent 65%)`
+            : `radial-gradient(100% 60% at 50% 100%, ${cfg.accent}14, transparent 70%)`,
+          transition: 'opacity 0.5s ease',
+        }} />
+      )}
+
+      {/* Background accent blot */}
+      <div style={{
+        position: 'absolute', top: -40, right: -40,
+        width: 180, height: 180, borderRadius: '50%', pointerEvents: 'none',
+        background: `radial-gradient(circle, ${cfg.accent}${level === 'active' ? '40' : '20'} 0%, transparent 70%)`,
+        transition: 'all 0.4s ease',
+      }} />
+
+      {/* Expanding pulse ring — active state only */}
+      {level === 'active' && (
+        <span style={{
+          position: 'absolute', inset: 0, borderRadius: 'inherit',
+          border: `2px solid ${cfg.accent}`,
+          animation: 'home-sec-ring-out 2.2s ease-out infinite',
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {/* Top row: icon + status dot */}
+      <div className="relative flex items-start justify-between">
+        {/* Icon badge */}
+        <div style={{
+          width: 48, height: 48, borderRadius: 14,
+          backgroundColor: `${cfg.accent}${level === 'active' ? '33' : '22'}`,
+          border: `1px solid ${cfg.accent}${level === 'active' ? '66' : '44'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: cfg.accent, flexShrink: 0,
+          boxShadow: level === 'active' ? `0 0 16px -4px ${cfg.accent}88` : 'none',
+          transition: 'all 0.3s ease',
+        }}>
+          {level === 'active'
+            ? <IconAlertTriangle className="w-6 h-6" />
+            : level === 'recent'
+            ? <IconShieldAlert className="w-6 h-6" />
+            : <IconShieldCheck className="w-6 h-6" />}
+        </div>
+
+        {/* Status live dot */}
+        <div style={{ position: 'relative', width: 9, height: 9, flexShrink: 0 }}>
+          <div style={{
+            width: 9, height: 9, borderRadius: '50%',
+            backgroundColor: cfg.accent,
+            boxShadow: `0 0 8px ${cfg.accent}`,
+            animation: level !== 'clear' ? 'home-sec-dot-blink 1.2s ease-in-out infinite' : 'none',
+          }} />
+        </div>
+      </div>
+
+      {/* Text block */}
+      <div className="relative">
+        <div style={{
+          fontSize: 26, fontWeight: 700, lineHeight: 1.1,
+          letterSpacing: '-0.02em', color: 'rgb(var(--text))', marginBottom: 6,
+        }}>Security</div>
+        <div style={{
+          fontSize: 12, fontWeight: 500,
+          color: 'rgb(var(--text) / 0.45)',
+          letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10,
+        }}>Cameras & sensors</div>
+
+        {/* Status line */}
+        <div style={{
+          fontSize: 14, fontWeight: 600, color: cfg.accent, lineHeight: 1.4,
+          textShadow: level === 'active' ? `0 0 12px ${cfg.accent}88` : 'none',
+        }}>{summary}</div>
+
+        {/* Detection badges when active */}
+        {(activeCameraCount > 0 || doorbellActive) && (
+          <div className="flex items-center flex-wrap" style={{ gap: 5, marginTop: 8 }}>
+            {activeCameraCount > 0 && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 99,
+                fontFamily: MONO, fontSize: '0.58rem', fontWeight: 700,
+                letterSpacing: '0.05em', color: cfg.accent,
+                backgroundColor: `${cfg.accent}22`,
+                border: `1px solid ${cfg.accent}44`,
+                animation: 'home-sec-active-pulse 1.5s ease-in-out infinite',
+              }}>
+                <span style={{ width: 5, height: 5, borderRadius: 99, background: cfg.accent, boxShadow: `0 0 4px ${cfg.accent}`, flexShrink: 0 }} />
+                {activeCameraCount} ACTIVE
+              </span>
+            )}
+            {doorbellActive && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 99,
+                fontFamily: MONO, fontSize: '0.58rem', fontWeight: 700,
+                letterSpacing: '0.05em', color: '#1a0a00',
+                backgroundColor: 'rgb(251 191 36)',
+                animation: 'home-sec-active-pulse 0.9s ease-in-out infinite',
+              }}>DOORBELL</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Open chevron */}
+      <div
+        className="relative flex items-center gap-1"
+        style={{
+          fontSize: 12, fontWeight: 600, color: cfg.accent,
+          letterSpacing: '0.04em',
+          opacity: hovered ? 1 : 0.7,
+          transition: 'opacity 0.18s ease',
+        }}
+      >
+        <span>Open</span>
+        <span style={{ display: 'inline-block', transform: hovered ? 'translateX(3px)' : 'translateX(0)', transition: 'transform 0.18s ease' }}>→</span>
+      </div>
+    </button>
+  );
+};
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 const HomeOverview: React.FC = () => {
@@ -528,9 +742,14 @@ const HomeOverview: React.FC = () => {
 
   const poolStatus = usePoolStatus(devices, deviceMap);
   const climateStatus = useClimateStatus(devices, deviceMap);
+  // securityStatus kept for legacy alarmState compatibility
   const securityStatus = useSecurityStatus(alarmState, devices);
   const lightStatus = useLightStatus(devices);
   const generatorStatus = useGeneratorStatus(devices);
+
+  // Real security indicator — drives QuickStat and SecurityCard color
+  const secIndicator = useSecurityIndicator();
+  const secCfg = SECURITY_LEVEL_CONFIG[secIndicator.level];
 
   // Quick stats bar data
   const outsideTemp = weather?.temperature != null ? `${weather.temperature}°F` : '--';
@@ -544,14 +763,6 @@ const HomeOverview: React.FC = () => {
       return false;
     }).length;
   }, [devices]);
-
-  const securityQuickLabel = useMemo(() => {
-    if (!alarmState) return 'Unknown';
-    if (alarmState.securityState === 'VIOLATION') return 'ALERT';
-    if (alarmState.armState === 'armedAway') return 'Armed Away';
-    if (alarmState.armState === 'armedStay') return 'Armed Stay';
-    return 'Disarmed';
-  }, [alarmState]);
 
   const climateZones = devices.filter(d => d.type === DeviceType.Thermostat).length;
 
@@ -578,25 +789,20 @@ const HomeOverview: React.FC = () => {
             icon={<IconLightbulb className="w-4 h-4" />}
             color="rgb(var(--accent-light))"
           />
+          {/* Security QuickStat — now color-coded from real UniFi data.
+              Label shows live summary. Tapping opens the SecurityModal via
+              the SecurityStatusIndicator pill. No arm/disarm state fabricated. */}
           <QuickStat
             label="Security"
-            value={securityQuickLabel}
+            value={secIndicator.isLoading ? '…' : secCfg.label}
             icon={
-              alarmState?.securityState === 'VIOLATION' ? (
-                <IconAlertTriangle className="w-4 h-4" />
-              ) : alarmState?.armState !== 'disarmed' ? (
-                <IconShieldAlert className="w-4 h-4" />
-              ) : (
-                <IconShieldCheck className="w-4 h-4" />
-              )
+              secIndicator.level === 'active'
+                ? <IconAlertTriangle className="w-4 h-4" />
+                : secIndicator.level === 'recent'
+                ? <IconShieldAlert className="w-4 h-4" />
+                : <IconShieldCheck className="w-4 h-4" />
             }
-            color={
-              alarmState?.securityState === 'VIOLATION'
-                ? 'rgb(var(--accent-alert))'
-                : alarmState?.armState !== 'disarmed'
-                ? 'rgb(var(--accent-warn))'
-                : 'rgb(52,211,153)'
-            }
+            color={secCfg.accent}
           />
           {climateZones > 0 && (
             <QuickStat
@@ -616,7 +822,6 @@ const HomeOverview: React.FC = () => {
           // 2 rows: top row (Pool + Climate, 55%) + bottom row (Security + Lights + Generator, 45%)
           gridTemplateRows: '1fr 1fr',
           gridTemplateColumns: '1fr 1fr 1fr',
-          // Pool and Climate each span 1.5 of the 3 columns effectively by using 3-col and spanning
         }}
       >
         {/* Pool — large, top-left */}
@@ -643,28 +848,12 @@ const HomeOverview: React.FC = () => {
           style={{ gridColumn: '2 / 4', gridRow: '1 / 2' }}
         />
 
-        {/* Security — bottom-left */}
-        <AreaCard
-          areaKey="security"
-          title="Security"
-          subtitle="Cameras & sensors"
-          status={securityStatus}
-          icon={
-            securityStatus.alertLevel === 'alert' ? (
-              <IconAlertTriangle className="w-6 h-6" />
-            ) : securityStatus.alertLevel === 'warn' ? (
-              <IconShieldAlert className="w-6 h-6" />
-            ) : (
-              <IconShieldCheck className="w-6 h-6" />
-            )
-          }
-          accentColor={
-            securityStatus.alertLevel === 'alert'
-              ? 'rgb(var(--accent-alert))'
-              : securityStatus.alertLevel === 'warn'
-              ? 'rgb(var(--accent-warn))'
-              : 'rgb(52,211,153)'
-          }
+        {/* Security — bottom-left.
+            Uses SecurityCard (not generic AreaCard) for rich, real-state display.
+            Clicking SecurityCard navigates to /area/security.
+            The SecurityModal auto-surfaces on 'active' state via
+            SecurityStatusIndicator in the Header. */}
+        <SecurityCard
           onClick={() => navigate('/area/security')}
           style={{ gridColumn: '1 / 2', gridRow: '2 / 3' }}
         />

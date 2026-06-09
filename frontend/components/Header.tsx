@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useWeather } from '../hooks/useWeather';
 import { DashboardPanel } from '../types';
 import ArmingStatusIndicator from './ArmingStatusIndicator';
+import SecurityStatusIndicator from './SecurityStatusIndicator';
 
 const Clock = () => {
     const [time, setTime] = React.useState(new Date());
@@ -197,6 +198,8 @@ const Header = () => {
               <Weather />
               <Clock />
               <MuteButton />
+              {/* Security indicator in headless/kiosk mode */}
+              <SecurityStatusIndicator variant="pill" />
               <ArmingStatusIndicator />
             </div>
           </div>
@@ -272,6 +275,12 @@ const Header = () => {
                     <MuteButton />
                 </>
              )}
+            {/* Global security indicator — always visible on nav routes.
+                Color-codes CLEAR/RECENT/ACTIVE from real UniFi Protect data.
+                Tap to open the SecurityModal overview. Auto-surfaces on ACTIVE. */}
+            {(isDashboardView || isHomeView || isAreaView) && (
+              <SecurityStatusIndicator variant="pill" />
+            )}
             <ArmingStatusIndicator />
 
             <NavLink to="/admin" className={navLinkClass} aria-label="Admin Settings">
