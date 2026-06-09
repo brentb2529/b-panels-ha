@@ -414,18 +414,43 @@ values under `:root`, `body.light-mode`, and `body.ambient-night`.
 
 `AirControlSurface.tsx` + `RoomClimateTile.tsx` are the exemplar implementation.
 
-Key patterns to copy into other surfaces:
+### Layout / composition (the professional, non-stretched grid)
+
+- **Surface grid**: `repeat(auto-fill, minmax(16rem, 24rem))` + `justify-content:
+  center`. Cards fill the row then **cap at 24rem** so they never stretch
+  full-bleed on a wide wall — a tidy centered multi-column grid instead of a few
+  marooned ultra-wide cards. Mobile collapses to a single centered column.
+- **Cluster = labelled "system" group**: a slim accent-tinted label band
+  (`<name> system · N zones`) over a recessed `glass-l4` well that holds the
+  master + slaves as **uniform equal-size cards** in their own
+  `repeat(auto-fill, minmax(16rem, 1fr))` grid. (No more full-width master with a
+  nested sub-grid — everything is balanced.)
+- **Zone card = a cohesive instrument**, not a vertical stack with a marooned
+  setpoint. Each card is a CSS container (`container-type: inline-size`) holding a
+  wrapping two-region body:
+  - **Telemetry rail** (`flex 1 1 7.5rem`, faint inset well): a **large** animated
+    mode/fan glyph (fan = 56px AnimatedFan, else 48px LivingModeIcon) over labelled
+    **temp-on-range + humidity BuildBars** with value read-outs.
+  - **Control console** (`flex 1 1 9rem`): the setpoint hero flanked by the
+    `−`/`+` glass-bead steppers, then the mode + fan selector buttons beneath.
+  - `flex-wrap` + min-widths make the two regions sit **side-by-side when wide**
+    and **stack when narrow** — responsive with no media query. The body fills the
+    card, so there's no dead space at wall resolution.
+
+### Material patterns to copy into other surfaces
 
 - **Surface root**: `glass-l1` + `radius-surface` + `glass-mount` animation
-- **Header bar**: `glass-l1` with `rgba(255,255,255,0.025)` overlay to
-  separate from scroll content
+- **Header bar**: `glass-l1` with a `--glass-l1-tint` overlay to separate from
+  scroll content
 - **Icon bead**: `glass-l3` + accent tint + glow box-shadow
 - **Zone cards**: `glass-l2` + accent-tinted bg/border/inset-glow (active state)
-- **Stepper buttons**: `glass-l3` + `specular-strong` + `specular-bevel`
-  + `radius-pill` + spring press transform
+- **Stepper buttons**: `glass-l3` + `specular-strong` + `rim` + `radius-pill`
+  + spring press transform
 - **Mode/fan controls**: `glass-l3` + accent bleed when active + spring transitions
 - **Status badges**: `radius-pill` + `type-2xs` + accent tint bg + living dot
 - **Role chips** (Master/Slave): `radius-chip` + `type-2xs` + accent or muted glass
+- **Animated widgets**: AnimatedFan (rail glyph + fan button), BuildBar (telemetry
+  meters), LivingModeIcon (rail glyph) — see the motion library section.
 
 All `color-mix(in srgb, ...)` calls blend the semantic accent CSS var into the
 glass background, so mode/state changes produce a smooth vibrancy shift instead

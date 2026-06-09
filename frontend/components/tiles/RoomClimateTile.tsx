@@ -260,11 +260,16 @@ const RoomClimateTile = ({
                 position: 'relative',
                 display: 'flex',
                 flexDirection: 'column',
+                gap: 'var(--space-3)',
                 borderRadius: 'var(--radius-card)',
                 overflow: 'hidden',
+                padding: 'var(--space-3)',
                 opacity: disabled ? 0.55 : 1,
                 filter: disabled ? 'grayscale(0.7)' : undefined,
-                minHeight: nested ? '10.5rem' : '12rem',
+                minHeight: nested ? '12.5rem' : '13.5rem',
+                height: '100%',
+                // Container so the body can switch row→column by card width.
+                containerType: 'inline-size',
                 // Liquid Glass level-2 material: luminous backdrop + sheen + rim
                 backdropFilter:       'var(--glass-l2-backdrop)',
                 WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
@@ -282,48 +287,18 @@ const RoomClimateTile = ({
                 ].join(', '),
             }}
         >
-            {/* ── Header: name + running badge ─────────────────────────── */}
+            {/* ── Header: name + role badge + running state ─────────────── */}
             <div
                 style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     justifyContent: 'space-between',
                     gap: 'var(--space-2)',
-                    padding: 'var(--space-3) var(--space-3) 0',
+                    flexShrink: 0,
                 }}
             >
-                {/* Left: mode icon + name + role badge */}
+                {/* Left: name + role badge (the mode glyph lives in the rail) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
-                    {/* Living mode icon: heat shimmers, cool drifts, etc. when the
-                        equipment is actually running this mode. Fan mode shows the
-                        AnimatedFan instead of a static glyph. */}
-                    <LivingModeIcon
-                        mode={zone.hvacMode}
-                        active={isRunning}
-                        colorVar={colorVar}
-                        style={{ flexShrink: 0 }}
-                    >
-                        {zone.hvacMode === 'fan_only' ? (
-                            <AnimatedFan
-                                active={isRunning}
-                                rpmLevel={fanLevel(zone.fanMode, zone.fanModes)}
-                                size={18}
-                                colorVar={isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar}
-                                title="Fan running"
-                            />
-                        ) : (
-                            <ModeIcon
-                                mode={zone.hvacMode}
-                                style={{
-                                    width: 18,
-                                    height: 18,
-                                    color: isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar,
-                                    filter: isRunning ? `drop-shadow(0 0 5px ${colorVar})` : undefined,
-                                    transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-                                }}
-                            />
-                        )}
-                    </LivingModeIcon>
                     <h3
                         style={{
                             margin: 0,
@@ -439,190 +414,224 @@ const RoomClimateTile = ({
                 ) : null}
             </div>
 
-            {/* ── Ambient readings: current temp + humidity ─────────────── */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-3)',
-                    padding: 'var(--space-2) var(--space-3) 0',
-                }}
-            >
-                <span
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 3,
-                        fontFamily: 'var(--font-numeric)',
-                        fontSize: 'var(--type-sm)',
-                        fontWeight: 500,
-                        color: 'rgba(var(--text) / 0.55)',
-                        letterSpacing: '-0.01em',
-                    }}
-                >
-                    <IconThermometer style={{ width: 13, height: 13, opacity: 0.65 }} />
-                    {zone.currentTemperature != null
-                        ? `${zone.currentTemperature.toFixed(1)}${unit}`
-                        : '--'}
-                </span>
-                {zone.currentHumidity != null && (
-                    <span
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 3,
-                            fontFamily: 'var(--font-numeric)',
-                            fontSize: 'var(--type-sm)',
-                            fontWeight: 500,
-                            color: 'rgba(var(--text) / 0.55)',
-                            letterSpacing: '-0.01em',
-                        }}
-                    >
-                        <IconDroplets style={{ width: 13, height: 13, opacity: 0.65 }} />
-                        {Math.round(zone.currentHumidity)}%
-                    </span>
-                )}
-            </div>
-
-            {/* ── Animated meters: temp-on-range + humidity (build on change) ── */}
-            {(tempProgress || zone.currentHumidity != null) && (
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        padding: '6px var(--space-3) 0',
-                    }}
-                >
-                    {tempProgress && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                            <IconThermometer style={{ width: 11, height: 11, opacity: 0.5, flexShrink: 0 }} />
-                            <BuildBar
-                                value={tempProgress.value}
-                                min={tempProgress.min}
-                                max={tempProgress.max}
-                                colorVar={activeGlass ? colorVar : 'rgba(var(--text) / 0.5)'}
-                                active={isRunning}
-                                height={5}
-                                label={`Temperature ${tempProgress.value.toFixed(1)}${unit}`}
-                            />
-                        </div>
-                    )}
-                    {zone.currentHumidity != null && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                            <IconDroplets style={{ width: 11, height: 11, opacity: 0.5, flexShrink: 0 }} />
-                            <BuildBar
-                                value={zone.currentHumidity}
-                                min={0}
-                                max={100}
-                                colorVar="var(--accent-water)"
-                                active={zone.hvacAction === 'drying'}
-                                height={5}
-                                label={`Humidity ${Math.round(zone.currentHumidity)}%`}
-                            />
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* ── Setpoint stepper — the hero control ──────────────────── */}
+            {/* ── Instrument body: telemetry rail | control console ───────
+                A wrapping flex: side-by-side when the card is wide enough,
+                stacked when narrow (mobile / nested). The rail leads with the
+                prominent animated fan/mode glyph + telemetry meters; the console
+                holds the setpoint hero and its controls. flex-wrap + min-widths
+                give a responsive two-region layout with no media query. */}
             <div
                 style={{
                     flex: 1,
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 'var(--space-4)',
-                    padding: 'var(--space-3) var(--space-4)',
+                    flexWrap: 'wrap',
+                    gap: 'var(--space-3)',
+                    alignItems: 'stretch',
+                    minHeight: 0,
                 }}
             >
-                <StepBtn
-                    label="Lower setpoint"
-                    symbol="−"
-                    disabled={!canStep}
-                    onClick={() => step(-zone.tempStep)}
-                />
-
-                {/* Setpoint digit */}
+                {/* Telemetry rail */}
                 <div
                     style={{
+                        flex: '1 1 7.5rem',
+                        minWidth: '7rem',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        lineHeight: 1,
-                        gap: 3,
+                        justifyContent: 'center',
+                        gap: 'var(--space-3)',
+                        borderRadius: 'var(--radius-control)',
+                        padding: 'var(--space-3) var(--space-2)',
+                        // Faint inset well so the rail reads as an instrument cluster.
+                        backgroundColor: 'color-mix(in srgb, rgb(var(--text)) 4%, transparent)',
+                        boxShadow: 'inset 0 1px 1px rgba(0,0,0,0.10)',
                     }}
                 >
-                    <div
-                        style={{
-                            fontFamily: 'var(--font-numeric)',
-                            fontSize: 'var(--type-hero)',
-                            fontWeight: 700,
-                            letterSpacing: '-0.04em',
-                            color: activeGlass ? colorVar : 'rgba(var(--text) / 0.90)',
-                            textShadow: activeGlass
-                                ? `0 0 24px color-mix(in srgb, ${colorVar} 50%, transparent)`
-                                : undefined,
-                            transition: [
-                                `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-                                `text-shadow var(--dur-medium, 260ms) ease`,
-                            ].join(', '),
-                        }}
+                    {/* Prominent animated mode/fan glyph */}
+                    <LivingModeIcon
+                        mode={zone.hvacMode}
+                        active={isRunning}
+                        colorVar={colorVar}
+                        style={{ flexShrink: 0 }}
                     >
-                        {displaySetpoint != null ? (
-                            <>
-                                {displaySetpoint.toFixed(zone.tempStep < 1 ? 1 : 0)}
-                                <span
-                                    style={{
-                                        fontSize: '0.38em',
-                                        fontWeight: 500,
-                                        opacity: 0.65,
-                                        verticalAlign: 'super',
-                                        letterSpacing: 0,
-                                    }}
-                                >
-                                    {unit}
-                                </span>
-                            </>
+                        {zone.hvacMode === 'fan_only' || (zone.hvacAction === 'fan') ? (
+                            <AnimatedFan
+                                active={isRunning}
+                                rpmLevel={fanLevel(zone.fanMode, zone.fanModes)}
+                                size={56}
+                                colorVar={isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar}
+                                title="Fan running"
+                            />
                         ) : (
-                            <span style={{ color: 'rgba(var(--text) / 0.28)', fontSize: '0.7em' }}>—</span>
+                            <ModeIcon
+                                mode={zone.hvacMode}
+                                style={{
+                                    width: 48,
+                                    height: 48,
+                                    color: isOff || disabled ? 'rgba(var(--text) / 0.30)' : colorVar,
+                                    filter: isRunning ? `drop-shadow(0 0 9px ${colorVar})` : undefined,
+                                    transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                }}
+                            />
                         )}
-                    </div>
+                    </LivingModeIcon>
 
-                    {zone.supportsTargetRange
-                        && zone.targetTempLow  != null
-                        && zone.targetTempHigh != null && (
-                        <span
-                            style={{
-                                fontFamily: 'var(--font-numeric)',
-                                fontSize: 'var(--type-xs)',
-                                fontWeight: 500,
-                                color: 'rgba(var(--text) / 0.40)',
-                                letterSpacing: '-0.01em',
-                            }}
-                        >
-                            {zone.targetTempLow.toFixed(0)}–{zone.targetTempHigh.toFixed(0)}{unit}
-                        </span>
+                    {/* Telemetry meters: temp-on-range + humidity */}
+                    {(tempProgress || zone.currentHumidity != null) && (
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                            {tempProgress && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'var(--type-2xs)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)' }}>
+                                            <IconThermometer style={{ width: 10, height: 10, opacity: 0.7 }} /> Temp
+                                        </span>
+                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)' }}>
+                                            {tempProgress.value.toFixed(1)}{unit}
+                                        </span>
+                                    </div>
+                                    <BuildBar
+                                        value={tempProgress.value}
+                                        min={tempProgress.min}
+                                        max={tempProgress.max}
+                                        colorVar={activeGlass ? colorVar : 'rgba(var(--text) / 0.5)'}
+                                        active={isRunning}
+                                        height={6}
+                                        label={`Temperature ${tempProgress.value.toFixed(1)}${unit}`}
+                                    />
+                                </div>
+                            )}
+                            {zone.currentHumidity != null && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'var(--type-2xs)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)' }}>
+                                            <IconDroplets style={{ width: 10, height: 10, opacity: 0.7 }} /> Humidity
+                                        </span>
+                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)' }}>
+                                            {Math.round(zone.currentHumidity)}%
+                                        </span>
+                                    </div>
+                                    <BuildBar
+                                        value={zone.currentHumidity}
+                                        min={0}
+                                        max={100}
+                                        colorVar="var(--accent-water)"
+                                        active={zone.hvacAction === 'drying'}
+                                        height={6}
+                                        label={`Humidity ${Math.round(zone.currentHumidity)}%`}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
 
-                <StepBtn
-                    label="Raise setpoint"
-                    symbol="+"
-                    disabled={!canStep}
-                    onClick={() => step(zone.tempStep)}
-                />
-            </div>
+                {/* Control console */}
+                <div
+                    style={{
+                        flex: '1 1 9rem',
+                        minWidth: '8.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-3)',
+                        justifyContent: 'center',
+                    }}
+                >
+                    {/* Setpoint hero with +/- steppers */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 'var(--space-2)',
+                        }}
+                    >
+                        <StepBtn
+                            label="Lower setpoint"
+                            symbol="−"
+                            disabled={!canStep}
+                            onClick={() => step(-zone.tempStep)}
+                        />
 
-            {/* ── Mode + fan selectors ──────────────────────────────────── */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'stretch',
-                    gap: 'var(--space-2)',
-                    padding: '0 var(--space-3) var(--space-3)',
-                }}
-            >
+                        {/* Setpoint digit */}
+                        <div
+                            style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                lineHeight: 1,
+                                gap: 3,
+                                minWidth: 0,
+                            }}
+                        >
+                            <div
+                                style={{
+                                    fontFamily: 'var(--font-numeric)',
+                                    fontSize: 'var(--type-hero)',
+                                    fontWeight: 700,
+                                    letterSpacing: '-0.04em',
+                                    color: activeGlass ? colorVar : 'rgba(var(--text) / 0.90)',
+                                    textShadow: activeGlass
+                                        ? `0 0 24px color-mix(in srgb, ${colorVar} 50%, transparent)`
+                                        : undefined,
+                                    transition: [
+                                        `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
+                                        `text-shadow var(--dur-medium, 260ms) ease`,
+                                    ].join(', '),
+                                }}
+                            >
+                                {displaySetpoint != null ? (
+                                    <>
+                                        {displaySetpoint.toFixed(zone.tempStep < 1 ? 1 : 0)}
+                                        <span
+                                            style={{
+                                                fontSize: '0.38em',
+                                                fontWeight: 500,
+                                                opacity: 0.65,
+                                                verticalAlign: 'super',
+                                                letterSpacing: 0,
+                                            }}
+                                        >
+                                            {unit}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span style={{ color: 'rgba(var(--text) / 0.28)', fontSize: '0.7em' }}>—</span>
+                                )}
+                            </div>
+
+                            {zone.supportsTargetRange
+                                && zone.targetTempLow  != null
+                                && zone.targetTempHigh != null && (
+                                <span
+                                    style={{
+                                        fontFamily: 'var(--font-numeric)',
+                                        fontSize: 'var(--type-xs)',
+                                        fontWeight: 500,
+                                        color: 'rgba(var(--text) / 0.40)',
+                                        letterSpacing: '-0.01em',
+                                    }}
+                                >
+                                    {zone.targetTempLow.toFixed(0)}–{zone.targetTempHigh.toFixed(0)}{unit}
+                                </span>
+                            )}
+                        </div>
+
+                        <StepBtn
+                            label="Raise setpoint"
+                            symbol="+"
+                            disabled={!canStep}
+                            onClick={() => step(zone.tempStep)}
+                        />
+                    </div>
+
+                    {/* Mode + fan selectors */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'stretch',
+                            gap: 'var(--space-2)',
+                        }}
+                    >
                 {/* Mode control */}
                 {isSlave && !modeRouted ? (
                     // Slave whose mode can't be routed: read-only chip
@@ -817,6 +826,8 @@ const RoomClimateTile = ({
                         </span>
                     </button>
                 )}
+                    </div>
+                </div>
             </div>
         </div>
     );

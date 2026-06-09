@@ -122,7 +122,12 @@ const ZoneTile = ({
     );
 };
 
-// ── Master cluster card — master + slaves in nested sub-grid ───────────────
+// ── Master cluster — a labelled "system" group of equal-size cards ─────────
+// The master and its slaves render as UNIFORM cards in one responsive grid
+// (not a full-width master with a nested sub-grid), so nothing stretches and
+// the system reads as a balanced set. A slim header band carries the system
+// label + slave count; a recessed level-4 glass well holds the cards so they
+// visibly float above it. The master card is flagged so it leads the group.
 const ClusterCard = ({
     group,
     onSetTemperature,
@@ -134,16 +139,14 @@ const ClusterCard = ({
     onSetHvacMode: SetMode;
     onSetFanMode: SetFan;
 }) => (
-    <div
+    <section
         style={{
-            borderRadius: 'var(--radius-card)',
+            borderRadius: 'var(--radius-surface)',
             padding: 'var(--space-3)',
             display: 'flex',
             flexDirection: 'column',
             gap: 'var(--space-3)',
-            // Level-4 deepest glass: cluster wrapper is the most transparent,
-            // recessed layer. The beveled rim + an INSET top shadow make it read
-            // as a well that the master/slave cards float ABOVE.
+            // Level-4 deepest glass: recessed well the cards float above.
             backdropFilter:       'var(--glass-l4-backdrop)',
             WebkitBackdropFilter: 'var(--glass-l4-backdrop)',
             backgroundColor: 'color-mix(in srgb, var(--accent) 7%, var(--glass-l4-bg))',
@@ -152,17 +155,19 @@ const ClusterCard = ({
             boxShadow:       'var(--rim), inset 0 8px 20px -10px rgba(0,0,0,0.55), var(--elev-2)',
         }}
     >
-        {/* Master zone tile */}
-        <ZoneTile
-            zone={group.master}
-            group={group}
-            onSetTemperature={onSetTemperature}
-            onSetHvacMode={onSetHvacMode}
-            onSetFanMode={onSetFanMode}
-        />
-
-        {/* Slave group divider */}
+        {/* System label band */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: '0 var(--space-1)' }}>
+            <span
+                style={{
+                    fontSize: 'var(--type-2xs)',
+                    fontWeight: 700,
+                    letterSpacing: 'var(--tracking-caps)',
+                    textTransform: 'uppercase',
+                    color: 'color-mix(in srgb, var(--accent) 70%, rgb(var(--text)))',
+                }}
+            >
+                {group.master.name} system
+            </span>
             <span
                 style={{
                     fontSize: 'var(--type-2xs)',
@@ -172,25 +177,27 @@ const ClusterCard = ({
                     color: 'rgba(var(--text) / 0.38)',
                 }}
             >
-                {group.slaves.length} slave {group.slaves.length === 1 ? 'zone' : 'zones'}
+                · {group.slaves.length} {group.slaves.length === 1 ? 'zone' : 'zones'}
             </span>
-            <div
-                style={{
-                    flex: 1,
-                    height: 1,
-                    background: 'var(--glass-l4-border)',
-                }}
-            />
+            <div style={{ flex: 1, height: 1, background: 'var(--glass-l4-border)' }} />
         </div>
 
-        {/* Slave sub-grid */}
+        {/* Uniform card grid: master + slaves, equal size, no stretch */}
         <div
             style={{
                 display: 'grid',
                 gap: 'var(--space-3)',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(13rem, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))',
+                alignItems: 'stretch',
             }}
         >
+            <ZoneTile
+                zone={group.master}
+                group={group}
+                onSetTemperature={onSetTemperature}
+                onSetHvacMode={onSetHvacMode}
+                onSetFanMode={onSetFanMode}
+            />
             {group.slaves.map((slave) => (
                 <ZoneTile
                     key={slave.entityId}
@@ -203,7 +210,7 @@ const ClusterCard = ({
                 />
             ))}
         </div>
-    </div>
+    </section>
 );
 
 // ── Empty state ────────────────────────────────────────────────────────────
@@ -369,12 +376,17 @@ const AirControlSurface = (_props: TileProps) => {
                             display: 'grid',
                             gap: 'var(--space-4)',
                             alignItems: 'start',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(15rem, 1fr))',
+                            // Cards have a sensible MAX width (24rem) so they never
+                            // stretch full-bleed on a wide wall: tracks fill the row
+                            // then cap, leaving a tidy multi-column grid instead of
+                            // a few marooned ultra-wide cards. Clusters span the full
+                            // row (their own inner grid lays out uniform cards).
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 24rem))',
+                            justifyContent: 'center',
                         }}
                     >
                         {groups.map((group) =>
                             group.isCluster ? (
-                                // Cluster spans full row so slaves have room to lay out
                                 <div key={group.key} style={{ gridColumn: '1 / -1' }}>
                                     <ClusterCard
                                         group={group}
