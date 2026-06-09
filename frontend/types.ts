@@ -45,6 +45,11 @@ export enum DeviceType {
   // one independent control card per zone. Not backed by one entity — it
   // self-drives through services/haClient.ts, like the Flair structure card.
   AirControl = 'AIR_CONTROL',
+  // SAFETY-CRITICAL bespoke surface for the AKVO Movable Floor. A single virtual
+  // tile that monitors the akvo integration's read entities and offers the ONE
+  // gated request path (select.select_option on the configuration-request
+  // select). Self-driven via services/haClient.ts; never commands raw motion.
+  AkvoFloor = 'AKVO_FLOOR',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type

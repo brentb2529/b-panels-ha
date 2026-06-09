@@ -26,6 +26,7 @@ import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
 import AirControlSurface from './tiles/AirControlSurface';
 import PoolSurfaceTile from './tiles/PoolSurfaceTile';
+import AkvoFloorSurface from './tiles/AkvoFloorSurface';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -80,6 +81,7 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.PanicButton]: PanicTile,
   [DeviceType.AlarmHistory]: AlarmHistoryTile,
   [DeviceType.AirControl]: AirControlSurface,
+  [DeviceType.AkvoFloor]: AkvoFloorSurface,
   [DeviceType.Folder]: FolderTile,
 
   // Surface 1 — Pool / Spa (Pentair IntelliCenter).
