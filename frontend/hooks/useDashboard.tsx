@@ -355,6 +355,10 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.IntelliCenterPool:
         case DeviceType.AkvoFloor:
         case DeviceType.UnifiSecurity:
+        // Security Area compilation panel is self-driven via useUnifiSurface +
+        // subscribeEntities. device.state carries optional SecurityAreaConfig
+        // (areaName, showEvents, showSensors, maxCameras); empty object is safe.
+        case DeviceType.SecurityArea:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty

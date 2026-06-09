@@ -526,3 +526,74 @@ STOP control, light-mode fix). Needs runtime verification at 1366×1024 @2× of:
 light-mode contrast across the whole tile; the STOP banner appearing + one-tap
 cancelling while the floor moves; deck fits with minimal scroll; area filter +
 all three sub-surfaces populate; depth gauge tracks real AKVO depth.
+
+---
+
+## Security Area Compilation Panel — `DeviceType.SecurityArea` / `SecurityCompilationTile`
+
+Surface 7 — immersive area/function dashboard for cameras and security sensors.
+Composes `useUnifiSurface` (camera wall + events) with live `subscribeEntities`
+contact/lock sensor discovery into one cohesive, dark surveillance view.
+
+| Sub-surface | Source | Entities | Status |
+| --- | --- | --- | --- |
+| UniFi camera wall (streams/snapshots) | `useUnifiSurface()` + `UnifiCameraCard` | `camera.*` via HA HLS proxy | 🟡 (delegates to verified hook) |
+| Smart-detect chips + doorbell/motion pulses | `useUnifiSurface()` | `binary_sensor.*_motion/doorbell/person/vehicle/animal/package/license_plate_detected` | 🟡 |
+| Recent-events timeline (cross-camera) | `useUnifiSurface()` | `event.*_doorbell/vehicle/nfc/fingerprint` | 🟡 |
+| Floodlight state display | `useUnifiSurface()` | `light.*flood*` (display only) | 🟡 |
+| Contact/lock sensors | `subscribeEntities` direct | `binary_sensor.*` (door/window/motion/opening) + `lock.*` | 🟡 graceful degradation if none |
+
+**SECURITY CONTRACT** (hard limits — not relaxed by this tile):
+- No RTSP/RTSPS credentials surfaced. Streams via `getCameraStreamUrl` (HA proxy).
+- License plate: boolean indicator only. Plate text = PII, never shown.
+- Floodlight: display state + label only. No control wired (equipment-gated).
+- No arm/disarm, recording-mode change, siren, or floodlight CONTROL — all deferred.
+
+**Deferred / equipment-gated actions** (explicitly NOT wired, documented in tile header):
+- Alarm arm/disarm → AlarmTile/Alarmo path; requires PIN UI + human approval.
+- Recording mode toggle → equipment-gated; needs HA service + operator confirm.
+- Floodlight on/off → equipment-gated; display state surfaced only.
+- Siren/chime → equipment-gated; must coordinate with alarm panel.
+
+**Quick-actions (display/navigation ONLY):**
+- "Focus Active Cam" — sets local `focusedCamId` state (no HA service call).
+- "All Cameras" — clears focus (local state).
+- "Show Events" — `scrollIntoView` on events panel (no HA service call).
+
+**Configurable** (set via `device.state` JSON `SecurityAreaConfig`):
+
+| Field | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `areaName` | string | `'Security'` | Hero header display name |
+| `showEvents` | boolean | `true` | Show recent-events panel |
+| `showSensors` | boolean | `true` | Show contact/lock sensor panel |
+| `maxCameras` | number | `0` (all) | Cap cameras shown in wall |
+
+**Layout**: hero (cameras-online count, detection status, last-activity summary,
+LIVE indicator) → quick-actions bar → 2-column deck (camera wall left 2fr +
+events/sensors panel right 1fr, CQ-responsive to 1col on narrow containers). Calm
+dark slate/charcoal backdrop, scanline texture, moving scan line, alert bloom on
+detection. Monospaced readouts (JetBrains Mono) for surveillance feel.
+
+**Light-mode legibility**: `body.light-mode .sec-comp-root` scoped block pins
+light `--text` + dark glass recipe inside the tile so labels read over the dark
+backdrop in all themes (mirrors Pool compilation pattern).
+
+**Sensor filtering**: UniFi-owned `binary_sensor` siblings (motion/doorbell/person/
+vehicle/animal/package/license_plate suffixes) are excluded from the sensor panel
+to avoid double-counting (they are shown in the camera card chips instead).
+
+**Source**: `components/tiles/SecurityCompilationTile.tsx` (self-contained;
+reuses `UnifiCameraCard`, `useUnifiSurface`, and `haClient.subscribeEntities`).
+Registration: `types.ts` `DeviceType.SecurityArea`, `tileRegistry.tsx`,
+`Admin.tsx` (icon + virtual-device list), `useDashboard.tsx` (empty-object default state).
+
+**Status**: 🟡 built. Needs runtime verification at 1366×1024 @2× of:
+- Camera wall populates and streams via HA proxy.
+- Smart-detect chips and doorbell flash fire on real events.
+- Contact/lock sensors discovered from HA states (verify device_class filter).
+- Events timeline updates live across all cameras.
+- Floodlight state badge correct; no control exposed.
+- Alert state (hero bloom, outer glow, status chip) triggers on motion/detection.
+- Light-mode contrast legible (dark override applied).
+- Quick-actions are purely navigational (no HA service calls fired).

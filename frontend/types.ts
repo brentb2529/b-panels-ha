@@ -94,6 +94,18 @@ export enum DeviceType {
   // preserved: the embedded AkvoSectionContent replicates the same
   // HoldToRequest gate and single select.select_option write path.
   PoolArea = 'POOL_AREA',
+
+  // Surface 7 — Security Area compilation panel.
+  // Immersive area/function dashboard for cameras and security sensors.
+  // Composes UniFi Protect camera wall (HA-proxied streams, smart-detect
+  // chips, motion/doorbell pulses, floodlight state display-only), a
+  // cross-camera recent-events timeline, and any HA contact/lock sensors
+  // (graceful degradation if none). Configurable via device.state JSON
+  // (see SecurityAreaConfig in SecurityCompilationTile.tsx).
+  // SECURITY CONTRACT: no RTSP creds, no plate text (PII), no floodlight
+  // control, no arm/disarm, no recording-mode change, no siren control —
+  // all security-hardware writes are deferred/equipment-gated.
+  SecurityArea = 'SECURITY_AREA',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home

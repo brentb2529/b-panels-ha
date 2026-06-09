@@ -33,6 +33,7 @@ import CoolMasterTile from './tiles/CoolMasterTile';
 import LutronSurface from './tiles/LutronSurface';
 import UnifiSecurityTile from './tiles/UnifiSecurityTile';
 import PoolCompilationTile from './tiles/PoolCompilationTile';
+import SecurityCompilationTile from './tiles/SecurityCompilationTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -120,6 +121,13 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // Config via device.state JSON (PoolAreaConfig). AKVO safety: guarded preset
   // only, never raw motion.
   [DeviceType.PoolArea]: PoolCompilationTile,
+
+  // Surface 7 — Security Area compilation panel.
+  // Composes UniFi camera wall + events timeline + contact/lock sensors.
+  // Display-only for all security hardware (no arm/disarm, no floodlight
+  // control, no recording mode, no siren). Quick-actions are navigation-only
+  // (focus a camera, scroll events). Config via device.state JSON (SecurityAreaConfig).
+  [DeviceType.SecurityArea]: SecurityCompilationTile,
 };
 
 // Resolve the component for a device:
