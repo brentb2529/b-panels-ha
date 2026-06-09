@@ -84,7 +84,7 @@ import {
   IconWaves, IconAlertTriangle, IconX,
   IconActivity, IconLightbulb, IconSun,
   IconLoader2, IconWifiOff, IconShieldAlert,
-  IconHand,
+  IconHand, IconAlertOctagon,
   IconLayers, IconChevronDown,
 } from '../icons';
 
@@ -282,6 +282,15 @@ function ensureAnims() {
   50%  { opacity: 0.7;  transform: translateY(-2%) scale(1.05); }
   100% { opacity: 0.35; transform: translateY(8%)  scale(1.02); }
 }
+/* STOP control: urgent attention pulse (red) while the floor is moving. */
+@keyframes pool-comp-stop-pulse {
+  0%,100% { box-shadow: var(--rim), 0 0 0 0 color-mix(in srgb, var(--accent-alert) 60%, transparent), 0 6px 18px -4px color-mix(in srgb, var(--accent-alert) 50%, transparent); }
+  50%     { box-shadow: var(--rim), 0 0 0 6px color-mix(in srgb, var(--accent-alert) 0%, transparent), 0 6px 24px -2px color-mix(in srgb, var(--accent-alert) 70%, transparent); }
+}
+@keyframes pool-comp-stop-bar-in {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0);     }
+}
 
 /* ── Tight, full-width control grid (iPad-landscape first) ────────────────────
    Stretchy equal columns (NOT auto-fill) so cards fill the row edge-to-edge.
@@ -301,6 +310,40 @@ function ensureAnims() {
   .pool-comp-deck { grid-template-columns: 1fr 1fr 1fr; }
   .pool-comp-deck[data-cols="1"] { grid-template-columns: 1fr; }
   .pool-comp-deck[data-cols="2"] { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── LIGHT-MODE LEGIBILITY ────────────────────────────────────────────────────
+   The Pool compilation is intentionally a DARK immersive water scene in EVERY
+   theme (the hero water + tile base are dark navy regardless of light/dark).
+   In light mode the global --text is a dark slate, which would render dark text
+   on the dark water = unreadable, and the light-frosted glass tokens turn murky
+   over the dark base. So inside the Pool tile we pin the DARK-surface context:
+   light text + the dark glass recipe. This is scoped to .pool-comp-root only —
+   it does not affect any other surface or the global theme. Dark + ambient are
+   unchanged (they already use this context). */
+body.light-mode .pool-comp-root {
+  --text: 236 244 255;                       /* light text over the dark water */
+  --glass-l1-bg: rgba(24, 32, 46, 0.60);
+  --glass-l1-border: rgba(255, 255, 255, 0.14);
+  --glass-l1-tint: rgba(255, 255, 255, 0.05);
+  --glass-l1-brightness: 1.08;
+  --glass-l1-backdrop: blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate)) brightness(1.08);
+  --glass-l2-bg: rgba(32, 43, 62, 0.50);
+  --glass-l2-border: rgba(255, 255, 255, 0.18);
+  --glass-l2-tint: rgba(255, 255, 255, 0.07);
+  --glass-l2-brightness: 1.10;
+  --glass-l2-backdrop: blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate)) brightness(1.10);
+  --glass-l3-bg: rgba(44, 57, 78, 0.50);
+  --glass-l3-border: rgba(255, 255, 255, 0.16);
+  --glass-l3-tint: rgba(255, 255, 255, 0.06);
+  --glass-l3-brightness: 1.12;
+  --glass-l3-backdrop: blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate)) brightness(1.12);
+  --glass-l4-bg: rgba(13, 19, 31, 0.46);
+  --glass-l4-border: rgba(255, 255, 255, 0.10);
+  --glass-l4-tint: rgba(255, 255, 255, 0.035);
+  --glass-l4-backdrop: blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate)) brightness(1.04);
+  /* cool-cast elevation shadows would read wrong on the dark base; use deep. */
+  --rim: inset 0 1px 0 0 rgba(255,255,255,0.10), inset 0 -1px 0 0 rgba(0,0,0,0.25);
 }
 `;
   document.head.appendChild(s);
@@ -1695,11 +1738,12 @@ const AkvoHoldButton: React.FC<{
   );
 };
 
-const AkvoSectionContent: React.FC = () => {
-  const { state, gate, status, requestingPreset, requestConfiguration } = useAkvoFloor();
+const AkvoSectionContent: React.FC<{ reduced: boolean }> = ({ reduced }) => {
+  const { state, gate, status, requestingPreset, requestConfiguration, cancelMovement } = useAkvoFloor();
   const overall = akvoOverall(state);
   const isFault = state.emergencyStop === true || state.systemFault === true;
   const isMoving = state.floorsMoving === true;
+  const noSentinel = !state.requestSelect?.noneOption;
 
   if (!state.present) {
     return (
@@ -1845,25 +1889,28 @@ const AkvoSectionContent: React.FC = () => {
         </div>
       )}
 
-      {/* Live motion feedback */}
+      {/* Live motion feedback + inline STOP (one-tap cancel while moving). */}
       {(requestingPreset || isMoving) && (
         <div style={{
           borderRadius: 'var(--radius-control)',
           padding: 'var(--space-3)',
           backdropFilter: 'var(--glass-l2-backdrop)',
           WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
-          backgroundColor: `color-mix(in srgb, ${WARN} 12%, var(--glass-l2-bg))`,
+          backgroundColor: `color-mix(in srgb, ${isMoving ? ALERT : WARN} 12%, var(--glass-l2-bg))`,
           backgroundImage: 'var(--specular-default)',
-          border: `1px solid color-mix(in srgb, ${WARN} 35%, var(--glass-l2-border))`,
+          border: `1px solid color-mix(in srgb, ${isMoving ? ALERT : WARN} 35%, var(--glass-l2-border))`,
           boxShadow: 'var(--rim)',
-          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+          display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap',
         }}>
-          <IconLoader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: WARN }} />
-          <span style={{ fontSize: 'var(--type-xs)', fontWeight: 600, color: WARN }}>
+          <IconLoader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: isMoving ? ALERT : WARN }} />
+          <span style={{ fontSize: 'var(--type-xs)', fontWeight: 600, color: isMoving ? ALERT : WARN, flex: 1, minWidth: 0 }}>
             {isMoving
               ? `Moving${state.activeConfiguration ? ` → ${state.activeConfiguration}` : ''}…`
               : `Requesting ${requestingPreset}… (AKVO validating)`}
           </span>
+          {isMoving && (
+            <StopFloorButton onStop={() => { void cancelMovement(); }} size="compact" disabled={noSentinel} reduced={reduced} />
+          )}
         </div>
       )}
     </div>
@@ -2409,6 +2456,105 @@ const QuickHoldChip: React.FC<{
 };
 
 // =============================================================================
+// STOP control — immediate one-tap cancel of a running floor move
+// =============================================================================
+//
+// SAFETY MODEL (deliberately asymmetric vs. the start path):
+//   • STARTING motion = guarded press-and-hold + fail-closed gate.
+//   • STOPPING motion = IMMEDIATE ONE-TAP, never gated. Stopping must always be
+//     instant and available while the floor is moving.
+// The button selects the request select's sentinel ("—") option via
+// cancelMovement(), which clears the active command so AKVO halts the running
+// configuration. It is a REQUEST-CHANNEL cancel — NOT the certified hardware
+// E-stop on the AKVO controller, and the label/subtext say so.
+
+const StopFloorButton: React.FC<{
+  onStop: () => void;
+  size?: 'bar' | 'compact';
+  disabled?: boolean;          // only when there is no sentinel option to send
+  reduced?: boolean;
+}> = ({ onStop, size = 'bar', disabled, reduced }) => {
+  const big = size === 'bar';
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onStop}
+      disabled={disabled}
+      aria-label="Stop floor — cancels the requested movement"
+      className="relative flex items-center select-none"
+      style={{
+        gap: big ? 'clamp(0.5rem, 1.6cqw, 0.85rem)' : 'var(--space-2)',
+        flexShrink: 0,
+        padding: big
+          ? 'clamp(0.45rem, 1.6cqw, 0.7rem) clamp(0.7rem, 2.4cqw, 1.15rem)'
+          : 'clamp(0.35rem, 1.2cqw, 0.5rem) clamp(0.55rem, 1.8cqw, 0.85rem)',
+        borderRadius: 'var(--radius-control)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        // Solid, high-contrast RED — reads as urgent in every theme.
+        background: 'linear-gradient(180deg, rgb(239 68 68), rgb(201 42 42))',
+        border: '1px solid rgb(255 140 140 / 0.6)',
+        color: 'rgb(255 255 255)',
+        boxShadow: 'var(--rim), 0 6px 18px -4px color-mix(in srgb, var(--accent-alert) 50%, transparent)',
+        animation: (!disabled && !reduced) ? 'pool-comp-stop-pulse 1.1s ease-in-out infinite' : 'none',
+        transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+      }}
+      onPointerDown={(e) => { if (!disabled) (e.currentTarget as HTMLElement).style.transform = 'scale(0.97)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      title="Cancels the requested movement. The certified emergency stop is on the AKVO controller."
+    >
+      <IconAlertOctagon style={{ width: big ? 26 : 18, height: big ? 26 : 18, flexShrink: 0 }} />
+      <span className="flex flex-col items-start" style={{ lineHeight: 1.05, textAlign: 'left' }}>
+        <span style={{ fontSize: big ? 'clamp(0.95rem, 2.4cqw, 1.2rem)' : 'var(--type-sm)', fontWeight: 800, letterSpacing: '0.04em' }}>
+          STOP FLOOR
+        </span>
+        <span style={{ fontSize: big ? 'var(--type-2xs)' : '0.55rem', fontWeight: 500, color: 'rgb(255 255 255 / 0.82)' }}>
+          {disabled
+            ? 'Cancel unavailable — use the AKVO controller'
+            : 'Cancels the requested movement · certified E-stop is on the AKVO controller'}
+        </span>
+      </span>
+    </button>
+  );
+};
+
+// Sticky urgent banner that appears at the TOP of the surface WHENEVER the floor
+// is moving, so STOP is always reachable (never buried). Self-contained: owns
+// its own AKVO feed so it stays correct regardless of which sections render.
+const FloorStopBanner: React.FC<{ reduced: boolean }> = ({ reduced }) => {
+  const { state, cancelMovement } = useAkvoFloor();
+  const isMoving = state.floorsMoving === true;
+  if (!isMoving) return null;
+  const noSentinel = !state.requestSelect?.noneOption;
+  return (
+    <div
+      className="relative z-30 flex items-center flex-shrink-0"
+      style={{
+        gap: 'clamp(0.5rem, 2cqw, 1rem)',
+        padding: 'clamp(0.4rem, 1.4cqw, 0.65rem) clamp(0.55rem, 2cqw, 1rem)',
+        borderBottom: '1px solid color-mix(in srgb, var(--accent-alert) 45%, rgba(255,255,255,0.08))',
+        backgroundColor: 'color-mix(in srgb, var(--accent-alert) 22%, rgba(8, 22, 40, 0.96))',
+        backdropFilter: 'var(--glass-l2-backdrop)', WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
+        animation: reduced ? 'none' : 'pool-comp-stop-bar-in 260ms var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
+      }}
+    >
+      <span className="flex items-center" style={{ gap: 'var(--space-2)', minWidth: 0, flex: 1 }}>
+        <span className="flex-shrink-0" style={{
+          width: 9, height: 9, borderRadius: 999, background: 'rgb(248 113 113)',
+          boxShadow: '0 0 8px 2px rgb(248 113 113)',
+          animation: reduced ? 'none' : 'pool-comp-akvo-alert 0.8s ease-in-out infinite',
+        }} />
+        <span className="truncate" style={{ fontSize: 'var(--type-sm)', fontWeight: 700, color: 'rgb(245 250 255)' }}>
+          Floor moving{state.activeConfiguration ? ` → ${state.activeConfiguration}` : ''}
+        </span>
+      </span>
+      <StopFloorButton onStop={() => { void cancelMovement(); }} size="bar" disabled={noSentinel} reduced={reduced} />
+    </div>
+  );
+};
+
+// =============================================================================
 // MAIN: PoolCompilationTile
 // =============================================================================
 
@@ -2472,7 +2618,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
   return (
     <>
       <div
-        className="relative flex flex-col h-full overflow-hidden"
+        className="pool-comp-root relative flex flex-col h-full overflow-hidden"
         style={{
           borderRadius: 'var(--radius-surface)',
           containerType: 'inline-size',
@@ -2495,6 +2641,11 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
         {/* Faint decorative caustics in the control region below the hero, so the
             scroll area still reads as "underwater" without a dead blob. */}
         <PoolWaterBackdrop active={anyBodyOn} reduced={reduced} />
+
+        {/* ── STOP banner: sticky at the very top WHENEVER the floor is moving.
+            One-tap immediate cancel (never gated). Sits above the hero so it is
+            always reachable, never buried. */}
+        {config.showAkvo && <FloorStopBanner reduced={reduced} />}
 
         {/* ── HERO: full-bleed pool dive-view scene (the centerpiece) ─────── */}
         <PoolHeroScene
@@ -2575,7 +2726,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
                 accent={WARN}
                 defaultOpen={true}
               >
-                <AkvoSectionContent />
+                <AkvoSectionContent reduced={reduced} />
               </CollapsibleSection>
             )}
 

@@ -500,13 +500,29 @@ configurable one-tap routines wired to real services — `heat`/`heatOff`
 area-filtered Lutron). `floor` routines command AKVO motion and are rendered as a
 GUARDED press-and-hold (`QuickHoldChip`) — never one-tap.
 
-**AKVO safety (unchanged)**: `AkvoSectionContent` AND the quick-action `floor`
-path replicate the same `HOLD_MS = 2000` press-and-hold gate + `evaluateGate`
-check + single `requestConfiguration()` call (which issues `select.select_option`)
-that `AkvoFloorSurface` uses. The hero floor depth gauge is display-only. No raw
-motion; floor motion is never a bare tap.
+**STOP control (cancel a running move)**: whenever `floors_moving`, a sticky red
+**STOP banner** (`FloorStopBanner`) appears at the top of the surface (above the
+hero) plus an inline STOP in the console move-feedback. STOP is **immediate
+one-tap** (never gated) and calls `cancelMovement()` → `select.select_option` with
+the request select's sentinel ("—") option (`requestSelect.noneOption`), which
+clears the active command so AKVO halts. Labelled "STOP FLOOR" + subtext noting
+the certified E-stop is on the AKVO controller (not implied here). Starting motion
+stays guarded press-and-hold; only stopping is one-tap (asymmetric by design).
+`cancelMovement` added to `services/akvo.ts` and `useAkvoFloor`.
 
-**Status**: ✅ built (sophisticated/tight/high-def pass). Needs runtime
-verification at 1366×1024 @2× that the deck fits with minimal scroll, the area
-filter matches expected Lutron areas, all three sub-surfaces populate together,
-and the depth gauge tracks real AKVO depth.
+**AKVO safety (unchanged start path)**: `AkvoSectionContent` AND the quick-action
+`floor` path replicate the same `HOLD_MS = 2000` press-and-hold gate +
+`evaluateGate` check + single `requestConfiguration()` call (which issues
+`select.select_option`) that `AkvoFloorSurface` uses. The hero floor depth gauge
+is display-only. Floor motion is never *started* by a bare tap.
+
+**Light-mode legibility**: the tile is a dark water scene in every theme, so a
+scoped `body.light-mode .pool-comp-root` block pins light `--text` + the dark
+glass recipe inside the tile (light mode only) — labels/values/chips read clearly
+over the dark water instead of dark-slate-on-dark. Dark + ambient unchanged.
+
+**Status**: ✅ built (UX iteration: floor-motion, heating gradient, quick-actions,
+STOP control, light-mode fix). Needs runtime verification at 1366×1024 @2× of:
+light-mode contrast across the whole tile; the STOP banner appearing + one-tap
+cancelling while the floor moves; deck fits with minimal scroll; area filter +
+all three sub-surfaces populate; depth gauge tracks real AKVO depth.

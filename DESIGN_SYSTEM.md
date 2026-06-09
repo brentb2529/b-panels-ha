@@ -540,14 +540,38 @@ scroll.**
    `device.state` as JSON. All fields optional; sensible defaults cover the common
    case. Admin sets JSON → tile re-parses on each render.
 
-8. **AKVO safety preserved (unchanged):** `AkvoSectionContent` and the quick-action
+8. **STOP control (asymmetric safety).** Whenever `floors_moving` is true, a sticky
+   urgent **red STOP banner** (`FloorStopBanner`) appears at the very top of the
+   surface (above the hero, never buried), and an inline STOP also shows in the
+   floor console's moving feedback. STOP is **IMMEDIATE ONE-TAP** (plain onClick,
+   no hold) and **never gated** — stopping must always be instant. It calls
+   `cancelMovement()` which selects the request select's sentinel ("—") option via
+   `select.select_option`, clearing the active command so AKVO halts the running
+   configuration. This is deliberately the inverse of the start path (which is
+   guarded press-and-hold + fail-closed gate). It is labelled "STOP FLOOR" with
+   subtext clarifying it cancels the requested movement and that the **certified
+   E-stop is on the AKVO controller** — it does NOT imply a certified safety E-stop.
+   The new `cancelMovement` lives in `services/akvo.ts` (+ `requestSelect.noneOption`)
+   and is exposed via `useAkvoFloor`.
+
+9. **AKVO safety preserved (unchanged):** `AkvoSectionContent` and the quick-action
    `floor` path both use the same `HOLD_MS = 2000` RAF-based press-and-hold,
    `evaluateGate` gate, and single `requestConfiguration()` call. The hero floor
-   visualization is display-only. No raw motion anywhere. AKVO is still the authority.
+   visualization is display-only. STARTING motion is gated press-and-hold; only
+   STOPPING is one-tap. AKVO is still the authority.
 
-9. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
-   drift / specular travel / breathe AND the new floor-motion + heating-rise loops
-   into static variants.
+10. **Light-mode legibility (dark-surface pin).** The Pool tile is intentionally a
+    DARK water scene in every theme. Under `body.light-mode` the global `--text`
+    (dark slate) over the dark water would be unreadable and the light glass tokens
+    turn murky, so a scoped `body.light-mode .pool-comp-root` block pins the
+    **dark-surface context** inside the tile only: light `--text` (236 244 255) plus
+    the dark `--glass-l*` recipe. Scoped to `.pool-comp-root` — no effect on other
+    surfaces or the global theme. Dark + ambient-night already use this context and
+    are unchanged.
+
+11. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
+    drift / specular travel / breathe AND the floor-motion / heating-rise / STOP
+    pulse loops into static variants.
 
 ### How to author another compilation panel
 

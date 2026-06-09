@@ -18,6 +18,7 @@ import {
     buildAkvoState,
     evaluateGate,
     requestConfiguration,
+    cancelMovement,
     type AkvoGate,
     type AkvoState,
 } from '../services/akvo';
@@ -38,6 +39,11 @@ export interface UseAkvoFloor {
     // Issue the gated request. Returns true if the command was actually sent
     // (gate open + valid preset), false if it was blocked.
     requestConfiguration: (preset: string) => Promise<boolean>;
+    // Cancel/STOP the running request by selecting the sentinel option. NOT
+    // gated — always permitted (stopping must work while moving/faulted). This
+    // is a request-channel cancel, NOT the certified hardware E-stop. Returns
+    // false only when there is no select / no sentinel option to select.
+    cancelMovement: () => Promise<boolean>;
 }
 
 const EMPTY_STATE: AkvoState = {
@@ -150,7 +156,22 @@ export function useAkvoFloor(): UseAkvoFloor {
         }
     }, []);
 
+    // Cancel/STOP — always permitted, never gated. Uses the freshest state at
+    // call time so the correct sentinel/entity is selected even mid-move. We
+    // also immediately clear any pending "requesting" flag so the UI reflects
+    // the cancel without waiting for the next entity push.
+    const doCancel = useCallback(async (): Promise<boolean> => {
+        const fresh = buildAkvoState(lastEntitiesRef.current);
+        requestingRef.current = null;
+        setRequestingPreset(null);
+        try {
+            return await cancelMovement(fresh);
+        } catch {
+            return false;
+        }
+    }, []);
+
     const gate = evaluateGate(state);
 
-    return { state, gate, status, requestingPreset, requestConfiguration: doRequest };
+    return { state, gate, status, requestingPreset, requestConfiguration: doRequest, cancelMovement: doCancel };
 }
