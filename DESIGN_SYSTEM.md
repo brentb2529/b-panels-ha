@@ -455,3 +455,62 @@ values under `:root`, `body.light-mode`, and `body.ambient-night`.
 All `color-mix(in srgb, ...)` calls blend the semantic accent CSS var into the
 glass background, so mode/state changes produce a smooth vibrancy shift instead
 of a hard color swap.
+
+---
+
+## Compilation Panels
+
+A **compilation panel** is a single tile that composes multiple self-driven
+surface hooks into one cohesive, immersive area view. Each sub-surface keeps its
+own hook, data binding, and service-call layer unchanged — the compilation panel
+is purely a composition point.
+
+### Pattern (`PoolCompilationTile` as reference)
+
+```
+PoolCompilationTile
+  ├─ usePoolSurface()         → pool/spa controls + telemetry
+  ├─ useAkvoFloor()           → movable floor monitor + guarded preset
+  ├─ useLutronSurface()       → lights/shades/scenes (area-filtered)
+  │
+  ├─ PoolWaterBackdrop        → animated SVG caustics + wave scene (decorative)
+  ├─ HeroBand                 → overview strip (temps + status chips)
+  └─ CollapsibleSection ×N    → glass-l2 cards, each wrapping one sub-surface
+```
+
+**Key design decisions:**
+
+1. **Animated immersive backdrop**: full-bleed SVG + CSS caustic shimmer rings,
+   wave ripple lines, refraction blobs, and a periodic surface-glint sweep.
+   Pure `pointer-events: none` decoration; never interferes with controls.
+   Adapts intensity based on `active` (any body on) state.
+
+2. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
+   `device.state` as JSON. All fields optional; sensible defaults cover the
+   common case. Admin sets JSON → tile re-parses on each render.
+
+3. **Hero band**: frosted-glass header strip (level-1 blur + `opacity: 0.55`)
+   with temperature chips + aggregate status — gives instant at-a-glance
+   readout without opening any section card.
+
+4. **CollapsibleSection**: `glass-l2` card with a spring chevron toggle and
+   `animation: pool-comp-section-in` entry. Default-open for the three main
+   sections; default-collapsed for pumps/sensors (telemetry on demand).
+
+5. **AKVO safety preserved**: `AkvoSectionContent` duplicates the same
+   `HOLD_MS = 2000` RAF-based press-and-hold, `evaluateGate` check, and single
+   `requestConfiguration()` call. No raw motion. AKVO is still the authority.
+
+6. **Responsive**: `repeat(auto-fill, minmax(min(100%, 22rem), 1fr))` grid —
+   3 columns on a wide wall panel, 2 on medium, 1 narrow/mobile. Pure CSS;
+   no media queries.
+
+### How to author another compilation panel
+
+1. Create `components/tiles/MyAreaTile.tsx`.
+2. Add `MyArea = 'MY_AREA'` to `DeviceType` in `types.ts`.
+3. Register in `tileRegistry.tsx` and `Admin.tsx` (virtualTypes list).
+4. Pull the hooks you need; their data and service calls are already wired.
+5. Choose an immersive backdrop that matches the area's character (water for
+   pool, fire/amber for fireplace, green for garden, etc.).
+6. Wrap sub-surfaces in `CollapsibleSection`s floating over the backdrop.

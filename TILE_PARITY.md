@@ -444,3 +444,36 @@ Sibling correlation uses the HA entity-registry device map (fallback: name-prefi
 5. Generator composite + Tempest weather + Sonos player.
 6. ✅ **Lutron HomeWorks QSX surface** — `LutronSurface`.
 7. Keypad / Panic if applicable.
+8. ✅ **Pool Area Compilation Panel** — `PoolCompilationTile` (see section below).
+
+---
+
+## Pool Area Compilation Panel — `DeviceType.PoolArea` / `PoolCompilationTile`
+
+A flagship multi-integration surface that composes three existing surface hooks
+into one cohesive, immersive area view. **No new data plumbing** — all entity
+wiring is delegated to the three sub-hooks already verified above.
+
+| Sub-surface | Hook | Entities | Status |
+| --- | --- | --- | --- |
+| IntelliCenter pool/spa controls | `usePoolSurface()` | All bodies/pumps/lights/chemistry/probes | ✅ (delegates to verified hook) |
+| AKVO Movable Floor monitor + presets | `useAkvoFloor()` | All akvo binary_sensor/sensor/select entities | ✅ (safety-intact, AKVO is authority) |
+| Lutron lights/shades/scenes (area filtered) | `useLutronSurface()` | light.*/cover.*/scene.* filtered by area slug | ✅ (delegates to verified hook) |
+
+**Configurable filters** (set via `device.state` JSON `PoolAreaConfig`):
+
+| Field | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `showPool` | boolean | `true` | Show IntelliCenter section |
+| `showAkvo` | boolean | `true` | Show AKVO floor section |
+| `showLighting` | boolean | `true` | Show Lutron lighting section |
+| `lutronAreaFilter` | string[] | `['pool','patio','spa','cabana','outdoor']` | Area name contains-match filter |
+| `areaName` | string | `'Pool Area'` | Hero header display name (overridden by `tile.label`) |
+
+**AKVO safety**: `AkvoSectionContent` replicates the same `HOLD_MS = 2000`
+press-and-hold gate + `evaluateGate` check + single `requestConfiguration()` call
+(which issues `select.select_option`) that `AkvoFloorSurface` uses. Display-only
+for floor position/motion/faults. No raw motion commands.
+
+**Status**: ✅ built. Needs runtime verification that area filter matches expected
+Lutron areas and that all three sub-surfaces populate in the same panel instance.
