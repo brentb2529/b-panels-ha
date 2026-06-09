@@ -586,3 +586,92 @@ scroll.**
    queries, `data-cols` cap) of visual instrument widgets — dials, gauges,
    swatches, sliders — not text rows. Optimize the primary layout for iPad
    landscape 1366×1024 (one screen, minimal scroll); keep mobile responsive.
+
+---
+
+## Navigation / Information Architecture (feat/home-navigation)
+
+### Homeowner mental model
+
+The navigation is organized around **places a homeowner thinks about**, not
+integration or entity boundaries. Five primary areas:
+
+| Area key | Label | Compilation tile | Notes |
+|----------|-------|-----------------|-------|
+| `pool` | Pool | `PoolArea` | IntelliCenter + AKVO + Lutron |
+| `climate` | Heating & Cooling | `ClimateArea` | Airzone + AE-200E + CoolMaster |
+| `security` | Security | `SecurityArea` | UniFi cameras + contact/lock sensors |
+| `lights` | Lights | `LutronSurface` | Lutron HomeWorks QSX |
+| `generator` | Generator | `Generator` | Kohler/Rehlko standby |
+
+### Route structure
+
+```
+/             → redirect to /home
+/home         → HomeOverview  (area status cards landing page)
+/area/:key    → AreaView      (full-screen compilation panel)
+/dashboard/:id → Dashboard    (legacy tile grid panels — still supported)
+/admin        → Admin         (settings — no NavRail, separate auth)
+/login        → LoginPage
+```
+
+### Layout (iPad landscape 1366×1024)
+
+```
+┌──────────────────────────────────── 1366px ────────────────────────────────────┐
+│  Header (64px) — title • area label • Weather • Clock • Mute • ArmStatus       │
+├───────────┬────────────────────────────────────────────────────────────────────┤
+│  NavRail  │                                                                    │
+│  (72px)   │   Content area: HomeOverview or AreaView or Dashboard              │
+│           │   (1294 × 960px usable)                                            │
+│  Home     │                                                                    │
+│  Pool     │   HomeOverview layout:                                             │
+│  Climate  │    Row 1 (55%): [Pool card] [Climate card (2×)]                   │
+│  Security │    Row 2 (45%): [Security] [Lights] [Generator]                   │
+│  Lights   │                                                                    │
+│  Generator│   AreaView: sub-header (Back + label) + compilation tile full      │
+│           │                                                                    │
+└───────────┴────────────────────────────────────────────────────────────────────┘
+```
+
+### NavRail design
+
+72px wide, full height, frosted glass (same `--surface-raised / 0.72` +
+`blur(14px)` recipe as the header). Active item: left-edge accent stripe via
+`inset 3px 0 0 rgb(var(--accent))` box-shadow + `--accent/0.12` bg tint.
+Items: icon (24px) + label (10px, weight 600) — finger-tap sized (60×56px cells).
+
+### HomeOverview design
+
+Five liquid-glass area cards in a 3-column / 2-row CSS grid. Each card:
+- Frosted glass tile (same `--surface / --tile-alpha` material)
+- Area-coloured icon badge (48×48px, `accentColor/0.22` bg, `accentColor/0.44` border)
+- Status dot (green / amber / red) sourced from live HA state
+- Large area name (26px/700), small subtitle, 14px status line
+- Accent-coloured "Open →" affordance with translate-X hover animation
+- Hover: lift (`translateY(-2px) scale(1.008)`) + expanded accent glow shadow
+- Alert overlay: red/amber tint when security violation / generator running
+
+Quick-stats bar (top right): Outside temp · Lights on count · Security state · Zone count.
+Sourced from `useDashboard().devices` + `useWeather()` — no new data fetching.
+
+### AreaView design
+
+Thin frosted sub-header (10px top padding, `--surface-raised/0.6`, blur 8px)
+with a "Back · Home" button (left) + area label (right). Below: the compilation
+tile takes `flex-1 overflow-hidden` — same dimensions it would occupy on a
+dedicated dashboard panel.
+
+`AreaView` finds the matching `virtualDevice` from `useDashboard().virtualDevices`
+(preferred) or synthesizes a stable device (`area-synthetic-<key>`) with an empty
+`state: {}` if none is configured. This means areas work out-of-the-box without
+Admin configuration while still respecting any saved `PoolAreaConfig /
+SecurityAreaConfig / ClimateAreaConfig` JSON if the user has configured them.
+
+### Light-mode contrast
+
+HomeOverview area cards and NavRail use CSS variable tokens (`--surface`,
+`--text`, `--tile-border`) that already adapt under `body.light-mode` via
+`index.html`'s theme system. No per-component light-mode overrides needed;
+the existing token swap handles it. Area cards with an alert status use
+`rgba()` overlays that are light-mode legible (no pure white or pure black tints).

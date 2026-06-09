@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { NavLink, Link, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { IconLayoutGrid, IconSettings, IconChevronDown, IconVolume2, IconVolumeX } from './icons';
+import { IconLayoutGrid, IconSettings, IconChevronDown, IconVolume2, IconVolumeX, IconHome } from './icons';
 import { useDashboard } from '../hooks/useDashboard';
 import { useAuth } from '../hooks/useAuth';
 import { useWeather } from '../hooks/useWeather';
@@ -130,6 +130,14 @@ const MuteButton = () => {
     );
 };
 
+const AREA_LABELS: Record<string, string> = {
+  pool: 'Pool',
+  climate: 'Heating & Cooling',
+  security: 'Security',
+  lights: 'Lights',
+  generator: 'Generator',
+};
+
 const Header = () => {
   const { panels, dashboardTitle } = useDashboard();
   const { user, isAuthenticated, logout } = useAuth();
@@ -140,6 +148,10 @@ const Header = () => {
   const isHeadless = searchParams.get('headless') === 'true';
   const isDashboardView = location.pathname.startsWith('/dashboard');
   const isAdminView = location.pathname.startsWith('/admin');
+  const isHomeView = location.pathname === '/home';
+  const isAreaView = location.pathname.startsWith('/area/');
+  const areaKey = isAreaView ? location.pathname.split('/')[2] : undefined;
+  const areaLabel = areaKey ? (AREA_LABELS[areaKey] || areaKey) : undefined;
 
   const [isDropdownOpen, setDropdownOpen] = React.useState(false);
 
@@ -162,7 +174,8 @@ const Header = () => {
 
   const rootPanel = getRootPanel(panelId);
   const firstTopLevelPanel = panels.find(p => !p.parentId);
-  const homePath = firstTopLevelPanel ? `/dashboard/${firstTopLevelPanel.id}` : '/admin';
+  // Always link the title/home button to /home (the HomeOverview landing page).
+  const homePath = '/home';
   const homePathWithParams = `${homePath}${location.search}`;
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -199,9 +212,15 @@ const Header = () => {
           {/* Left Side */}
           <div className="flex items-center gap-4">
             <Link to={homePathWithParams} className="text-xl font-bold text-white hidden sm:block mr-2">{dashboardTitle}</Link>
+            {/* Area label: show the current area name when viewing an area or Home */}
+            {(isHomeView || isAreaView) && (
+              <span className="hidden sm:inline text-sm font-semibold text-gray-300">
+                {isAreaView && areaLabel ? areaLabel : 'Home'}
+              </span>
+            )}
              {(isDashboardView || isAdminView) && (
                 <div className="relative">
-                    <button 
+                    <button
                         onClick={() => setDropdownOpen(!isDropdownOpen)}
                         onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
                         className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white"
@@ -216,6 +235,17 @@ const Header = () => {
                     </button>
                     {isDropdownOpen && (
                         <div className="absolute left-0 mt-2 w-56 bg-gray-700 rounded-control shadow-elev-2 border border-white/5 p-1.5 z-10 space-y-0.5" role="menu" aria-orientation="vertical">
+                            {/* Home entry first */}
+                            <NavLink
+                                to="/home"
+                                onClick={() => setDropdownOpen(false)}
+                                className={({isActive}) => `flex items-center gap-2 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive ? 'bg-brand-blue text-white' : 'text-gray-200 hover:bg-gray-600'}`}
+                                role="menuitem"
+                            >
+                                <IconHome className="w-4 h-4" />
+                                Home
+                            </NavLink>
+                            {/* Existing dashboard panels */}
                             {panels.filter(p => !p.parentId).map(panel => (
                                 <NavLink
                                     key={panel.id}
@@ -235,7 +265,7 @@ const Header = () => {
 
           {/* Right Side */}
           <div className="flex items-center gap-4">
-             {isDashboardView && (
+             {(isDashboardView || isHomeView || isAreaView) && (
                 <>
                     <Weather />
                     <Clock />

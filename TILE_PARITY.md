@@ -4,6 +4,30 @@ Goal: each ported tile surfaces the **same data** the original showed, sourced
 from Home Assistant integration entities. Status legend: ✅ built & mapped ·
 🟡 built, needs runtime verification against real entities · ⛔ not built yet.
 
+---
+
+## Navigation / Home Overview (feat/home-navigation)
+
+Compilation panels built and registered as of this branch:
+
+| DeviceType | File | Registered | Admin label |
+| --- | --- | --- | --- |
+| `PoolArea` | `PoolCompilationTile.tsx` | ✅ | Pool Area (Compilation Panel) |
+| `SecurityArea` | `SecurityCompilationTile.tsx` | ✅ | Security Area (Compilation Panel) |
+| `ClimateArea` | `ClimateCompilationTile.tsx` | ✅ | Climate Area (Compilation Panel) |
+
+Navigation layer (added on this branch):
+
+| Component | Route | Purpose |
+| --- | --- | --- |
+| `HomeOverview` | `/home` | Landing page with 5 area status cards |
+| `AreaView` | `/area/:areaKey` | Full-screen area compilation panel wrapper |
+| `NavRail` | all nav routes | Persistent left-side 72px icon + label rail |
+
+`/` now redirects to `/home` (previously redirected to first dashboard panel).
+Dashboard panels remain accessible via `/dashboard/:panelId` and the header dropdown.
+
+
 > Verification method: composite cards group an HA **device's** entities (via
 > the entity registry) and render them, so data parity = "every entity of the
 > device is surfaced." For each ecosystem below, confirm against
