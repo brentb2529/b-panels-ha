@@ -29,6 +29,7 @@ import PoolSurfaceTile from './tiles/PoolSurfaceTile';
 import AkvoFloorSurface from './tiles/AkvoFloorSurface';
 import CoolMasterTile from './tiles/CoolMasterTile';
 import LutronSurface from './tiles/LutronSurface';
+import UnifiSecurityTile from './tiles/UnifiSecurityTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -99,6 +100,12 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // bespoke tile above; presentation is derived from the entity's inferred
   // capabilities rather than its DeviceType.
   [DeviceType.Generic]: GenericCapabilityTile,
+
+  // Surface 5 — UniFi Protect security wall.
+  // Display-only composite: discovers camera.* + sibling binary_sensor/event/light
+  // entities via subscribeEntities. No RTSP creds, no plate text (PII), no
+  // floodlight control (equipment-gated).
+  [DeviceType.UnifiSecurity]: UnifiSecurityTile,
 };
 
 // Resolve the component for a device:

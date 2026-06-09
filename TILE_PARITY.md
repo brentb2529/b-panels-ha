@@ -357,6 +357,36 @@ Binding assumptions:
 
 ---
 
+## UniFi Protect / Security — Surface 5 (`unifiprotect` core integration)
+
+| Original field | HA entity | In tile? |
+| --- | --- | --- |
+| Camera stream (HA-proxied HLS) | `camera.<cam>` via `getCameraStreamUrl` | ✅ live stream + snapshot fallback |
+| Camera snapshot | `camera.<cam>` `entity_picture` attr | ✅ shown while stream connects |
+| Motion detection | `binary_sensor.<cam>_motion` (class: motion) | ✅ pulse ring overlay |
+| Doorbell ring | `binary_sensor.<cam>_doorbell` (class: occupancy) | ✅ amber flash + RING chip |
+| Person detection | `binary_sensor.<cam>_person` | ✅ PERSON chip |
+| Vehicle detection | `binary_sensor.<cam>_vehicle` | ✅ VEHICLE chip |
+| Animal detection | `binary_sensor.<cam>_animal` | ✅ ANIMAL chip |
+| Package detection | `binary_sensor.<cam>_package` | ✅ PKG chip |
+| License plate detected | `binary_sensor.<cam>_license_plate_detected` | ✅ PLATE chip (boolean only — text gated PII) |
+| Doorbell / vehicle / NFC / fingerprint events | `event.<cam>_*` | ✅ recent-events tape |
+| Floodlight state | `light.<floodlight>` | ✅ warm glow overlay + FLOOD badge (display only) |
+| Floodlight control | — | ⛔ deferred / equipment-gated per ENTITY_CONTRACT |
+| Face / biometric data | — | ⛔ deferred / escalate-to-Brent per ENTITY_CONTRACT |
+| RTSP credentials | — | ⛔ NEVER surfaced (security hard limit) |
+| License plate TEXT | — | ⛔ PII — never surfaced (security hard limit) |
+
+**Discovery**: dynamic — `useUnifiSurface` scans `subscribeEntities` for `camera.*`,
+`binary_sensor.*` with UniFi detect suffixes, `event.*`, and `light.*` (floodlight).
+Sibling correlation uses the HA entity-registry device map (fallback: name-prefix matching).
+
+**Stale indicator**: amber "STALE" badge appears when no entity update for >2 min.
+
+**Status**: 🟡 built, needs runtime verification against real UniFi Protect entities.
+
+---
+
 ### Build order (each verified for parity before next)
 1. **Grouping foundation** (entity→device) — prerequisite for all composites.
 2. ✅ **IntelliCenter Pool/Spa surface** — `PoolSurfaceTile` + `usePoolSurface`.

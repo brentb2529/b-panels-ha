@@ -353,6 +353,7 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         // not used for rendering. An empty object is the correct default.
         case DeviceType.IntelliCenterPool:
         case DeviceType.AkvoFloor:
+        case DeviceType.UnifiSecurity:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty
