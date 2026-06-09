@@ -1,6 +1,7 @@
 import React from 'react';
 import { Device, DeviceType, TileConfig } from '../types';
 
+import Ae200Tile from './tiles/Ae200Tile';
 import DimmerTile from './tiles/DimmerTile';
 import ShadeTile from './tiles/ShadeTile';
 import SwitchTile from './tiles/SwitchTile';
@@ -97,6 +98,8 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // Lutron HomeWorks QSX: self-driven surface rendering lights/covers/scenes/keypads.
   // Placed as a virtual tile in the dashboard config; discovers entities dynamically.
   [DeviceType.LutronSurface]: LutronSurface,
+  // Mitsubishi City Multi AE-200E direct (ae200 custom component)
+  [DeviceType.AE200]: Ae200Tile,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a
   // bespoke tile above; presentation is derived from the entity's inferred
