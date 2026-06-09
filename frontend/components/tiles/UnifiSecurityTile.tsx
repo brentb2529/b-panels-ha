@@ -1,22 +1,23 @@
 /**
- * UnifiSecurityTile — Surface 5: Security / Cameras
+ * UnifiSecurityTile — Surface 5: Security / Cameras  (liquid-glass rollout)
  *
- * A full-tile "security wall" that renders all UniFi Protect cameras discovered
- * from Home Assistant in an adaptive grid. Clicking the tile in normal mode
- * opens the spotlight view (handled by the parent via onEnlarge); in standalone
- * placement the tile IS the surface.
+ * GLASS ROLLOUT: Replaced hardcoded noir palette (#050a0f) with design-system
+ * tokens so the surface is correctly THEME-AWARE across dark / light / ambient:
+ *   - Outer TileWrapper surface uses glass-l1 material via design tokens
+ *   - StatusBar: glass-l2 material (from glassMaterial) + token colors
+ *   - LoadingSkeleton / EmptyState: token text/border colors
+ *   - Tile label footer: glass-l1 tint
+ *   - All hardcoded rgba(0,0,0,...) backgrounds replaced with token equivalents
+ * The UnifiCameraCard handles per-card glass adaptation (see UnifiCameraCard.tsx).
+ *
+ * Detection pulses, doorbell flash, and floodlight glow are PRESERVED.
+ * Spring animation keyframes are PRESERVED (unifi-* names unchanged).
  *
  * SECURITY CONTRACT (hard limits — must not be relaxed):
  *  - No RTSP/RTSPS creds handed to the browser. Streams via HA proxy only.
  *  - License plate: boolean indicator only. Plate text = PII, never shown.
  *  - Floodlight: display state only. Control is equipment-gated/deferred.
  *  - No face/biometric data, labels, or UI.
- *
- * Aesthetic: surveillance-noir.
- *  Font: JetBrains Mono / Fira Code (monospace system fallback).
- *  Canvas: near-black (#050a0f) with cool slate grid lines, warm amber/red
- *  threat accents, green secure state.
- *  Motion: purposeful — detection pulses, doorbell flashes, chip pop-ins.
  */
 
 import React, { useMemo } from 'react';
@@ -24,10 +25,11 @@ import type { Device, TileConfig } from '../../types';
 import { useUnifiSurface } from '../../hooks/useUnifiSurface';
 import UnifiCameraCard from './UnifiCameraCard';
 import TileWrapper from './TileWrapper';
-import { fluidTextXs, fluidTextSm, fluidIcon } from './tileScale';
+import { glassMaterial } from '../../design-system';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline keyframe animations injected once into <head> (idempotent)
+// These names are intentionally stable so UnifiCameraCard can reference them.
 // ─────────────────────────────────────────────────────────────────────────────
 const STYLE_ID = 'unifi-surface-anims';
 if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
@@ -72,6 +74,7 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status bar — system-level summary line at the top of the surface
+// Now uses design-system glassMaterial(2) so it adapts to all themes.
 // ─────────────────────────────────────────────────────────────────────────────
 const StatusBar = ({
   cameraCount,
@@ -86,33 +89,36 @@ const StatusBar = ({
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   const dateStr = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
-  const statusColor = hasAnyActivity ? '#f87171' : '#4ade80';
+  // Use semantic accent vars from design system instead of hardcoded hex
+  const statusColor = hasAnyActivity ? 'var(--accent-alert)' : 'rgb(52 211 153)';
   const statusLabel = hasAnyActivity ? 'MOTION DETECTED' : 'ALL CLEAR';
+
+  // Glass-material backdrop for the status bar — theme-adaptive
+  const barMaterial = glassMaterial(2);
 
   return (
     <div
       className="flex items-center justify-between shrink-0"
       style={{
         padding: '0.35rem 0.75rem',
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(8px)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        ...barMaterial,
+        borderBottom: '1px solid var(--glass-l2-border)',
+        borderRadius: 0,
         gap: '0.75rem',
       }}
     >
       {/* Left: system label */}
       <div className="flex items-center gap-2 min-w-0">
-        {/* Shield icon inline SVG */}
         <svg width="0.9rem" height="0.9rem" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
           <path
             d="M10 2L3 5v6c0 4.4 3 8 7 9 4-1 7-4.6 7-9V5L10 2Z"
-            stroke={statusColor}
+            stroke={hasAnyActivity ? 'var(--accent-alert)' : 'rgb(52 211 153)'}
             strokeWidth="1.5"
-            fill={hasAnyActivity ? 'rgba(248,113,113,0.15)' : 'rgba(74,222,128,0.12)'}
+            fill={hasAnyActivity ? 'color-mix(in srgb, var(--accent-alert) 15%, transparent)' : 'rgba(52,211,153,0.12)'}
             style={{ transition: 'all 0.3s ease', animation: hasAnyActivity ? 'unifi-status-glow 1.2s ease-in-out infinite' : 'none' }}
           />
           {!hasAnyActivity && (
-            <path d="M7 10.5l2 2 4-4" stroke={statusColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M7 10.5l2 2 4-4" stroke="rgb(52 211 153)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           )}
         </svg>
 
@@ -123,7 +129,7 @@ const StatusBar = ({
             letterSpacing: '0.06em',
             fontSize: 'clamp(0.5rem, 5cqmin, 0.65rem)',
             color: statusColor,
-            textShadow: hasAnyActivity ? '0 0 10px rgba(248,113,113,0.6)' : 'none',
+            textShadow: hasAnyActivity ? '0 0 10px color-mix(in srgb, var(--accent-alert) 60%, transparent)' : 'none',
             transition: 'color 0.3s ease',
             whiteSpace: 'nowrap',
           }}
@@ -133,26 +139,22 @@ const StatusBar = ({
       </div>
 
       {/* Center: camera count */}
-      <div
-        className="flex items-center gap-1"
-        style={{ flexShrink: 0 }}
-      >
-        {/* Camera icon */}
+      <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
         <svg width="0.75rem" height="0.75rem" viewBox="0 0 20 20" fill="none">
-          <rect x="2" y="5" width="12" height="10" rx="1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.4" />
-          <path d="M14 8.5l4-2v7l-4-2V8.5Z" stroke="rgba(255,255,255,0.45)" strokeWidth="1.4" strokeLinejoin="round" />
+          <rect x="2" y="5" width="12" height="10" rx="1.5" stroke="rgb(var(--text) / 0.45)" strokeWidth="1.4" />
+          <path d="M14 8.5l4-2v7l-4-2V8.5Z" stroke="rgb(var(--text) / 0.45)" strokeWidth="1.4" strokeLinejoin="round" />
         </svg>
         <span
           style={{
             fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace',
             fontSize: 'clamp(0.45rem, 4.5cqmin, 0.58rem)',
-            color: 'rgba(255,255,255,0.5)',
+            color: 'rgb(var(--text) / 0.5)',
             letterSpacing: '0.03em',
           }}
         >
           {cameraCount} CAM{cameraCount !== 1 ? 'S' : ''}
           {activeCount > 0 && (
-            <span style={{ color: '#f87171', marginLeft: '0.35rem' }}>
+            <span style={{ color: 'var(--accent-alert)', marginLeft: '0.35rem' }}>
               {activeCount} ACTIVE
             </span>
           )}
@@ -165,7 +167,7 @@ const StatusBar = ({
           style={{
             fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace',
             fontSize: 'clamp(0.42rem, 4cqmin, 0.55rem)',
-            color: 'rgba(255,255,255,0.35)',
+            color: 'rgb(var(--text) / 0.35)',
             letterSpacing: '0.04em',
             whiteSpace: 'nowrap',
           }}
@@ -178,7 +180,7 @@ const StatusBar = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Clock ticker (status bar time needs to re-render every second)
+// Clock ticker — status bar time re-renders every second
 // ─────────────────────────────────────────────────────────────────────────────
 const useClockTick = () => {
   const [, setTick] = React.useState(0);
@@ -189,7 +191,7 @@ const useClockTick = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Loading skeleton
+// Loading skeleton — uses glass tokens (not hardcoded #050a0f)
 // ─────────────────────────────────────────────────────────────────────────────
 const LoadingSkeleton = () => (
   <div
@@ -201,8 +203,8 @@ const LoadingSkeleton = () => (
         width: '2rem',
         height: '2rem',
         borderRadius: '9999px',
-        border: '2px solid rgba(255,255,255,0.08)',
-        borderTopColor: '#f87171',
+        border: '2px solid var(--glass-l2-border)',
+        borderTopColor: 'var(--accent-alert)',
         animation: 'unifi-spinner 0.9s linear infinite',
       }}
     />
@@ -210,7 +212,7 @@ const LoadingSkeleton = () => (
       style={{
         fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace',
         fontSize: '0.6rem',
-        color: 'rgba(255,255,255,0.3)',
+        color: 'rgb(var(--text) / 0.3)',
         letterSpacing: '0.08em',
         textTransform: 'uppercase',
       }}
@@ -221,7 +223,7 @@ const LoadingSkeleton = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Empty state
+// Empty state — uses glass tokens
 // ─────────────────────────────────────────────────────────────────────────────
 const EmptyState = () => (
   <div
@@ -231,17 +233,17 @@ const EmptyState = () => (
     <svg width="2.5rem" height="2.5rem" viewBox="0 0 24 24" fill="none">
       <path
         d="M3 7c0-.6.4-1 1-1h12c.6 0 1 .4 1 1v8c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V7Z"
-        stroke="rgba(255,255,255,0.2)"
+        stroke="rgb(var(--text) / 0.2)"
         strokeWidth="1.5"
       />
-      <path d="M17 9.5l4-2v7l-4-2V9.5Z" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinejoin="round" />
-      <circle cx="12" cy="11" r="2" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+      <path d="M17 9.5l4-2v7l-4-2V9.5Z" stroke="rgb(var(--text) / 0.2)" strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx="12" cy="11" r="2" stroke="rgb(var(--text) / 0.15)" strokeWidth="1" />
     </svg>
     <span
       style={{
         fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace',
         fontSize: '0.65rem',
-        color: 'rgba(255,255,255,0.25)',
+        color: 'rgb(var(--text) / 0.25)',
         letterSpacing: '0.06em',
         textAlign: 'center',
         lineHeight: 1.6,
@@ -253,7 +255,7 @@ const EmptyState = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Grid layout helper — choose columns based on camera count + tile size
+// Grid layout — unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 function gridCols(count: number): number {
   if (count <= 1) return 1;
@@ -294,33 +296,38 @@ const UnifiSecurityTile: React.FC<UnifiSecurityTileProps> = ({
   const cols = gridCols(cameras.length);
   const canEnlarge = !isEditor && !tile.isLocked && !!onEnlarge;
 
+  // Surface background: glass-l1 material applied via TileWrapper's className.
+  // We pass !p-0 + overflow-hidden as before, but remove the hardcoded !bg-[#050a0f]
+  // so the glass material shows through correctly in all themes.
   return (
     <TileWrapper
       label=""
-      className={`!p-0 overflow-hidden !bg-[#050a0f] ${cornerClassName || ''}`}
+      className={`!p-0 overflow-hidden ${cornerClassName || ''}`}
       isLocked={tile.isLocked}
       isEditor={isEditor}
       onClick={canEnlarge ? () => onEnlarge!(device) : undefined}
       accent="alert"
       isActive={hasAnyActivity}
     >
-      {/* Ambient scanline effect over the whole tile */}
+      {/* Ambient scanline effect — uses a dark-neutral blending that reads on
+          all themes (multiply blend mode cancels out on light backgrounds) */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,20,0,0.04) 3px, rgba(0,20,0,0.04) 4px)',
+            'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px)',
+          mixBlendMode: 'multiply',
           zIndex: 20,
         }}
       />
 
-      {/* Moving scan line (subtle, surveillance feel) */}
+      {/* Moving scan line (surveillance feel) */}
       {!isEditor && (
         <div
           className="absolute left-0 right-0 pointer-events-none"
           style={{
             height: '2px',
-            background: 'linear-gradient(90deg, transparent 0%, rgba(0,255,100,0.06) 50%, transparent 100%)',
+            background: 'linear-gradient(90deg, transparent 0%, color-mix(in srgb, rgb(52 211 153) 6%, transparent) 50%, transparent 100%)',
             animation: 'unifi-grid-scan 8s linear infinite',
             zIndex: 21,
           }}
@@ -328,7 +335,7 @@ const UnifiSecurityTile: React.FC<UnifiSecurityTileProps> = ({
       )}
 
       <div className="relative flex flex-col w-full h-full" style={{ zIndex: 1 }}>
-        {/* Status bar */}
+        {/* Status bar — glass-aware now */}
         <StatusBar
           cameraCount={cameras.length}
           activeCount={activeCount}
@@ -353,7 +360,6 @@ const UnifiSecurityTile: React.FC<UnifiSecurityTileProps> = ({
               }}
             >
               {cameras.map((cam, i) => {
-                // First camera spans 2 rows when there are multiple cameras
                 const featured = i === 0 && cameras.length > 1 && cameras.length <= 4;
                 return (
                   <UnifiCameraCard
@@ -378,8 +384,8 @@ const UnifiSecurityTile: React.FC<UnifiSecurityTileProps> = ({
             className="shrink-0 text-center"
             style={{
               padding: '0.2rem 0.5rem 0.3rem',
-              background: 'rgba(0,0,0,0.6)',
-              borderTop: '1px solid rgba(255,255,255,0.05)',
+              background: 'var(--glass-l1-tint)',
+              borderTop: '1px solid var(--glass-l1-border)',
             }}
           >
             <span
@@ -388,7 +394,7 @@ const UnifiSecurityTile: React.FC<UnifiSecurityTileProps> = ({
                 fontSize: 'clamp(0.45rem, 5cqmin, 0.65rem)',
                 fontWeight: 600,
                 letterSpacing: '0.08em',
-                color: 'rgba(255,255,255,0.6)',
+                color: 'rgb(var(--text) / 0.6)',
                 textTransform: 'uppercase',
               }}
             >

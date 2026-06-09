@@ -1,25 +1,21 @@
 
-// Lutron HomeWorks QSX — The Obsidian Controller  (animation/richness pass)
+// Lutron HomeWorks QSX — The Obsidian Controller (liquid-glass rollout)
 //
-// Aesthetic: precision instrument / architectural lighting console.
-// Dark glass, amber warmth, etched typography, physically-grounded controls.
-// Motion reflects REAL state — lit rooms glow amber, shades physically travel,
-// LEDs breathe, optimistic changes animate smoothly, stale state dims visibly.
-//
-// VISUAL UPGRADE OVER v1:
-//   • Live color/brightness SWATCH disk on each light card; scales + saturates with level
-//   • Ambient "halo" behind the bulb icon matches real colour (HS / CCT / default warm)
-//   • Brightness fill: smooth gradient fill + animated thumb glow
-//   • CCT strip: warm↔cool gradient + animated position, highlighted thumb
-//   • Shade glyph: light ray through glass, richer fabric texture, deeper rail shadow
-//   • Blind slats: smooth continuous tilt + translucent light-leak through slat gap
-//   • Scene button: large icon, multi-layer pressed state, status-aware colouring
-//   • Keypad: LED ring pulse + activity flash on press, colour-coded LED state
-//   • Stale overlay: entire surface dims + amber pulsing border when stale/reconnecting
-//   • Responsive reflow: wall (≥520 px) vs mobile column layout
-//   • Light theme: full CSS variable overrides for light mode (prefers-color-scheme)
-//   • Optimistic dimming: unavailable or stale-optimistic entities visually desaturate
-//   • No entity bindings or service calls changed — visual pass only
+// GLASS ROLLOUT: Re-bases on the B-Panels Liquid Glass design system.
+//   • Outer surface: GlassPanel (level-1, glass-mount animation, radius-surface)
+//   • Area cards: GlassCard (level-2, accent-tinted when lights are on)
+//   • Light cards: GlassCard (level-2, amber-accentVar on, active-vibrancy state)
+//   • Cover / Scene / Keypad cards: GlassCard (level-2, neutral)
+//   • Cover / scene / keypad buttons: GlassButton (level-3)
+//   • All hardcoded colours replaced with design tokens or CSS vars
+//   • Light/dark/ambient: automatic via tokens — no media-query branching in JS
+//   • ALL visual widgets (swatch disk, halo, shade glyph, slat tilt, LED ring,
+//     ripple) are preserved from the animation/richness pass; only their colour
+//     sources are updated to use design-system tokens
+//   • Connection pill uses --accent-* vars (green=live, amber=stale, muted=conn)
+//   • prefers-reduced-motion respected via global CSS killswitch + JS guard on
+//     the shimmer/breathe keyframes
+//   • No entity bindings, service calls or data model changed
 
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useLutronSurface } from '../../hooks/useLutronSurface';
@@ -28,325 +24,226 @@ import type {
   LutronSceneState, LutronKeypad, LutronButtonState,
 } from '../../services/lutron';
 import {
-  setLightBrightness, setLightColorTemp, setLightHsColor, toggleLight,
-  openCover, closeCover, stopCover, setCoverPosition,
-  openCoverTilt, closeCoverTilt, setCoverTiltPosition,
+  setLightBrightness, setLightColorTemp, toggleLight,
+  openCover, closeCover, stopCover,
+  openCoverTilt, closeCoverTilt,
   activateScene, pressButton,
 } from '../../services/lutron';
 import type { TileProps } from '../tileRegistry';
+import {
+  GlassPanel, GlassCard, GlassButton,
+  glassMaterial, glassMaterialActive,
+  accentVar as dsAccentVar,
+  radius, spring, duration,
+} from '../../design-system';
 
-// ─── CSS injection ───────────────────────────────────────────────────────────
-const STYLE_ID = 'lutron-surface-styles-v2';
+// ─── CSS injection ────────────────────────────────────────────────────────────
+// Only surface-specific animations that aren't in tokens.css live here.
+const STYLE_ID = 'lutron-surface-styles-v3';
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Playfair+Display:wght@400;500;600&display=swap');
 
-/* ── CSS custom properties — dark mode default ── */
-.lqsx-root {
-  font-family: 'DM Mono', monospace;
-
-  /* palette */
-  --lqsx-amber-r: 220; --lqsx-amber-g: 160; --lqsx-amber-b: 60;
-  --lqsx-amber: rgb(220,160,60);
-  --lqsx-amber-rgb: 220,160,60;
-  --lqsx-ember-rgb: 240,100,40;
-  --lqsx-cool-rgb: 160,210,255;
-  --lqsx-green-rgb: 100,220,140;
-
-  /* surfaces */
-  --lqsx-bg:          rgba(10,10,12,0.97);
-  --lqsx-glass:       rgba(255,255,255,0.04);
-  --lqsx-glass-b:     rgba(255,255,255,0.08);
-  --lqsx-glass-hover: rgba(255,255,255,0.10);
-  --lqsx-border:      rgba(255,255,255,0.08);
-  --lqsx-border-h:    rgba(255,255,255,0.18);
-  --lqsx-border-focus:rgba(255,255,255,0.30);
-  --lqsx-engraved:    rgba(0,0,0,0.45);
-  --lqsx-header-bg:   rgba(255,255,255,0.02);
-  --lqsx-grid:        rgba(255,255,255,0.015);
-
-  /* text */
-  --lqsx-text:        rgba(255,255,255,0.88);
-  --lqsx-text-muted:  rgba(255,255,255,0.45);
-  --lqsx-text-dim:    rgba(255,255,255,0.25);
-  --lqsx-area-text:   rgba(255,255,255,0.55);
-
-  /* radii */
-  --lqsx-r: 12px;
-  --lqsx-r-sm: 6px;
-
-  /* window glass tint */
-  --lqsx-window-tint: rgba(160,210,255,0.07);
-  --lqsx-window-tint2: rgba(160,210,255,0.03);
-
-  /* shade fabric */
-  --lqsx-shade-fabric: rgba(255,255,255,0.18);
-  --lqsx-shade-stripe: rgba(0,0,0,0.14);
-  --lqsx-shade-rail:   rgba(255,255,255,0.45);
-
-  background: var(--lqsx-bg);
-  color: var(--lqsx-text);
+/* ── Lutron-scoped custom props — fully derived from design-system tokens ── */
+.lqs3-root {
+  font-family: var(--font-body);
+  color: rgb(var(--text));
   min-height: 100%;
-  transition: opacity .4s ease;
 }
 
-/* ── Light theme override ── */
-@media (prefers-color-scheme: light) {
-  .lqsx-root {
-    --lqsx-bg:          rgba(242,240,237,0.98);
-    --lqsx-glass:       rgba(0,0,0,0.04);
-    --lqsx-glass-b:     rgba(0,0,0,0.07);
-    --lqsx-glass-hover: rgba(0,0,0,0.09);
-    --lqsx-border:      rgba(0,0,0,0.09);
-    --lqsx-border-h:    rgba(0,0,0,0.20);
-    --lqsx-border-focus:rgba(0,0,0,0.35);
-    --lqsx-engraved:    rgba(255,255,255,0.6);
-    --lqsx-header-bg:   rgba(0,0,0,0.02);
-    --lqsx-grid:        rgba(0,0,0,0.025);
-    --lqsx-text:        rgba(30,25,20,0.92);
-    --lqsx-text-muted:  rgba(30,25,20,0.50);
-    --lqsx-text-dim:    rgba(30,25,20,0.30);
-    --lqsx-area-text:   rgba(30,25,20,0.55);
-    --lqsx-window-tint: rgba(120,180,240,0.10);
-    --lqsx-window-tint2: rgba(120,180,240,0.04);
-    --lqsx-shade-fabric: rgba(80,60,40,0.16);
-    --lqsx-shade-stripe: rgba(0,0,0,0.10);
-    --lqsx-shade-rail:   rgba(60,50,35,0.55);
-  }
+/* amber semantic token — design-system doesn't define --accent-warn in context so we
+   alias it here for Lutron's warm amber personality. */
+.lqs3-root {
+  --lqs3-amber: var(--accent-warn);
+  --lqs3-amber-rgb: 220 160 60;     /* fallback for color-mix where rgb() form needed */
+  --lqs3-green-rgb: 52 211 153;
+  --lqs3-cool-rgb: 56 189 248;
 }
 
-/* ── Stale dimming ── */
-.lqsx-root.is-stale  { opacity: 0.72; }
-.lqsx-root.is-connecting { opacity: 0.85; }
-
-/* ── Keyframes ── */
-@keyframes lqsx-pulse {
-  0%,100% { opacity:1; } 50% { opacity:.3; }
+/* ── Stale pulse uses design-system tokens ── */
+@keyframes lqs3-stale-pulse {
+  0%,100% { box-shadow: var(--rim), 0 0 0 1px color-mix(in srgb, var(--accent-warn) 20%, transparent); }
+  50%      { box-shadow: var(--rim), 0 0 0 1px color-mix(in srgb, var(--accent-warn) 65%, transparent), 0 0 14px color-mix(in srgb, var(--accent-warn) 14%, transparent); }
 }
-@keyframes lqsx-glow-breathe {
+@keyframes lqs3-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+@keyframes lqs3-glow-breathe {
   0%,100% { opacity:.65; transform:scale(1); }
   50%      { opacity:1;   transform:scale(1.18); }
 }
-@keyframes lqsx-glow-breathe-ring {
-  0%,100% { box-shadow: 0 0 0 0px rgba(var(--lqsx-amber-rgb),0), 0 0 8px 3px rgba(var(--lqsx-amber-rgb),.35); }
-  50%      { box-shadow: 0 0 0 3px rgba(var(--lqsx-amber-rgb),.2), 0 0 14px 6px rgba(var(--lqsx-amber-rgb),.5); }
+@keyframes lqs3-glow-ring {
+  0%,100% { box-shadow: 0 0 0 0px color-mix(in srgb, var(--accent-warn) 0%, transparent), 0 0 8px 3px color-mix(in srgb, var(--accent-warn) 35%, transparent); }
+  50%      { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-warn) 20%, transparent), 0 0 14px 6px color-mix(in srgb, var(--accent-warn) 50%, transparent); }
 }
-@keyframes lqsx-ripple {
+@keyframes lqs3-ripple {
   0%   { transform:scale(0); opacity:.55; }
   100% { transform:scale(3.5); opacity:0; }
 }
-@keyframes lqsx-scene-flash {
-  0%   { background:rgba(var(--lqsx-amber-rgb),.28); box-shadow:inset 0 0 0 1px rgba(var(--lqsx-amber-rgb),.5); }
-  100% { background:var(--lqsx-glass); box-shadow:none; }
+@keyframes lqs3-scene-flash {
+  0%   { background: color-mix(in srgb, var(--accent-warn) 28%, var(--glass-l2-bg)); }
+  100% { background: var(--glass-l2-bg); }
 }
-@keyframes lqsx-led-activity {
+@keyframes lqs3-led-activity {
   0%   { opacity:1; transform:scale(1.5); }
   100% { opacity:1; transform:scale(1); }
 }
-@keyframes lqsx-stale-pulse {
-  0%,100% { box-shadow:0 0 0 1px rgba(var(--lqsx-amber-rgb),.2); }
-  50%     { box-shadow:0 0 0 1px rgba(var(--lqsx-amber-rgb),.6), 0 0 12px rgba(var(--lqsx-amber-rgb),.15); }
-}
-@keyframes lqsx-swatch-in {
-  from { transform: scale(.85); opacity:.4; }
-  to   { transform: scale(1);   opacity:1; }
-}
-@keyframes lqsx-shade-travel {
-  from { filter: brightness(.9); }
-  to   { filter: brightness(1); }
+@keyframes lqs3-swatch-in {
+  from { transform:scale(.85); opacity:.4; }
+  to   { transform:scale(1);   opacity:1; }
 }
 
-/* ── Stale border pulse ── */
-.lqsx-root.is-stale  { animation: lqsx-stale-pulse 2s ease-in-out infinite; }
+/* ── Stale border animation on root ── */
+.lqs3-root.is-stale {
+  opacity: 0.72;
+  animation: lqs3-stale-pulse 2s ease-in-out infinite;
+}
+.lqs3-root.is-connecting { opacity: 0.85; }
 
 /* ── Connection pill ── */
-.lqsx-pill {
+.lqs3-pill {
   display:inline-flex; align-items:center; gap:5px;
-  padding:3px 10px 3px 7px; border-radius:99px;
-  font-size:10px; font-weight:500; letter-spacing:.08em; text-transform:uppercase;
-  border:1px solid; backdrop-filter:blur(8px);
+  padding:3px 10px 3px 7px; border-radius: var(--radius-pill);
+  font-size: var(--type-2xs); font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps); text-transform:uppercase;
+  border:1px solid; backdrop-filter: var(--glass-l3-backdrop);
+  -webkit-backdrop-filter: var(--glass-l3-backdrop);
 }
-.lqsx-pill-live  { color:rgb(var(--lqsx-green-rgb)); border-color:rgba(var(--lqsx-green-rgb),.3); background:rgba(var(--lqsx-green-rgb),.08); }
-.lqsx-pill-stale { color:rgb(var(--lqsx-amber-rgb)); border-color:rgba(var(--lqsx-amber-rgb),.3); background:rgba(var(--lqsx-amber-rgb),.08); }
-.lqsx-pill-conn  { color:var(--lqsx-text-muted); border-color:var(--lqsx-border); background:var(--lqsx-glass); }
-.lqsx-pill-dot {
-  width:6px; height:6px; border-radius:50%; flex-shrink:0;
+.lqs3-pill-live  {
+  color: rgb(var(--lqs3-green-rgb));
+  border-color: color-mix(in srgb, rgb(var(--lqs3-green-rgb)) 30%, transparent);
+  background: color-mix(in srgb, rgb(var(--lqs3-green-rgb)) 8%, transparent);
 }
-.lqsx-pill-live .lqsx-pill-dot  { background:rgb(var(--lqsx-green-rgb)); box-shadow:0 0 6px rgb(var(--lqsx-green-rgb)); }
-.lqsx-pill-stale .lqsx-pill-dot { background:rgb(var(--lqsx-amber-rgb)); animation:lqsx-pulse 1.4s ease-in-out infinite; }
-.lqsx-pill-conn .lqsx-pill-dot  { background:var(--lqsx-text-dim); animation:lqsx-pulse 1.6s ease-in-out infinite; }
+.lqs3-pill-stale {
+  color: var(--accent-warn);
+  border-color: color-mix(in srgb, var(--accent-warn) 30%, transparent);
+  background: color-mix(in srgb, var(--accent-warn) 8%, transparent);
+}
+.lqs3-pill-conn  {
+  color: rgb(var(--text) / 0.45);
+  border-color: var(--glass-l2-border);
+  background: var(--glass-l2-bg);
+}
+.lqs3-pill-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.lqs3-pill-live  .lqs3-pill-dot {
+  background: rgb(var(--lqs3-green-rgb));
+  box-shadow: 0 0 6px rgb(var(--lqs3-green-rgb));
+}
+.lqs3-pill-stale .lqs3-pill-dot {
+  background: var(--accent-warn);
+  animation: lqs3-pulse 1.4s ease-in-out infinite;
+}
+.lqs3-pill-conn  .lqs3-pill-dot {
+  background: rgb(var(--text) / 0.25);
+  animation: lqs3-pulse 1.6s ease-in-out infinite;
+}
 
-/* ── Section titles ── */
-.lqsx-area-name {
-  font-family:'Playfair Display', serif;
-  font-size:13px; font-weight:500; letter-spacing:.04em;
-  color:var(--lqsx-area-text); text-transform:uppercase;
+/* ── Section divider title ── */
+.lqs3-area-name {
+  font-family: 'Playfair Display', serif;
+  font-size: var(--type-xs); font-weight: 500; letter-spacing: .04em;
+  color: rgb(var(--text) / 0.55); text-transform:uppercase;
   margin:0 0 12px;
   display:flex; align-items:center; gap:8px;
 }
-.lqsx-area-name::after {
+.lqs3-area-name::after {
   content:''; flex:1; height:1px;
-  background:linear-gradient(90deg, var(--lqsx-border) 0%, transparent 100%);
+  background: linear-gradient(90deg, var(--glass-l2-border) 0%, transparent 100%);
 }
 
-/* ── Light card ── */
-.lqsx-light-card {
-  position:relative; overflow:hidden;
-  background:var(--lqsx-glass);
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r);
-  padding:12px;
-  cursor:pointer;
-  transition: border-color .25s, background .35s, box-shadow .4s, opacity .35s;
-}
-.lqsx-light-card:hover { border-color:var(--lqsx-border-h); background:var(--lqsx-glass-hover); }
-.lqsx-light-card.is-on {
-  background:var(--lqsx-glass-b);
-  border-color:rgba(var(--lqsx-amber-rgb),.18);
-}
-.lqsx-light-card.is-unavailable { opacity:.38; pointer-events:none; }
-
-/* Ambient halo behind bulb — colour-reactive, scales with brightness */
-.lqsx-light-halo {
+/* ── Light card micro-animations ── */
+.lqs3-light-halo {
   position:absolute; inset:0; pointer-events:none;
-  border-radius:inherit;
-  opacity:0; transition: opacity .55s ease, background .55s ease;
+  border-radius:inherit; opacity:0;
+  transition: opacity .55s ease, background .55s ease;
 }
-.lqsx-light-card.is-on .lqsx-light-halo { opacity:1; }
+.lqs3-light-is-on .lqs3-light-halo { opacity:1; }
 
-/* Top swatch: larger, more visible colour disk + live fill */
-.lqsx-light-swatch-row {
-  display:flex; align-items:center; gap:8px; margin-bottom:8px; margin-top:4px;
-}
-.lqsx-swatch-disk {
+.lqs3-swatch-disk {
   width:22px; height:22px; border-radius:50%; flex-shrink:0;
-  border:1.5px solid rgba(0,0,0,.2);
-  box-shadow:0 1px 4px rgba(0,0,0,.3);
-  transition: background .45s ease, box-shadow .45s ease;
-  animation: lqsx-swatch-in .3s ease both;
-}
-.lqsx-light-card.is-on .lqsx-swatch-disk {
-  box-shadow:0 0 0 3px rgba(var(--lqsx-amber-rgb),.15), 0 2px 8px rgba(0,0,0,.35);
+  border: 1.5px solid rgba(0,0,0,.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  transition: background .45s ease, transform .45s ease, box-shadow .45s ease;
+  animation: lqs3-swatch-in .3s ease both;
 }
 
-/* Level + name row */
-.lqsx-light-meta {
-  display:flex; flex-direction:column; min-width:0; flex:1;
-}
-.lqsx-light-name {
-  font-size:11px; font-weight:500; letter-spacing:.06em;
-  color:var(--lqsx-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.lqsx-light-level {
-  font-family:'DM Mono',monospace; font-size:13px; font-weight:300;
-  line-height:1.2; color:var(--lqsx-text-muted);
-  transition: color .35s;
-}
-.lqsx-light-card.is-on .lqsx-light-level { color:rgb(var(--lqsx-amber-rgb)); }
-
-/* Bulb icon */
-.lqsx-bulb-icon {
+.lqs3-bulb-icon {
   width:26px; height:26px; flex-shrink:0;
   transition: filter .35s, color .35s;
 }
-.lqsx-light-card.is-on .lqsx-bulb-icon {
+.lqs3-light-is-on .lqs3-bulb-icon {
   filter: drop-shadow(0 0 7px currentColor);
-  animation: lqsx-glow-breathe 3s ease-in-out infinite;
+  animation: lqs3-glow-breathe 3s ease-in-out infinite;
 }
 
-/* Power button */
-.lqsx-power-btn {
+/* ── Power button ── */
+.lqs3-power-btn {
   width:26px; height:26px; border-radius:50%; border:none;
   display:flex; align-items:center; justify-content:center;
   font-weight:700; font-size:12px; cursor:pointer; flex-shrink:0;
   transition: background .25s, color .25s, box-shadow .25s, transform .1s;
   -webkit-tap-highlight-color:transparent;
 }
-.lqsx-power-btn:active { transform:scale(.88); }
-.lqsx-power-btn.off { background:var(--lqsx-glass-b); color:var(--lqsx-text-dim); }
-.lqsx-power-btn.on  {
-  background:rgba(var(--lqsx-amber-rgb),.22); color:rgb(var(--lqsx-amber-rgb));
-  animation: lqsx-glow-breathe-ring 3s ease-in-out infinite;
+.lqs3-power-btn:active { transform:scale(.88); }
+.lqs3-power-btn.off {
+  background: var(--glass-l3-bg); color: rgb(var(--text) / 0.28);
+  border: 1px solid var(--glass-l3-border);
+}
+.lqs3-power-btn.on {
+  background: color-mix(in srgb, var(--accent-warn) 22%, var(--glass-l3-bg));
+  color: var(--accent-warn);
+  border: 1px solid color-mix(in srgb, var(--accent-warn) 45%, transparent);
+  animation: lqs3-glow-ring 3s ease-in-out infinite;
 }
 
 /* ── Brightness slider ── */
-.lqsx-brightness-track {
+.lqs3-brightness-track {
   position:relative; height:28px;
-  border-radius:14px; overflow:hidden;
-  background:rgba(128,128,128,.10);
+  border-radius: var(--radius-pill); overflow:hidden;
+  background: color-mix(in srgb, rgb(var(--text)) 8%, transparent);
   cursor:ew-resize; touch-action:none;
   transition: box-shadow .2s;
 }
-.lqsx-brightness-track:focus-within,
-.lqsx-brightness-track.dragging {
-  box-shadow:0 0 0 2px var(--lqsx-border-focus);
+.lqs3-brightness-track.dragging,
+.lqs3-brightness-track:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-warn) 50%, transparent);
 }
-.lqsx-brightness-fill {
-  position:absolute; top:0; left:0; bottom:0;
-  border-radius:inherit;
-  pointer-events:none;
-  /* width + background set via inline style; transition managed in component */
-}
-.lqsx-brightness-handle {
+.lqs3-brightness-fill  { position:absolute; top:0; left:0; bottom:0; border-radius:inherit; pointer-events:none; }
+.lqs3-brightness-handle {
   position:absolute; top:50%; transform:translate(-50%,-50%);
   width:18px; height:18px; border-radius:50%;
-  background:white; box-shadow:0 0 0 2px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.55);
+  background:white; box-shadow:0 0 0 2px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.55);
   pointer-events:none;
 }
 
 /* ── CCT strip ── */
-.lqsx-cct-track {
+.lqs3-cct-track {
   position:relative; height:9px;
   border-radius:5px; margin-top:7px;
-  background:linear-gradient(90deg,
-    hsl(38,90%,55%) 0%,
-    hsl(45,80%,90%) 40%,
-    hsl(210,80%,80%) 100%);
+  background:linear-gradient(90deg, hsl(38,90%,55%) 0%, hsl(45,80%,90%) 40%, hsl(210,80%,80%) 100%);
   cursor:ew-resize; touch-action:none;
   box-shadow:inset 0 1px 3px rgba(0,0,0,.25);
 }
-.lqsx-cct-thumb {
+.lqs3-cct-thumb {
   position:absolute; top:50%; width:15px; height:15px;
   border-radius:50%; background:white;
   transform:translate(-50%,-50%);
-  box-shadow:0 0 0 2px rgba(0,0,0,.45), 0 2px 6px rgba(0,0,0,.45);
+  box-shadow:0 0 0 2px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.45);
   pointer-events:none;
   transition: left .12s ease;
 }
 
-/* ── Cover widget ── */
-.lqsx-cover-widget {
-  background:var(--lqsx-glass);
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r);
-  overflow:hidden;
-  transition: opacity .35s;
-}
-.lqsx-cover-widget.is-unavailable { opacity:.38; pointer-events:none; }
-.lqsx-cover-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:10px 12px 8px;
-  border-bottom:1px solid var(--lqsx-border);
-}
-.lqsx-cover-name { font-size:11px; font-weight:500; letter-spacing:.06em; color:var(--lqsx-text); }
-.lqsx-cover-pos  { font-family:'DM Mono',monospace; font-size:18px; font-weight:300; color:var(--lqsx-text-muted); }
-.lqsx-moving-badge {
-  font-size:9px; letter-spacing:.07em; text-transform:uppercase;
-  color:rgb(var(--lqsx-amber-rgb)); animation:lqsx-pulse 1s infinite;
-  padding:2px 5px; border-radius:4px; background:rgba(var(--lqsx-amber-rgb),.10);
-  border:1px solid rgba(var(--lqsx-amber-rgb),.25);
+/* ── Moving badge ── */
+.lqs3-moving-badge {
+  font-size: var(--type-2xs); letter-spacing:.07em; text-transform:uppercase;
+  color: var(--accent-warn); animation: lqs3-pulse 1s infinite;
+  padding:2px 5px; border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--accent-warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-warn) 25%, transparent);
 }
 
 /* ── Shade glyph ── */
-.lqsx-shade-scene {
-  position:relative; padding:14px 0; display:flex; justify-content:center;
-}
-.lqsx-shade-glyph {
-  position:relative;
-  width:56px; height:76px;
-}
-/* Light-ray from window — warm diffused shaft */
-.lqsx-light-ray {
+.lqs3-shade-scene { position:relative; padding:14px 0; display:flex; justify-content:center; }
+.lqs3-shade-glyph { position:relative; width:56px; height:76px; }
+.lqs3-light-ray {
   position:absolute; bottom:0; left:50%;
   width:200%; transform:translateX(-50%);
   height:100%;
@@ -358,269 +255,163 @@ const CSS = `
   transition: opacity .6s ease;
   border-radius:50% 50% 0 0 / 20% 20% 0 0;
 }
-.lqsx-window-frame {
+.lqs3-window-frame {
   position:absolute; inset:0; z-index:1;
-  border:1.5px solid var(--lqsx-border-h);
+  border: 1.5px solid var(--glass-l2-border);
   border-radius:3px;
-  background:linear-gradient(180deg,
-    var(--lqsx-window-tint) 0%,
-    var(--lqsx-window-tint2) 100%);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-water) 7%, transparent) 0%,
+    color-mix(in srgb, var(--accent-water) 3%, transparent) 100%);
 }
-/* Subtle cross-brace on window */
-.lqsx-window-frame::before {
+.lqs3-window-frame::before {
   content:''; position:absolute; left:50%; top:0; bottom:0;
-  width:1px; background:rgba(255,255,255,.07); transform:translateX(-50%);
+  width:1px; background: var(--glass-l2-border); transform:translateX(-50%);
 }
-.lqsx-window-frame::after {
+.lqs3-window-frame::after {
   content:''; position:absolute; top:50%; left:0; right:0;
-  height:1px; background:rgba(255,255,255,.07); transform:translateY(-50%);
+  height:1px; background: var(--glass-l2-border); transform:translateY(-50%);
 }
-.lqsx-shade-panel {
+.lqs3-shade-panel {
   position:absolute; top:0; left:2px; right:2px; z-index:2;
-  background:var(--lqsx-shade-fabric);
+  background: color-mix(in srgb, rgb(var(--text)) 18%, transparent);
   border-radius:2px;
-  /* height driven inline = (100-position)% */
-  transition: height .65s cubic-bezier(.4,0,.2,1);
-  overflow:hidden;
+  transition: height .65s cubic-bezier(.4,0,.2,1); overflow:hidden;
 }
-.lqsx-shade-stripes {
+.lqs3-shade-stripes {
   position:absolute; inset:0;
-  background:repeating-linear-gradient(
-    0deg,
+  background:repeating-linear-gradient(0deg,
     transparent, transparent 5px,
-    var(--lqsx-shade-stripe) 6px
-  );
+    rgba(0,0,0,.14) 6px);
 }
-.lqsx-shade-rail {
+.lqs3-shade-rail {
   position:absolute; bottom:0; left:0; right:0; height:4px;
-  background:var(--lqsx-shade-rail);
+  background: rgb(var(--text) / 0.45);
   border-radius:0 0 2px 2px;
   box-shadow:0 2px 6px rgba(0,0,0,.4);
 }
-/* Light-leak from below shade (shows how much light comes through) */
-.lqsx-shade-leak {
+.lqs3-shade-leak {
   position:absolute; left:2px; right:2px; z-index:1;
   bottom:2px; border-radius:0 0 3px 3px;
-  background:rgba(255,230,180,.07);
+  background: rgba(255,230,180,.07);
   transition: height .65s cubic-bezier(.4,0,.2,1), opacity .65s;
   pointer-events:none;
 }
 
-/* ── Blind slat glyph ── */
-.lqsx-tilt-glyph {
+/* ── Blind slats ── */
+.lqs3-tilt-glyph {
   display:flex; flex-direction:column; gap:4px;
   padding:10px 12px; align-items:stretch; position:relative;
 }
-/* Light leak between slats */
-.lqsx-tilt-glyph::before {
+.lqs3-tilt-glyph::before {
   content:''; position:absolute; inset:0;
-  background:linear-gradient(180deg,
-    rgba(255,240,200,.0) 0%,
-    rgba(255,240,200,.07) 100%);
-  pointer-events:none; z-index:0;
-  border-radius:3px;
+  background:linear-gradient(180deg, rgba(255,240,200,.0) 0%, rgba(255,240,200,.07) 100%);
+  pointer-events:none; z-index:0; border-radius:3px;
 }
-.lqsx-slat {
+.lqs3-slat {
   height:5px;
-  background:var(--lqsx-shade-fabric);
-  border-radius:2px;
-  transform-origin:center;
+  background: color-mix(in srgb, rgb(var(--text)) 18%, transparent);
+  border-radius:2px; transform-origin:center;
   transition: transform .45s cubic-bezier(.4,0,.2,1);
   position:relative; z-index:1;
   box-shadow:0 1px 3px rgba(0,0,0,.18);
 }
 
-/* ── Cover controls ── */
-.lqsx-cover-controls {
-  display:flex; align-items:center; gap:4px;
-  padding:8px 10px 10px;
-}
-.lqsx-cover-btn {
-  flex:1; padding:7px 0;
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r-sm);
-  background:var(--lqsx-glass);
-  color:var(--lqsx-text-muted);
-  font-size:10px; font-weight:500; letter-spacing:.05em;
-  cursor:pointer;
-  transition: background .15s, border-color .15s, color .15s, transform .1s;
-  text-align:center;
-  -webkit-tap-highlight-color:transparent;
-}
-.lqsx-cover-btn:hover   { background:var(--lqsx-glass-hover); border-color:var(--lqsx-border-h); color:var(--lqsx-text); }
-.lqsx-cover-btn:active  { transform:scale(.94); }
-.lqsx-cover-btn.stop    { flex:.55; font-size:13px; }
-.lqsx-cover-btn.active  {
-  background:rgba(var(--lqsx-amber-rgb),.12);
-  border-color:rgba(var(--lqsx-amber-rgb),.35);
-  color:rgb(var(--lqsx-amber-rgb));
-}
-
-/* ── Scene buttons ── */
-.lqsx-scene-btn {
-  position:relative; overflow:hidden;
-  padding:14px 12px 12px;
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r);
-  background:var(--lqsx-glass);
-  cursor:pointer; text-align:left;
-  transition: border-color .22s, background .22s, transform .12s, box-shadow .22s;
-  -webkit-tap-highlight-color:transparent;
-  display:flex; flex-direction:column; gap:4px;
-}
-.lqsx-scene-btn:hover   {
-  border-color:var(--lqsx-border-h);
-  background:var(--lqsx-glass-b);
-  box-shadow:0 4px 16px rgba(0,0,0,.15);
-}
-.lqsx-scene-btn:active  { transform:scale(.96); }
-.lqsx-scene-btn.fired {
-  animation: lqsx-scene-flash .5s ease-out forwards;
-}
-.lqsx-scene-btn.is-unavailable { opacity:.38; pointer-events:none; }
-
-.lqsx-scene-icon {
-  width:20px; height:20px; border-radius:50%;
-  background:rgba(var(--lqsx-amber-rgb),.15);
-  border:1px solid rgba(var(--lqsx-amber-rgb),.30);
-  display:flex; align-items:center; justify-content:center;
-  flex-shrink:0;
-  transition: background .25s, box-shadow .25s;
-}
-.lqsx-scene-btn:hover .lqsx-scene-icon,
-.lqsx-scene-btn.fired .lqsx-scene-icon {
-  background:rgba(var(--lqsx-amber-rgb),.30);
-  box-shadow:0 0 8px rgba(var(--lqsx-amber-rgb),.4);
-}
-.lqsx-scene-name {
-  font-size:11px; font-weight:500; letter-spacing:.06em;
-  color:var(--lqsx-text); display:block;
-}
-.lqsx-scene-hint {
-  font-size:9px; letter-spacing:.07em; color:var(--lqsx-text-dim);
-  display:block;
+/* ── Scene button ── */
+.lqs3-scene-btn.fired {
+  animation: lqs3-scene-flash .5s ease-out forwards;
 }
 /* Ripple */
-.lqsx-ripple {
+.lqs3-ripple {
   position:absolute; border-radius:50%;
   width:80px; height:80px; margin-left:-40px; margin-top:-40px;
-  background:rgba(var(--lqsx-amber-rgb),.35);
+  background: color-mix(in srgb, var(--accent-warn) 35%, transparent);
   pointer-events:none;
-  animation:lqsx-ripple .65s linear;
+  animation: lqs3-ripple .65s linear;
 }
 
-/* ── Keypad ── */
-.lqsx-keypad-card {
-  background:var(--lqsx-glass);
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r);
-  overflow:hidden;
-}
-.lqsx-keypad-header {
-  padding:10px 14px 8px;
-  border-bottom:1px solid var(--lqsx-border);
-  display:flex; align-items:center; gap:8px;
-}
-.lqsx-keypad-name {
-  font-size:11px; letter-spacing:.08em; text-transform:uppercase;
-  color:var(--lqsx-text-muted); font-weight:500;
-}
-.lqsx-kp-buttons {
-  display:flex; flex-wrap:wrap; gap:8px; padding:12px;
-}
-.lqsx-kp-btn {
-  display:flex; align-items:center; gap:8px;
-  padding:7px 10px;
-  border:1px solid var(--lqsx-border);
-  border-radius:var(--lqsx-r-sm);
-  background:var(--lqsx-glass);
-  cursor:pointer; font-family:'DM Mono',monospace;
-  font-size:10px; letter-spacing:.05em; color:var(--lqsx-text-muted);
-  transition: background .15s, border-color .15s, transform .1s, color .15s;
-  -webkit-tap-highlight-color:transparent;
-}
-.lqsx-kp-btn:hover   { background:var(--lqsx-glass-hover); border-color:var(--lqsx-border-h); color:var(--lqsx-text); }
-.lqsx-kp-btn:active  { transform:scale(.95); }
-.lqsx-kp-btn.pressed {
-  background:rgba(var(--lqsx-amber-rgb),.13);
-  border-color:rgba(var(--lqsx-amber-rgb),.4);
-  color:rgb(var(--lqsx-amber-rgb));
-}
-
-/* LED dot */
-.lqsx-led {
+/* ── LED dot ── */
+.lqs3-led {
   width:8px; height:8px; border-radius:50%; flex-shrink:0;
   transition: background .3s, box-shadow .3s;
 }
-.lqsx-led.on {
-  background:rgb(var(--lqsx-amber-rgb));
-  box-shadow:0 0 0 2px rgba(var(--lqsx-amber-rgb),.25),
-             0 0 8px 3px rgba(var(--lqsx-amber-rgb),.55);
-  animation: lqsx-glow-breathe 2.5s ease-in-out infinite;
+.lqs3-led.on {
+  background: var(--accent-warn);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-warn) 25%, transparent),
+              0 0 8px 3px color-mix(in srgb, var(--accent-warn) 55%, transparent);
+  animation: lqs3-glow-breathe 2.5s ease-in-out infinite;
 }
-.lqsx-led.off     { background:rgba(128,128,128,.20); box-shadow:none; }
-.lqsx-led.unknown { background:rgba(128,128,128,.08); box-shadow:none; }
-.lqsx-led.activity {
-  animation: lqsx-led-activity .3s ease-out;
-  background:rgb(var(--lqsx-green-rgb));
-  box-shadow:0 0 8px 3px rgba(var(--lqsx-green-rgb),.6);
+.lqs3-led.off     { background: rgb(var(--text) / 0.18); box-shadow:none; }
+.lqs3-led.unknown { background: rgb(var(--text) / 0.08); box-shadow:none; }
+.lqs3-led.activity {
+  animation: lqs3-led-activity .3s ease-out;
+  background: rgb(var(--lqs3-green-rgb));
+  box-shadow: 0 0 8px 3px color-mix(in srgb, rgb(var(--lqs3-green-rgb)) 60%, transparent);
 }
 
 /* ── Empty state ── */
-.lqsx-empty {
+.lqs3-empty {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:12px; padding:40px 20px; text-align:center; opacity:.5;
+  gap: var(--space-3); padding:40px 20px; text-align:center; opacity:.5;
 }
-.lqsx-empty-icon { font-size:40px; opacity:.4; }
-.lqsx-empty-title { font-family:'Playfair Display',serif; font-size:15px; font-weight:500; color:var(--lqsx-text); }
-.lqsx-empty-sub   { font-size:11px; letter-spacing:.04em; max-width:280px; line-height:1.6; opacity:.7; color:var(--lqsx-text); }
+.lqs3-empty-icon { font-size:40px; opacity:.4; }
+.lqs3-empty-title {
+  font-family:'Playfair Display', serif;
+  font-size: var(--type-md); font-weight:500;
+  color: rgb(var(--text));
+}
+.lqs3-empty-sub {
+  font-size: var(--type-xs); letter-spacing:.04em;
+  max-width:280px; line-height:1.6; opacity:.7;
+  color: rgb(var(--text));
+}
 
 /* ── Layout ── */
-.lqsx-scroll { overflow-y:auto; overflow-x:hidden; }
-.lqsx-areas-grid {
+.lqs3-scroll { overflow-y:auto; overflow-x:hidden; }
+.lqs3-areas-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));
-  gap:20px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-5);
 }
-.lqsx-lights-grid {
+.lqs3-lights-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(132px, 1fr));
-  gap:8px; margin-bottom:12px;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--space-2); margin-bottom: var(--space-3);
 }
-.lqsx-covers-grid {
+.lqs3-covers-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(144px, 1fr));
-  gap:8px;
+  grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+  gap: var(--space-2);
 }
-.lqsx-scenes-grid {
+.lqs3-scenes-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));
-  gap:8px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--space-2);
 }
-.lqsx-keypads-grid {
+.lqs3-keypads-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
-  gap:12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
 }
-.lqsx-section { margin-bottom:24px; }
-.lqsx-section:last-child { margin-bottom:0; }
+.lqs3-section { margin-bottom: var(--space-6); }
+.lqs3-section:last-child { margin-bottom:0; }
 
-/* Mobile column collapse (<420px) */
 @media (max-width:420px) {
-  .lqsx-areas-grid  { grid-template-columns:1fr; gap:12px; }
-  .lqsx-lights-grid { grid-template-columns:repeat(2,1fr); }
-  .lqsx-covers-grid { grid-template-columns:repeat(2,1fr); }
-  .lqsx-scenes-grid { grid-template-columns:repeat(2,1fr); }
-  .lqsx-keypads-grid{ grid-template-columns:1fr; }
+  .lqs3-areas-grid   { grid-template-columns:1fr; gap: var(--space-3); }
+  .lqs3-lights-grid  { grid-template-columns:repeat(2,1fr); }
+  .lqs3-covers-grid  { grid-template-columns:repeat(2,1fr); }
+  .lqs3-scenes-grid  { grid-template-columns:repeat(2,1fr); }
+  .lqs3-keypads-grid { grid-template-columns:1fr; }
 }
 `;
 
 function injectStyles() {
   if (typeof document === 'undefined') return;
   if (document.getElementById(STYLE_ID)) return;
-  // Remove old version if present
-  const old = document.getElementById('lutron-surface-styles');
+  // Remove previous version
+  const old = document.getElementById('lutron-surface-styles-v2');
   if (old) old.remove();
+  const old1 = document.getElementById('lutron-surface-styles');
+  if (old1) old1.remove();
   const el = document.createElement('style');
   el.id = STYLE_ID;
   el.textContent = CSS;
@@ -629,14 +420,12 @@ function injectStyles() {
 
 // ─── Colour math ─────────────────────────────────────────────────────────────
 
-/** Convert HS (H 0–360, S 0–100) + brightness 0–100 → CSS colour. */
 function hsToCss(hs: [number, number], brightness: number): string {
   const [h, s] = hs;
   const l = Math.round(18 + (brightness / 100) * 52);
   return `hsl(${h},${s}%,${l}%)`;
 }
 
-/** Map colour-temp Kelvin → warm↔cool CSS colour. */
 function kelvinToCss(k: number, brightness: number): string {
   const t = Math.max(0, Math.min(1, (k - 2000) / (6500 - 2000)));
   const h = Math.round(t * 210 + (1 - t) * 38);
@@ -646,15 +435,13 @@ function kelvinToCss(k: number, brightness: number): string {
 }
 
 function lightSwatchColor(light: LutronLightState, displayBrightness: number): string {
-  if (!light.isOn && displayBrightness === 0) return 'rgba(128,128,128,.15)';
+  if (!light.isOn && displayBrightness === 0) return 'color-mix(in srgb, rgb(var(--text)) 15%, transparent)';
   if (light.hsColor) return hsToCss(light.hsColor, displayBrightness);
   if (light.colorTempKelvin) return kelvinToCss(light.colorTempKelvin, displayBrightness);
-  // Default warm white — amber intensity scales with brightness
   const alpha = 0.28 + (displayBrightness / 100) * 0.62;
   return `rgba(220,160,60,${alpha.toFixed(2)})`;
 }
 
-/** Returns a radial background that emanates from top-left for the card halo. */
 function lightHaloStyle(light: LutronLightState, brightness: number): React.CSSProperties {
   if (!light.isOn && brightness === 0) return {};
   const color = lightSwatchColor(light, brightness);
@@ -665,7 +452,6 @@ function lightHaloStyle(light: LutronLightState, brightness: number): React.CSSP
   };
 }
 
-/** CSS for the brightness fill gradient, using the live swatch colour. */
 function brightnessGradient(swatchColor: string, pct: number): React.CSSProperties {
   return {
     width: `${pct}%`,
@@ -678,14 +464,14 @@ function brightnessGradient(swatchColor: string, pct: number): React.CSSProperti
 
 const ConnPill = ({ status }: { status: 'connecting' | 'live' | 'stale' }) => {
   const cls =
-    status === 'live'  ? 'lqsx-pill lqsx-pill-live'
-    : status === 'stale' ? 'lqsx-pill lqsx-pill-stale'
-    : 'lqsx-pill lqsx-pill-conn';
+    status === 'live'  ? 'lqs3-pill lqs3-pill-live'
+    : status === 'stale' ? 'lqs3-pill lqs3-pill-stale'
+    : 'lqs3-pill lqs3-pill-conn';
   const label = status === 'live' ? 'Live' : status === 'stale' ? 'Stale' : 'Connecting';
-  return <span className={cls}><span className="lqsx-pill-dot" />{label}</span>;
+  return <span className={cls}><span className="lqs3-pill-dot" />{label}</span>;
 };
 
-// ─── Brightness slider (drag/touch aware) ─────────────────────────────────────
+// ─── Brightness slider ────────────────────────────────────────────────────────
 
 interface BrightnessSliderProps {
   value: number;
@@ -710,12 +496,9 @@ const BrightnessSlider = ({ value, color, disabled, onChange, onCommit }: Bright
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled) return;
-    dragging.current = true;
-    setIsDragging(true);
+    dragging.current = true; setIsDragging(true);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const v = posFromEvent(e);
-    lastValue.current = v;
-    onChange(v);
+    const v = posFromEvent(e); lastValue.current = v; onChange(v);
   };
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;
@@ -724,8 +507,7 @@ const BrightnessSlider = ({ value, color, disabled, onChange, onCommit }: Bright
   }, [posFromEvent, onChange]);
   const handlePointerUp = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;
-    dragging.current = false;
-    setIsDragging(false);
+    dragging.current = false; setIsDragging(false);
     onCommit(posFromEvent(e));
   }, [posFromEvent, onCommit]);
 
@@ -747,31 +529,26 @@ const BrightnessSlider = ({ value, color, disabled, onChange, onCommit }: Bright
   return (
     <div
       ref={trackRef}
-      className={`lqsx-brightness-track${isDragging ? ' dragging' : ''}`}
+      className={`lqs3-brightness-track${isDragging ? ' dragging' : ''}`}
       onPointerDown={handlePointerDown}
       style={{ cursor: disabled ? 'default' : 'ew-resize', marginTop: 8 }}
     >
-      <div className="lqsx-brightness-fill" style={fillStyle} />
-      <div className="lqsx-brightness-handle" style={handleStyle} />
+      <div className="lqs3-brightness-fill" style={fillStyle} />
+      <div className="lqs3-brightness-handle" style={handleStyle} />
     </div>
   );
 };
 
-// ─── CCT (colour temp) slider ─────────────────────────────────────────────────
+// ─── CCT slider ───────────────────────────────────────────────────────────────
 
 interface CctSliderProps {
-  value: number;
-  min: number;
-  max: number;
-  disabled?: boolean;
-  onCommit: (k: number) => void;
+  value: number; min: number; max: number; disabled?: boolean; onCommit: (k: number) => void;
 }
 
 const CctSlider = ({ value, min, max, disabled, onCommit }: CctSliderProps) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const [local, setLocal] = useState(value);
   const dragging = useRef(false);
-
   useEffect(() => { if (!dragging.current) setLocal(value); }, [value]);
 
   const posFromEvent = (e: PointerEvent | React.PointerEvent) => {
@@ -780,7 +557,6 @@ const CctSlider = ({ value, min, max, disabled, onCommit }: CctSliderProps) => {
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     return Math.round(min + (x / rect.width) * (max - min));
   };
-
   const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled) return;
     dragging.current = true;
@@ -788,17 +564,13 @@ const CctSlider = ({ value, min, max, disabled, onCommit }: CctSliderProps) => {
     setLocal(posFromEvent(e));
   };
   const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!dragging.current) return;
-    setLocal(posFromEvent(e));
+    if (!dragging.current) return; setLocal(posFromEvent(e));
   }, []);
   const handlePointerUp = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;
     dragging.current = false;
-    const k = posFromEvent(e);
-    setLocal(k);
-    onCommit(k);
+    const k = posFromEvent(e); setLocal(k); onCommit(k);
   }, [onCommit]);
-
   useEffect(() => {
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
@@ -809,15 +581,12 @@ const CctSlider = ({ value, min, max, disabled, onCommit }: CctSliderProps) => {
   }, [handlePointerMove, handlePointerUp]);
 
   const pct = max > min ? ((local - min) / (max - min)) * 100 : 50;
-
   return (
-    <div
-      ref={trackRef}
-      className="lqsx-cct-track"
+    <div ref={trackRef} className="lqs3-cct-track"
       onPointerDown={handlePointerDown}
       style={{ cursor: disabled ? 'default' : 'ew-resize' }}
     >
-      <div className="lqsx-cct-thumb" style={{ left: `${pct}%` }} />
+      <div className="lqs3-cct-thumb" style={{ left: `${pct}%` }} />
     </div>
   );
 };
@@ -825,67 +594,79 @@ const CctSlider = ({ value, min, max, disabled, onCommit }: CctSliderProps) => {
 // ─── Light card ───────────────────────────────────────────────────────────────
 
 interface LightCardProps {
-  light: LutronLightState;
-  optimistic: number | null;
+  light: LutronLightState; optimistic: number | null;
   onBrightnessChange: (entityId: string, v: number) => void;
   onBrightnessCommit: (entityId: string, v: number) => void;
   onCctCommit: (entityId: string, k: number) => void;
   onToggle: (entityId: string) => void;
 }
 
-const LightCard = ({
-  light, optimistic, onBrightnessChange, onBrightnessCommit, onCctCommit, onToggle,
-}: LightCardProps) => {
+const LightCard = ({ light, optimistic, onBrightnessChange, onBrightnessCommit, onCctCommit, onToggle }: LightCardProps) => {
   const displayBrightness = optimistic !== null ? optimistic : light.brightness;
   const isOn = light.isOn || displayBrightness > 0;
   const swatchColor = lightSwatchColor({ ...light, isOn }, displayBrightness);
   const haloStyle = lightHaloStyle({ ...light, isOn }, displayBrightness);
-
   const hasCct = light.supportsColorTemp && light.minColorTempKelvin && light.maxColorTempKelvin;
 
-  // Bulb fill colour: rich hue when colored, warm amber when CCT/default, dim grey when off
   const bulbColor = isOn
     ? (light.hsColor
         ? hsToCss(light.hsColor, displayBrightness)
         : `rgb(${Math.round(220 + (displayBrightness / 100) * 20)}, ${Math.round(160 - (displayBrightness / 100) * 8)}, 60)`)
     : 'rgba(128,128,128,.22)';
 
-  const classes = [
-    'lqsx-light-card',
-    isOn ? 'is-on' : '',
-    !light.available ? 'is-unavailable' : '',
-  ].filter(Boolean).join(' ');
+  // GlassCard with amber active-vibrancy when light is on
+  const cardStyle: React.CSSProperties = isOn
+    ? glassMaterialActive(2, 'var(--accent-warn)', { glowStrength: 0.14 })
+    : glassMaterial(2);
 
   return (
-    <div className={classes} title={light.name}>
-      {/* Ambient halo */}
-      <div className="lqsx-light-halo" style={haloStyle} />
+    <div
+      className={`relative overflow-hidden ${!light.available ? 'opacity-40 pointer-events-none' : ''}`}
+      title={light.name}
+      style={{
+        borderRadius: 'var(--radius-card)',
+        padding: 12,
+        cursor: 'pointer',
+        transition: `border-color var(--dur-medium) var(--spring-gentle), background-color var(--dur-medium) var(--spring-gentle), box-shadow var(--dur-slow) var(--spring-gentle)`,
+        ...cardStyle,
+      }}
+    >
+      {/* Ambient halo — colour-reactive, scales with brightness */}
+      <div
+        className={`lqs3-light-halo${isOn ? '' : ''}`}
+        style={haloStyle}
+      />
 
-      {/* Top row: swatch disk + meta + power button */}
-      <div className="lqsx-light-swatch-row">
-        {/* Live colour swatch disk */}
+      {/* Top row: swatch + meta + power */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 4 }}>
         <div
-          className="lqsx-swatch-disk"
+          className="lqs3-swatch-disk"
           style={{
             background: swatchColor,
             transform: isOn ? `scale(${1 + (displayBrightness / 100) * 0.12})` : 'scale(1)',
-            boxShadow: isOn ? `0 0 0 3px rgba(var(--lqsx-amber-rgb),.12), 0 0 ${Math.round(4 + (displayBrightness / 100) * 12)}px ${swatchColor}` : undefined,
-            transition: 'background .45s ease, transform .45s ease, box-shadow .45s ease',
+            boxShadow: isOn
+              ? `0 0 0 3px color-mix(in srgb, var(--accent-warn) 12%, transparent), 0 0 ${Math.round(4 + (displayBrightness / 100) * 12)}px ${swatchColor}`
+              : undefined,
           }}
         />
-
-        <div className="lqsx-light-meta">
-          <span className="lqsx-light-name">{light.name}</span>
-          <span className="lqsx-light-level">{isOn ? `${displayBrightness}%` : 'Off'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+          <span style={{ fontSize: 'var(--type-xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '.06em', color: 'rgb(var(--text))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {light.name}
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-sm)', fontWeight: 300,
+            lineHeight: 1.2,
+            color: isOn ? 'var(--accent-warn)' : 'rgb(var(--text) / 0.45)',
+            transition: `color var(--dur-medium) var(--spring-gentle)`,
+          }}>
+            {isOn ? `${displayBrightness}%` : 'Off'}
+          </span>
         </div>
-
-        {/* Power toggle */}
         <button
           onClick={(e) => { e.stopPropagation(); onToggle(light.entityId); }}
           disabled={!light.available}
-          className={`lqsx-power-btn ${isOn ? 'on' : 'off'}`}
+          className={`lqs3-power-btn ${isOn ? 'on' : 'off'}`}
           aria-label={isOn ? 'Turn off' : 'Turn on'}
-          style={{ marginLeft: 2 }}
         >
           ⏻
         </button>
@@ -893,7 +674,11 @@ const LightCard = ({
 
       {/* Bulb icon */}
       <div style={{ display: 'flex', justifyContent: 'center', margin: '6px 0 4px' }}>
-        <svg className="lqsx-bulb-icon" viewBox="0 0 24 24" fill="none" style={{ color: bulbColor }}>
+        <svg
+          className={`lqs3-bulb-icon${isOn ? ' lqs3-light-is-on' : ''}`}
+          viewBox="0 0 24 24" fill="none"
+          style={{ color: bulbColor, width: 26, height: 26 }}
+        >
           <path
             d="M9 21h6M12 3a6 6 0 0 1 6 6c0 2.2-1.2 4.2-3 5.4V17H9v-2.6C7.2 13.2 6 11.2 6 9a6 6 0 0 1 6-6z"
             stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
@@ -902,21 +687,17 @@ const LightCard = ({
         </svg>
       </div>
 
-      {/* Brightness slider */}
       <BrightnessSlider
-        value={displayBrightness}
-        color={swatchColor}
+        value={displayBrightness} color={swatchColor}
         disabled={!light.available}
         onChange={(v) => onBrightnessChange(light.entityId, v)}
         onCommit={(v) => onBrightnessCommit(light.entityId, v)}
       />
 
-      {/* CCT control */}
       {hasCct && (
         <CctSlider
           value={light.colorTempKelvin ?? light.minColorTempKelvin!}
-          min={light.minColorTempKelvin!}
-          max={light.maxColorTempKelvin!}
+          min={light.minColorTempKelvin!} max={light.maxColorTempKelvin!}
           disabled={!light.available}
           onCommit={(k) => onCctCommit(light.entityId, k)}
         />
@@ -928,110 +709,94 @@ const LightCard = ({
 // ─── Shade / Blind widget ─────────────────────────────────────────────────────
 
 interface CoverWidgetProps {
-  cover: LutronCoverState;
-  optimistic: number | null;
-  optimisticTilt?: number | null;
-  onOpen: (entityId: string) => void;
-  onClose: (entityId: string) => void;
+  cover: LutronCoverState; optimistic: number | null; optimisticTilt?: number | null;
+  onOpen: (entityId: string) => void; onClose: (entityId: string) => void;
   onStop: (entityId: string) => void;
-  onTiltOpen?: (entityId: string) => void;
-  onTiltClose?: (entityId: string) => void;
+  onTiltOpen?: (entityId: string) => void; onTiltClose?: (entityId: string) => void;
 }
 
-const CoverWidget = ({
-  cover, optimistic, optimisticTilt, onOpen, onClose, onStop, onTiltOpen, onTiltClose,
-}: CoverWidgetProps) => {
+const CoverWidget = ({ cover, optimistic, optimisticTilt, onOpen, onClose, onStop, onTiltOpen, onTiltClose }: CoverWidgetProps) => {
   const position = optimistic !== null ? optimistic : (cover.currentPosition ?? 50);
   const tiltPosition = (optimisticTilt !== null && optimisticTilt !== undefined)
     ? optimisticTilt : (cover.currentTiltPosition ?? 50);
-
-  // Shade: panel height = (100-position)%; 0% = fully open, 100% = fully closed
   const shadePanelHeight = `${100 - position}%`;
-  // Light leak height = position%
   const shadeLeakHeight = `${position}%`;
-  // Light ray opacity: more open = more visible shaft
   const rayOpacity = position / 100;
-
-  // Slat tilt: map 0–100 → -37deg (closed vertical) to +38deg (open near-horizontal)
   const slatDeg = Math.round((tiltPosition / 100) * 75 - 37);
   const slatRotation = cover.supportsTilt ? `rotate(${slatDeg}deg)` : undefined;
-
   const isMoving = cover.state === 'opening' || cover.state === 'closing';
 
-  const classes = ['lqsx-cover-widget', !cover.available ? 'is-unavailable' : ''].filter(Boolean).join(' ');
-
   return (
-    <div className={classes}>
-      <div className="lqsx-cover-header">
-        <span className="lqsx-cover-name">{cover.name}</span>
+    <div
+      className={`overflow-hidden${!cover.available ? ' opacity-40 pointer-events-none' : ''}`}
+      style={{ borderRadius: 'var(--radius-card)', transition: `opacity var(--dur-medium) var(--spring-gentle)`, ...glassMaterial(2) }}
+    >
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 12px 8px', borderBottom: `1px solid var(--glass-l2-border)`,
+      }}>
+        <span style={{ fontSize: 'var(--type-xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '.06em', color: 'rgb(var(--text))' }}>
+          {cover.name}
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {isMoving && <span className="lqsx-moving-badge">{cover.state}</span>}
-          <span className="lqsx-cover-pos">{Math.round(position)}%</span>
+          {isMoving && <span className="lqs3-moving-badge">{cover.state}</span>}
+          <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-md)', fontWeight: 300, color: 'rgb(var(--text) / 0.45)' }}>
+            {Math.round(position)}%
+          </span>
         </div>
       </div>
 
       {/* Visual glyph */}
       {!cover.supportsTilt ? (
-        <div className="lqsx-shade-scene">
-          <div className="lqsx-shade-glyph">
-            {/* Light ray — visible when shade is mostly open */}
-            <div className="lqsx-light-ray" style={{ opacity: rayOpacity * 0.8 }} />
-            <div className="lqsx-window-frame" />
-            <div className="lqsx-shade-panel" style={{ height: shadePanelHeight }}>
-              <div className="lqsx-shade-stripes" />
-              <div className="lqsx-shade-rail" />
+        <div className="lqs3-shade-scene">
+          <div className="lqs3-shade-glyph">
+            <div className="lqs3-light-ray" style={{ opacity: rayOpacity * 0.8 }} />
+            <div className="lqs3-window-frame" />
+            <div className="lqs3-shade-panel" style={{ height: shadePanelHeight }}>
+              <div className="lqs3-shade-stripes" />
+              <div className="lqs3-shade-rail" />
             </div>
-            {/* Light leak below shade */}
-            <div className="lqsx-shade-leak" style={{ height: shadeLeakHeight, opacity: rayOpacity * 0.7 }} />
+            <div className="lqs3-shade-leak" style={{ height: shadeLeakHeight, opacity: rayOpacity * 0.7 }} />
           </div>
         </div>
       ) : (
-        <div className="lqsx-tilt-glyph">
+        <div className="lqs3-tilt-glyph">
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="lqsx-slat" style={{ transform: slatRotation }} />
+            <div key={i} className="lqs3-slat" style={{ transform: slatRotation }} />
           ))}
         </div>
       )}
 
-      {/* Controls */}
-      <div className="lqsx-cover-controls">
-        <button
-          className={`lqsx-cover-btn${cover.state === 'opening' ? ' active' : ''}`}
-          onClick={() => onOpen(cover.entityId)}
-          disabled={!cover.available}
-          title="Open"
-        >▲</button>
-        <button
-          className="lqsx-cover-btn stop"
-          onClick={() => onStop(cover.entityId)}
-          disabled={!cover.available}
+      {/* Controls — GlassButton */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 10px 10px' }}>
+        <GlassButton
+          onClick={() => onOpen(cover.entityId)} disabled={!cover.available}
+          title="Open" active={cover.state === 'opening'} accentVar="var(--accent-warn)"
+          style={{ flex: 1, padding: '7px 0', fontSize: 'var(--type-xs)', letterSpacing: '.05em' }}
+        >▲</GlassButton>
+        <GlassButton
+          onClick={() => onStop(cover.entityId)} disabled={!cover.available}
           title="Stop"
-        >■</button>
-        <button
-          className={`lqsx-cover-btn${cover.state === 'closing' ? ' active' : ''}`}
-          onClick={() => onClose(cover.entityId)}
-          disabled={!cover.available}
-          title="Close"
-        >▼</button>
+          style={{ flex: 0.55, padding: '7px 0', fontSize: 13 }}
+        >■</GlassButton>
+        <GlassButton
+          onClick={() => onClose(cover.entityId)} disabled={!cover.available}
+          title="Close" active={cover.state === 'closing'} accentVar="var(--accent-warn)"
+          style={{ flex: 1, padding: '7px 0', fontSize: 'var(--type-xs)', letterSpacing: '.05em' }}
+        >▼</GlassButton>
       </div>
 
-      {/* Tilt controls */}
       {cover.supportsTilt && onTiltOpen && onTiltClose && (
         <div style={{ display: 'flex', gap: 4, padding: '0 10px 10px' }}>
-          <button
-            className="lqsx-cover-btn"
-            onClick={() => onTiltOpen(cover.entityId)}
-            disabled={!cover.available}
-            title="Tilt open"
-            style={{ fontSize: 9 }}
-          >TILT ▲</button>
-          <button
-            className="lqsx-cover-btn"
-            onClick={() => onTiltClose(cover.entityId)}
-            disabled={!cover.available}
-            title="Tilt close"
-            style={{ fontSize: 9 }}
-          >TILT ▼</button>
+          <GlassButton onClick={() => onTiltOpen(cover.entityId)} disabled={!cover.available} title="Tilt open"
+            style={{ flex: 1, padding: '5px 0', fontSize: 9, letterSpacing: '.04em' }}>
+            TILT ▲
+          </GlassButton>
+          <GlassButton onClick={() => onTiltClose(cover.entityId)} disabled={!cover.available} title="Tilt close"
+            style={{ flex: 1, padding: '5px 0', fontSize: 9, letterSpacing: '.04em' }}>
+            TILT ▼
+          </GlassButton>
         </div>
       )}
     </div>
@@ -1040,13 +805,7 @@ const CoverWidget = ({
 
 // ─── Scene button ─────────────────────────────────────────────────────────────
 
-const SceneButton = ({
-  scene,
-  onActivate,
-}: {
-  scene: LutronSceneState;
-  onActivate: (entityId: string) => void;
-}) => {
+const SceneButton = ({ scene, onActivate }: { scene: LutronSceneState; onActivate: (entityId: string) => void }) => {
   const [fired, setFired] = useState(false);
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
   const nextId = useRef(0);
@@ -1057,60 +816,67 @@ const SceneButton = ({
     const id = nextId.current++;
     setRipples(prev => [...prev, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
     setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), 750);
-    setFired(true);
-    setTimeout(() => setFired(false), 500);
+    setFired(true); setTimeout(() => setFired(false), 500);
     onActivate(scene.entityId);
   };
 
-  const classes = [
-    'lqsx-scene-btn',
-    fired ? 'fired' : '',
-    !scene.available ? 'is-unavailable' : '',
-  ].filter(Boolean).join(' ');
-
   return (
-    <button className={classes} onClick={handleClick} disabled={!scene.available}>
-      {ripples.map(r => (
-        <span key={r.id} className="lqsx-ripple" style={{ left: r.x, top: r.y }} />
-      ))}
-      <div className="lqsx-scene-icon">
+    <button
+      className={`lqs3-scene-btn relative overflow-hidden${fired ? ' fired' : ''}${!scene.available ? ' opacity-40 pointer-events-none' : ''}`}
+      onClick={handleClick}
+      disabled={!scene.available}
+      style={{
+        padding: '14px 12px 12px', cursor: 'pointer',
+        border: 'none', textAlign: 'left',
+        display: 'flex', flexDirection: 'column', gap: 4,
+        borderRadius: 'var(--radius-card)',
+        transition: `all var(--dur-medium) var(--spring-gentle)`,
+        ...glassMaterial(2),
+      }}
+    >
+      {ripples.map(r => <span key={r.id} className="lqs3-ripple" style={{ left: r.x, top: r.y }} />)}
+      <div style={{
+        width: 20, height: 20, borderRadius: '50%',
+        background: 'color-mix(in srgb, var(--accent-warn) 15%, var(--glass-l3-bg))',
+        border: '1px solid color-mix(in srgb, var(--accent-warn) 30%, transparent)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        transition: `background var(--dur-medium) var(--spring-gentle), box-shadow var(--dur-medium) var(--spring-gentle)`,
+      }}>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-          <polygon points="5,3 19,12 5,21" fill="rgba(220,160,60,.9)" />
+          <polygon points="5,3 19,12 5,21" fill="var(--accent-warn)" fillOpacity={0.9} />
         </svg>
       </div>
-      <span className="lqsx-scene-name">{scene.name}</span>
-      <span className="lqsx-scene-hint">Tap to activate</span>
+      <span style={{ fontSize: 'var(--type-xs)', fontWeight: 'var(--weight-medium)', letterSpacing: '.06em', color: 'rgb(var(--text))', display: 'block' }}>
+        {scene.name}
+      </span>
+      <span style={{ fontSize: 'var(--type-2xs)', letterSpacing: '.07em', color: 'rgb(var(--text) / 0.3)', display: 'block' }}>
+        Tap to activate
+      </span>
     </button>
   );
 };
 
 // ─── Keypad panel ─────────────────────────────────────────────────────────────
 
-const KeypadPanel = ({
-  keypad,
-  onPress,
-}: {
-  keypad: LutronKeypad;
-  onPress: (entityId: string) => void;
-}) => {
-  // pressedId: the button being visually highlighted
-  // activityId: fires a brief green flash on the LED to show the press landed
+const KeypadPanel = ({ keypad, onPress }: { keypad: LutronKeypad; onPress: (entityId: string) => void }) => {
   const [pressedId, setPressedId] = useState<string | null>(null);
   const [activityId, setActivityId] = useState<string | null>(null);
 
   const handlePress = (btn: LutronButtonState) => {
     if (!btn.available) return;
-    setPressedId(btn.entityId);
-    setActivityId(btn.entityId);
+    setPressedId(btn.entityId); setActivityId(btn.entityId);
     setTimeout(() => setPressedId(null), 600);
     setTimeout(() => setActivityId(null), 350);
     onPress(btn.entityId);
   };
 
   return (
-    <div className="lqsx-keypad-card">
-      <div className="lqsx-keypad-header">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color: 'var(--lqsx-text-dim)', flexShrink: 0 }}>
+    <div style={{ borderRadius: 'var(--radius-card)', overflow: 'hidden', ...glassMaterial(2) }}>
+      <div style={{
+        padding: '10px 14px 8px', borderBottom: '1px solid var(--glass-l2-border)',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ color: 'rgb(var(--text) / 0.3)', flexShrink: 0 }}>
           <rect x="2" y="2" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
           <rect x="9" y="2" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
           <rect x="16" y="2" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
@@ -1121,33 +887,37 @@ const KeypadPanel = ({
           <rect x="9" y="16" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
           <rect x="16" y="16" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
         </svg>
-        <span className="lqsx-keypad-name">{keypad.name}</span>
+        <span style={{ fontSize: 'var(--type-xs)', letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgb(var(--text) / 0.45)', fontWeight: 500 }}>
+          {keypad.name}
+        </span>
       </div>
-      <div className="lqsx-kp-buttons">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 12 }}>
         {keypad.buttons.map(btn => {
-          // Determine LED class: activity flash overrides on/off
           const isActivity = activityId === btn.entityId;
           const ledClass = isActivity
-            ? 'lqsx-led activity'
+            ? 'lqs3-led activity'
             : btn.ledEntityId !== null
-              ? (btn.ledOn === true ? 'lqsx-led on' : 'lqsx-led off')
-              : 'lqsx-led unknown';
+              ? (btn.ledOn === true ? 'lqs3-led on' : 'lqs3-led off')
+              : 'lqs3-led unknown';
 
+          const isPressed = pressedId === btn.entityId;
           return (
-            <button
+            <GlassButton
               key={btn.entityId}
-              className={[
-                'lqsx-kp-btn',
-                pressedId === btn.entityId ? 'pressed' : '',
-                !btn.available ? 'opacity-40' : '',
-              ].filter(Boolean).join(' ')}
               onClick={() => handlePress(btn)}
               disabled={!btn.available}
               title={btn.name}
+              active={isPressed || btn.ledOn === true}
+              accentVar="var(--accent-warn)"
+              style={{
+                gap: 8, padding: '7px 10px',
+                fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)',
+                letterSpacing: '.05em', color: 'rgb(var(--text) / 0.65)',
+              }}
             >
               <span className={ledClass} />
               {btn.name}
-            </button>
+            </GlassButton>
           );
         })}
       </div>
@@ -1164,19 +934,11 @@ interface AreaSectionProps {
 }
 
 const AreaSection = ({ area, getOptimistic, setOptimistic }: AreaSectionProps) => {
-  const handleBrightnessChange = useCallback((entityId: string, v: number) => {
-    setOptimistic(entityId, v);
-  }, [setOptimistic]);
-
+  const handleBrightnessChange = useCallback((entityId: string, v: number) => { setOptimistic(entityId, v); }, [setOptimistic]);
   const handleBrightnessCommit = useCallback(async (entityId: string, v: number) => {
-    setOptimistic(entityId, v);
-    await setLightBrightness(entityId, v);
+    setOptimistic(entityId, v); await setLightBrightness(entityId, v);
   }, [setOptimistic]);
-
-  const handleCctCommit = useCallback(async (entityId: string, k: number) => {
-    await setLightColorTemp(entityId, k);
-  }, []);
-
+  const handleCctCommit = useCallback(async (entityId: string, k: number) => { await setLightColorTemp(entityId, k); }, []);
   const handleToggle = useCallback(async (entityId: string) => {
     const light = area.lights.find(l => l.entityId === entityId);
     if (!light) return;
@@ -1184,7 +946,6 @@ const AreaSection = ({ area, getOptimistic, setOptimistic }: AreaSectionProps) =
     setOptimistic(entityId, nextBrightness);
     await toggleLight(entityId, light.isOn);
   }, [area.lights, setOptimistic]);
-
   const handleOpen  = useCallback(async (entityId: string) => { await openCover(entityId); }, []);
   const handleClose = useCallback(async (entityId: string) => { await closeCover(entityId); }, []);
   const handleStop  = useCallback(async (entityId: string) => { await stopCover(entityId); }, []);
@@ -1193,36 +954,25 @@ const AreaSection = ({ area, getOptimistic, setOptimistic }: AreaSectionProps) =
 
   return (
     <div>
-      <h3 className="lqsx-area-name">{area.name}</h3>
-
+      <h3 className="lqs3-area-name">{area.name}</h3>
       {area.lights.length > 0 && (
-        <div className="lqsx-lights-grid" style={{ marginBottom: area.covers.length > 0 ? 12 : 0 }}>
+        <div className="lqs3-lights-grid" style={{ marginBottom: area.covers.length > 0 ? 12 : 0 }}>
           {area.lights.map(light => (
             <LightCard
-              key={light.entityId}
-              light={light}
-              optimistic={getOptimistic(light.entityId)}
-              onBrightnessChange={handleBrightnessChange}
-              onBrightnessCommit={handleBrightnessCommit}
-              onCctCommit={handleCctCommit}
-              onToggle={handleToggle}
+              key={light.entityId} light={light} optimistic={getOptimistic(light.entityId)}
+              onBrightnessChange={handleBrightnessChange} onBrightnessCommit={handleBrightnessCommit}
+              onCctCommit={handleCctCommit} onToggle={handleToggle}
             />
           ))}
         </div>
       )}
-
       {area.covers.length > 0 && (
-        <div className="lqsx-covers-grid">
+        <div className="lqs3-covers-grid">
           {area.covers.map(cover => (
             <CoverWidget
-              key={cover.entityId}
-              cover={cover}
-              optimistic={getOptimistic(cover.entityId)}
-              onOpen={handleOpen}
-              onClose={handleClose}
-              onStop={handleStop}
-              onTiltOpen={handleTiltOpen}
-              onTiltClose={handleTiltClose}
+              key={cover.entityId} cover={cover} optimistic={getOptimistic(cover.entityId)}
+              onOpen={handleOpen} onClose={handleClose} onStop={handleStop}
+              onTiltOpen={handleTiltOpen} onTiltClose={handleTiltClose}
             />
           ))}
         </div>
@@ -1237,9 +987,8 @@ const LutronSurface = (_props: TileProps) => {
   useEffect(() => { injectStyles(); }, []);
 
   const { state, connStatus, getOptimistic, setOptimistic } = useLutronSurface();
-
-  const handleActivateScene  = useCallback(async (entityId: string) => { await activateScene(entityId); }, []);
-  const handlePressButton    = useCallback(async (entityId: string) => { await pressButton(entityId); }, []);
+  const handleActivateScene = useCallback(async (entityId: string) => { await activateScene(entityId); }, []);
+  const handlePressButton   = useCallback(async (entityId: string) => { await pressButton(entityId); }, []);
 
   const hasAreas   = state.areas.length > 0;
   const hasScenes  = state.scenes.length > 0;
@@ -1249,51 +998,39 @@ const LutronSurface = (_props: TileProps) => {
   const lightsOn    = useMemo(() => state.areas.reduce((s, a) => s + a.lights.filter(l => l.isOn).length, 0), [state.areas]);
   const totalCovers = useMemo(() => state.areas.reduce((s, a) => s + a.covers.length, 0), [state.areas]);
 
-  // Root class tracks connection status for stale overlay
   const rootClass = [
-    'lqsx-root',
+    'lqs3-root',
     connStatus === 'stale'      ? 'is-stale'      : '',
     connStatus === 'connecting' ? 'is-connecting' : '',
   ].filter(Boolean).join(' ');
 
   return (
-    <div
+    <GlassPanel
+      animate
+      level={1}
       className={rootClass}
-      style={{
-        display: 'flex', flexDirection: 'column',
-        height: '100%', width: '100%',
-        borderRadius: 16, overflow: 'hidden',
-        border: '1px solid var(--lqsx-border)',
-        background: 'var(--lqsx-bg)',
-        // Subtle etched grid
-        backgroundImage: [
-          'linear-gradient(var(--lqsx-grid) 1px,transparent 1px)',
-          'linear-gradient(90deg,var(--lqsx-grid) 1px,transparent 1px)',
-        ].join(','),
-        backgroundSize: '40px 40px',
-      }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}
     >
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px 10px',
-        borderBottom: '1px solid var(--lqsx-border)',
-        flexShrink: 0,
-        background: 'var(--lqsx-header-bg)',
+        padding: 'var(--space-3) var(--space-4) var(--space-3)',
+        borderBottom: '1px solid var(--glass-l1-border)', flexShrink: 0,
+        background: 'var(--glass-l1-tint)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Lutron-esque logomark: concentric arcs */}
+          {/* Lutron logomark — concentric arcs */}
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="3" fill="rgba(220,160,60,.9)" />
-            <path d="M12 4a8 8 0 0 1 8 8" stroke="rgba(220,160,60,.55)" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M4 12a8 8 0 0 1 8-8" stroke="rgba(220,160,60,.28)" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M12 20a8 8 0 0 1-8-8" stroke="rgba(220,160,60,.14)" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="12" cy="12" r="3" fill="var(--accent-warn)" />
+            <path d="M12 4a8 8 0 0 1 8 8" stroke="var(--accent-warn)" strokeWidth="1.5" strokeLinecap="round" strokeOpacity={0.55} />
+            <path d="M4 12a8 8 0 0 1 8-8" stroke="var(--accent-warn)" strokeWidth="1.5" strokeLinecap="round" strokeOpacity={0.28} />
+            <path d="M12 20a8 8 0 0 1-8-8" stroke="var(--accent-warn)" strokeWidth="1.5" strokeLinecap="round" strokeOpacity={0.14} />
           </svg>
           <div>
-            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, fontWeight: 500, lineHeight: 1.1, letterSpacing: '.03em', color: 'var(--lqsx-text)' }}>
+            <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 'var(--type-md)', fontWeight: 500, lineHeight: 1.1, letterSpacing: '.03em', color: 'rgb(var(--text))' }}>
               Lutron HomeWorks
             </p>
-            <p style={{ fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--lqsx-text-muted)', marginTop: 1 }}>
+            <p style={{ fontSize: 'var(--type-2xs)', letterSpacing: '.10em', textTransform: 'uppercase', color: 'rgb(var(--text) / 0.45)', marginTop: 1 }}>
               QSX · Lighting &amp; Shading
             </p>
           </div>
@@ -1301,9 +1038,9 @@ const LutronSurface = (_props: TileProps) => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {state.present && (
-            <div style={{ display: 'flex', gap: 8, fontSize: 10, letterSpacing: '.05em', color: 'var(--lqsx-text-muted)' }}>
+            <div style={{ display: 'flex', gap: 8, fontSize: 'var(--type-xs)', letterSpacing: '.05em', color: 'rgb(var(--text) / 0.45)' }}>
               {totalLights > 0 && (
-                <span style={{ color: lightsOn > 0 ? 'rgb(var(--lqsx-amber-rgb))' : undefined }}>
+                <span style={{ color: lightsOn > 0 ? 'var(--accent-warn)' : undefined }}>
                   {lightsOn}/{totalLights} lit
                 </span>
               )}
@@ -1314,24 +1051,24 @@ const LutronSurface = (_props: TileProps) => {
         </div>
       </div>
 
-      {/* ── Body ── */}
-      <div className="lqsx-scroll" style={{ flex: 1, padding: '16px' }}>
+      {/* Body */}
+      <div className="lqs3-scroll" style={{ flex: 1, padding: 'var(--space-4)' }}>
 
         {/* Empty state */}
         {!state.present && (
-          <div className="lqsx-empty">
-            <div className="lqsx-empty-icon">
+          <div className="lqs3-empty">
+            <div className="lqs3-empty-icon">
               <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
                 <path
                   d="M9 21h6M12 3a6 6 0 0 1 6 6c0 2.2-1.2 4.2-3 5.4V17H9v-2.6C7.2 13.2 6 11.2 6 9a6 6 0 0 1 6-6z"
-                  stroke="var(--lqsx-text-dim)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"
+                  stroke="rgb(var(--text) / 0.25)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"
                 />
               </svg>
             </div>
-            <p className="lqsx-empty-title">
+            <p className="lqs3-empty-title">
               {connStatus === 'connecting' ? 'Connecting…' : 'No Lutron Entities Found'}
             </p>
-            <p className="lqsx-empty-sub">
+            <p className="lqs3-empty-sub">
               {connStatus === 'connecting'
                 ? 'Establishing connection to Home Assistant…'
                 : 'Lutron lights, shades, scenes, and keypads appear here automatically once the lutron_caseta integration is loaded.'}
@@ -1341,15 +1078,10 @@ const LutronSurface = (_props: TileProps) => {
 
         {/* Area sections */}
         {hasAreas && (
-          <div className="lqsx-section">
-            <div className="lqsx-areas-grid">
+          <div className="lqs3-section">
+            <div className="lqs3-areas-grid">
               {state.areas.map(area => (
-                <AreaSection
-                  key={area.name}
-                  area={area}
-                  getOptimistic={getOptimistic}
-                  setOptimistic={setOptimistic}
-                />
+                <AreaSection key={area.name} area={area} getOptimistic={getOptimistic} setOptimistic={setOptimistic} />
               ))}
             </div>
           </div>
@@ -1357,15 +1089,11 @@ const LutronSurface = (_props: TileProps) => {
 
         {/* Scenes */}
         {hasScenes && (
-          <div className="lqsx-section">
-            <h3 className="lqsx-area-name">Scenes</h3>
-            <div className="lqsx-scenes-grid">
+          <div className="lqs3-section">
+            <h3 className="lqs3-area-name">Scenes</h3>
+            <div className="lqs3-scenes-grid">
               {state.scenes.map(scene => (
-                <SceneButton
-                  key={scene.entityId}
-                  scene={scene}
-                  onActivate={handleActivateScene}
-                />
+                <SceneButton key={scene.entityId} scene={scene} onActivate={handleActivateScene} />
               ))}
             </div>
           </div>
@@ -1373,22 +1101,18 @@ const LutronSurface = (_props: TileProps) => {
 
         {/* Keypads */}
         {hasKeypads && (
-          <div className="lqsx-section">
-            <h3 className="lqsx-area-name">Keypads</h3>
-            <div className="lqsx-keypads-grid">
+          <div className="lqs3-section">
+            <h3 className="lqs3-area-name">Keypads</h3>
+            <div className="lqs3-keypads-grid">
               {state.keypads.map(keypad => (
-                <KeypadPanel
-                  key={keypad.prefix}
-                  keypad={keypad}
-                  onPress={handlePressButton}
-                />
+                <KeypadPanel key={keypad.prefix} keypad={keypad} onPress={handlePressButton} />
               ))}
             </div>
           </div>
         )}
 
       </div>
-    </div>
+    </GlassPanel>
   );
 };
 
