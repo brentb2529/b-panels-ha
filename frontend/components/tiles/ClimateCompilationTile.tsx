@@ -146,6 +146,13 @@ export interface ClimateAreaConfig {
   coolMasterFilter?: string[];
   /** Panel area display name. Default: 'Climate' */
   areaName?: string;
+  /**
+   * Override section display names (homeowner-facing, not integration names).
+   * Defaults: airzoneLabel='Rooms', ae200Label='Central AC', coolMasterLabel='AC Units'
+   */
+  airzoneLabel?: string;
+  ae200Label?: string;
+  coolMasterLabel?: string;
   /** Show the quick-actions bar. Default: true */
   showQuickActions?: boolean;
   /**
@@ -176,6 +183,9 @@ const DEFAULTS: Required<ClimateAreaConfig> = {
   ae200Filter:      [],
   coolMasterFilter: [],
   areaName:         'Climate',
+  airzoneLabel:     'Rooms',
+  ae200Label:       'Central AC',
+  coolMasterLabel:  'AC Units',
   showQuickActions: true,
   quickActions:     DEFAULT_QUICK_ACTIONS,
 };
@@ -191,6 +201,9 @@ function parseConfig(raw: unknown): Required<ClimateAreaConfig> {
       ae200Filter:      Array.isArray(r.ae200Filter)      ? (r.ae200Filter as string[]).map(String)      : DEFAULTS.ae200Filter,
       coolMasterFilter: Array.isArray(r.coolMasterFilter) ? (r.coolMasterFilter as string[]).map(String) : DEFAULTS.coolMasterFilter,
       areaName:         typeof r.areaName === 'string'          ? r.areaName          : DEFAULTS.areaName,
+      airzoneLabel:     typeof r.airzoneLabel === 'string'      ? r.airzoneLabel      : DEFAULTS.airzoneLabel,
+      ae200Label:       typeof r.ae200Label === 'string'        ? r.ae200Label        : DEFAULTS.ae200Label,
+      coolMasterLabel:  typeof r.coolMasterLabel === 'string'   ? r.coolMasterLabel   : DEFAULTS.coolMasterLabel,
       showQuickActions: typeof r.showQuickActions === 'boolean' ? r.showQuickActions  : DEFAULTS.showQuickActions,
       quickActions:     Array.isArray(r.quickActions)
         ? (r.quickActions as ClimateQuickAction[])
@@ -727,7 +740,7 @@ const AirzoneSectionContent: React.FC<{
     return (
       <div className="flex items-center gap-2 py-3" style={{ color: 'rgba(var(--text) / 0.4)', fontSize: 'var(--type-xs)' }}>
         <IconLoader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
-        Connecting to climate zones…
+        Connecting to rooms…
       </div>
     );
   }
@@ -735,7 +748,7 @@ const AirzoneSectionContent: React.FC<{
     return (
       <div className="flex items-center gap-2 py-3" style={{ color: 'rgba(var(--text) / 0.35)', fontSize: 'var(--type-xs)' }}>
         <IconWind style={{ width: 14, height: 14 }} />
-        {status === 'stale' ? 'Airzone data stale — reconnecting' : 'No Airzone zones detected'}
+        {status === 'stale' ? 'Rooms not responding — reconnecting' : 'No rooms found'}
       </div>
     );
   }
@@ -976,7 +989,7 @@ const Ae200SectionContent: React.FC<{
     return (
       <div className="flex items-center gap-2 py-3" style={{ color: 'rgba(var(--text) / 0.35)', fontSize: 'var(--type-xs)' }}>
         <IconActivity style={{ width: 14, height: 14 }} />
-        No AE-200E controllers detected
+        Central AC not found
       </div>
     );
   }
@@ -1052,9 +1065,6 @@ const CoolMasterUnitCard: React.FC<{
         <div className="flex flex-col min-w-0 flex-1" style={{ gap: 1 }}>
           <span className="truncate font-semibold" style={{ ...fluidTextSm, color: 'rgba(var(--text) / 0.9)' }}>
             {unit.name}
-          </span>
-          <span style={{ fontSize: '0.52rem', fontWeight: 600, color: 'rgba(var(--text) / 0.4)', letterSpacing: '0.04em' }}>
-            {unit.rawUnitId}
           </span>
         </div>
         <div className="flex flex-col items-end flex-shrink-0" style={{ gap: 3 }}>
@@ -1156,7 +1166,7 @@ const CoolMasterSectionContent: React.FC<{
     return (
       <div className="flex items-center gap-2 py-3" style={{ color: 'rgba(var(--text) / 0.35)', fontSize: 'var(--type-xs)' }}>
         <IconFan style={{ width: 14, height: 14 }} />
-        No CoolMaster units detected
+        No AC units found
       </div>
     );
   }
@@ -1843,10 +1853,10 @@ const ClimateCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
       >
         <div className="climate-comp-deck" data-cols={activeSectionCount}>
 
-          {/* ── Airzone section ─────────────────────────────────────────────── */}
+          {/* ── Rooms (Airzone) section ─────────────────────────────────────── */}
           {config.showAirzone && (
             <CollapsibleSection
-              title="Airzone"
+              title={config.airzoneLabel}
               icon={<IconWind style={{ width: 16, height: 16 }} />}
               accent={COOL}
               defaultOpen={true}
@@ -1863,10 +1873,10 @@ const ClimateCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
             </CollapsibleSection>
           )}
 
-          {/* ── AE-200E section ─────────────────────────────────────────────── */}
+          {/* ── Central AC (AE-200E) section ─────────────────────────────────── */}
           {config.showAe200 && (
             <CollapsibleSection
-              title="AE-200E City Multi"
+              title={config.ae200Label}
               icon={<IconActivity style={{ width: 16, height: 16 }} />}
               accent={heroStats.dominant === 'heating' ? HEAT : COOL}
               defaultOpen={true}
@@ -1885,10 +1895,10 @@ const ClimateCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
             </CollapsibleSection>
           )}
 
-          {/* ── CoolMaster section ──────────────────────────────────────────── */}
+          {/* ── AC Units (CoolMaster) section ────────────────────────────────── */}
           {config.showCoolMaster && (
             <CollapsibleSection
-              title="CoolMaster VRF"
+              title={config.coolMasterLabel}
               icon={<IconFan style={{ width: 16, height: 16 }} />}
               accent={COOL}
               defaultOpen={true}
@@ -1911,7 +1921,7 @@ const ClimateCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
           <div className="flex items-center justify-center" style={{ gap: 'var(--space-2)', padding: 'var(--space-2)' }}>
             <IconAlertTriangle style={{ width: 12, height: 12, color: HEAT }} />
             <span style={{ fontSize: 'var(--type-2xs)', color: HEAT, fontWeight: 600 }}>
-              Airzone data may be stale — reconnecting
+              Room data may be stale — reconnecting
             </span>
           </div>
         )}
