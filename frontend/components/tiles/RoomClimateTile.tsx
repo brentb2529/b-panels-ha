@@ -297,17 +297,22 @@ const RoomClimateTile = ({
                     flexShrink: 0,
                 }}
             >
-                {/* Left: name + role badge (the mode glyph lives in the rail) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+                {/* Left: name + role badge (the mode glyph lives in the rail).
+                    flex:1 + minWidth:0 lets the name truncate (ellipsis) instead of
+                    pushing the status badge off-card. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, flex: 1 }}>
                     <h3
                         style={{
                             margin: 0,
                             fontFamily: 'var(--font-display)',
-                            fontSize: 'var(--type-md)',
+                            // Container-relative so the name scales to the card width.
+                            fontSize: 'clamp(0.82rem, 4.2cqi, 1rem)',
                             fontWeight: 600,
                             letterSpacing: 'var(--tracking-tight)',
                             color: 'rgb(var(--text))',
                             lineHeight: 1.2,
+                            minWidth: 0,
+                            flex: '0 1 auto',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -323,7 +328,7 @@ const RoomClimateTile = ({
                                 flexShrink: 0,
                                 padding: '2px 6px',
                                 borderRadius: 'var(--radius-chip)',
-                                fontSize: 'var(--type-2xs)',
+                                fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)',
                                 fontWeight: 700,
                                 letterSpacing: 'var(--tracking-caps)',
                                 textTransform: 'uppercase',
@@ -344,7 +349,7 @@ const RoomClimateTile = ({
                                 flexShrink: 0,
                                 padding: '2px 6px',
                                 borderRadius: 'var(--radius-chip)',
-                                fontSize: 'var(--type-2xs)',
+                                fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)',
                                 fontWeight: 600,
                                 letterSpacing: 'var(--tracking-caps)',
                                 textTransform: 'uppercase',
@@ -366,12 +371,13 @@ const RoomClimateTile = ({
                             display: 'flex',
                             alignItems: 'center',
                             gap: 4,
-                            fontSize: 'var(--type-2xs)',
+                            fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)',
                             fontWeight: 600,
                             letterSpacing: 'var(--tracking-caps)',
                             textTransform: 'uppercase',
                             color: 'rgba(var(--text) / 0.38)',
                             flexShrink: 0,
+                            whiteSpace: 'nowrap',
                         }}
                     >
                         <IconWifiOff style={{ width: 11, height: 11 }} />
@@ -385,11 +391,12 @@ const RoomClimateTile = ({
                             gap: 5,
                             padding: '3px 8px',
                             borderRadius: 'var(--radius-pill)',
-                            fontSize: 'var(--type-2xs)',
+                            fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)',
                             fontWeight: 700,
                             letterSpacing: 'var(--tracking-caps)',
                             textTransform: 'uppercase',
                             flexShrink: 0,
+                            whiteSpace: 'nowrap',
                             color: action.colorVar,
                             backgroundColor: `color-mix(in srgb, ${action.colorVar} 14%, transparent)`,
                             border: `1px solid color-mix(in srgb, ${action.colorVar} 30%, transparent)`,
@@ -481,11 +488,11 @@ const RoomClimateTile = ({
                         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                             {tempProgress && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'var(--type-2xs)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)' }}>
-                                            <IconThermometer style={{ width: 10, height: 10, opacity: 0.7 }} /> Temp
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                                            <IconThermometer style={{ width: 10, height: 10, opacity: 0.7, flexShrink: 0 }} /> Temp
                                         </span>
-                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)' }}>
+                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'clamp(0.6rem, 2.9cqi, 0.78rem)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                             {tempProgress.value.toFixed(1)}{unit}
                                         </span>
                                     </div>
@@ -502,11 +509,11 @@ const RoomClimateTile = ({
                             )}
                             {zone.currentHumidity != null && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'var(--type-2xs)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)' }}>
-                                            <IconDroplets style={{ width: 10, height: 10, opacity: 0.7 }} /> Humidity
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 'clamp(0.5rem, 2.4cqi, 0.6rem)', fontWeight: 600, letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgba(var(--text) / 0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                                            <IconDroplets style={{ width: 10, height: 10, opacity: 0.7, flexShrink: 0 }} /> Humidity
                                         </span>
-                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)' }}>
+                                        <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'clamp(0.6rem, 2.9cqi, 0.78rem)', fontWeight: 600, color: 'rgba(var(--text) / 0.7)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                             {Math.round(zone.currentHumidity)}%
                                         </span>
                                     </div>
@@ -552,23 +559,35 @@ const RoomClimateTile = ({
                             onClick={() => step(-zone.tempStep)}
                         />
 
-                        {/* Setpoint digit */}
+                        {/* Setpoint digit. flex:1 + minWidth:0 + overflow:hidden so
+                            the number column takes the space BETWEEN the two fixed
+                            steppers and can never push or overlap them. */}
                         <div
                             style={{
+                                flex: 1,
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
                                 lineHeight: 1,
                                 gap: 3,
                                 minWidth: 0,
+                                overflow: 'hidden',
                             }}
                         >
                             <div
                                 style={{
+                                    // Sized to the card width but with a tight cap so the
+                                    // hero fits the console region between the −/+ beads
+                                    // at both ~16rem (narrow) and ~24rem (wide) cards.
                                     fontFamily: 'var(--font-numeric)',
-                                    fontSize: 'var(--type-hero)',
+                                    fontSize: 'clamp(1.7rem, 12cqi, 2.85rem)',
                                     fontWeight: 700,
                                     letterSpacing: '-0.04em',
+                                    lineHeight: 1,
+                                    maxWidth: '100%',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'clip',
                                     color: activeGlass ? colorVar : 'rgba(var(--text) / 0.90)',
                                     textShadow: activeGlass
                                         ? `0 0 24px color-mix(in srgb, ${colorVar} 50%, transparent)`
@@ -605,10 +624,14 @@ const RoomClimateTile = ({
                                 <span
                                     style={{
                                         fontFamily: 'var(--font-numeric)',
-                                        fontSize: 'var(--type-xs)',
+                                        fontSize: 'clamp(0.56rem, 2.7cqi, 0.7rem)',
                                         fontWeight: 500,
                                         color: 'rgba(var(--text) / 0.40)',
                                         letterSpacing: '-0.01em',
+                                        whiteSpace: 'nowrap',
+                                        maxWidth: '100%',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
                                     }}
                                 >
                                     {zone.targetTempLow.toFixed(0)}–{zone.targetTempHigh.toFixed(0)}{unit}
@@ -659,19 +682,23 @@ const RoomClimateTile = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 5,
+                                maxWidth: '100%',
                                 fontFamily: 'var(--font-body)',
-                                fontSize: 'var(--type-sm)',
+                                fontSize: 'clamp(0.68rem, 3.3cqi, 0.84rem)',
                                 fontWeight: 600,
                                 color: 'rgb(var(--text))',
                                 letterSpacing: 'var(--tracking-tight)',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                             }}
                         >
-                            <ModeIcon mode={zone.hvacMode} style={{ width: 14, height: 14 }} />
+                            <ModeIcon mode={zone.hvacMode} style={{ width: 14, height: 14, flexShrink: 0 }} />
                             {modeLabel(zone.hvacMode)}
                         </span>
                         <span
                             style={{
-                                fontSize: 'var(--type-2xs)',
+                                fontSize: 'clamp(0.48rem, 2.3cqi, 0.6rem)',
                                 fontWeight: 500,
                                 letterSpacing: 'var(--tracking-caps)',
                                 textTransform: 'uppercase',
@@ -734,11 +761,15 @@ const RoomClimateTile = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 5,
+                                maxWidth: '100%',
                                 fontFamily: 'var(--font-body)',
-                                fontSize: 'var(--type-sm)',
+                                fontSize: 'clamp(0.68rem, 3.3cqi, 0.84rem)',
                                 fontWeight: 600,
                                 letterSpacing: 'var(--tracking-tight)',
                                 color: !isOff && !disabled ? colorVar : 'rgb(var(--text))',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                                 transition: `color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
                             }}
                         >
@@ -747,6 +778,7 @@ const RoomClimateTile = ({
                                 style={{
                                     width: 14,
                                     height: 14,
+                                    flexShrink: 0,
                                     filter: isRunning ? `drop-shadow(0 0 4px ${colorVar})` : undefined,
                                 }}
                             />
@@ -755,7 +787,7 @@ const RoomClimateTile = ({
                         {isSlave && modeRouted && (
                             <span
                                 style={{
-                                    fontSize: 'var(--type-2xs)',
+                                    fontSize: 'clamp(0.48rem, 2.3cqi, 0.6rem)',
                                     fontWeight: 500,
                                     letterSpacing: 'var(--tracking-caps)',
                                     textTransform: 'uppercase',
@@ -795,11 +827,13 @@ const RoomClimateTile = ({
                             border: '1px solid var(--glass-l3-border)',
                             boxShadow: 'var(--rim)',
                             fontFamily: 'var(--font-body)',
-                            fontSize: 'var(--type-sm)',
+                            fontSize: 'clamp(0.68rem, 3.3cqi, 0.84rem)',
                             fontWeight: 500,
                             color: 'rgba(var(--text) / 0.75)',
                             letterSpacing: 'var(--tracking-tight)',
                             whiteSpace: 'nowrap',
+                            minWidth: 0,
+                            maxWidth: '50%',
                             transition: [
                                 `transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))`,
                                 `opacity 120ms ease`,
@@ -820,8 +854,9 @@ const RoomClimateTile = ({
                             size={15}
                             colorVar={disabled ? 'rgba(var(--text) / 0.4)' : 'currentColor'}
                             title={`Fan ${zone.fanMode ?? ''}`.trim()}
+                            style={{ flexShrink: 0 }}
                         />
-                        <span style={{ textTransform: 'capitalize' }}>
+                        <span style={{ textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                             {zone.fanMode ?? 'Fan'}
                         </span>
                     </button>
