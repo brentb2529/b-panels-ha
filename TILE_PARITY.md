@@ -470,19 +470,28 @@ wiring is delegated to the three sub-hooks already verified above.
 | `lutronAreaFilter` | string[] | `['pool','patio','spa','cabana','outdoor']` | Area name contains-match filter |
 | `areaName` | string | `'Pool Area'` | Hero header display name (overridden by `tile.label`) |
 
-**Layout (hero-first, full-width)**: a full-bleed `PoolHeroScene` cross-section
-"pool window" is the centerpiece — animated water column with the AKVO floor plate
-drawn at its real depth, plus pool/spa temps, body on/off, floor status and
-lights-on as glass HUD chips anchored to both edges. Controls lay out full-width
-below in a stretchy container-query grid (`1fr` tracks, 3/2/1 columns by width,
-capped to active-section count) so there is no left-packing or right-side dead
-space at wall resolution.
+**Layout (sophisticated / tight / high-def; iPad-landscape first)**: a high-
+fidelity CSS gradient-mesh water hero (`PoolHeroScene`, NOT an SVG diagram) is the
+centerpiece — deep navy→teal depth, blurred refraction lights, a masked caustic
+lattice, one slow specular travel, top sheen + vignette; retina-sharp at 2×. The
+AKVO floor reads as an elegant right-edge depth gauge (luminous rule at real
+depth, state-colored), with crisp glass HUD chips (temps + body toggles, floor
+status/config/depth, lights). Below, a tight full-width instrument grid (`1fr`
+tracks, container queries 3/2/1 cols, `data-cols` cap) sized to fit iPad landscape
+1366×1024 on one screen.
 
-**AKVO safety**: `AkvoSectionContent` replicates the same `HOLD_MS = 2000`
-press-and-hold gate + `evaluateGate` check + single `requestConfiguration()` call
-(which issues `select.select_option`) that `AkvoFloorSurface` uses. The hero floor
-visualization is display-only (position/motion/faults). No raw motion commands.
+**Visual instrument widgets (no text rows)**: pump RPM/W/GPM `ArcGauge` dials;
+chemistry pH/ORP/Salt `ChemDial` (270° dial with healthy band + in-range color);
+SWG% and pump-speed `VisualSlider` (track + fill + stepper beads); lights
+`LightSwatchCard` (live hs/CCT color swatch + brightness); shades `ShadeGlyphCard`
+(window glyph with shade at real position).
 
-**Status**: ✅ built (hero-centric rebalance). Needs runtime verification that the
-area filter matches expected Lutron areas, that all three sub-surfaces populate in
-the same panel instance, and that the hero floor plate tracks real AKVO depth.
+**AKVO safety (unchanged)**: `AkvoSectionContent` replicates the same
+`HOLD_MS = 2000` press-and-hold gate + `evaluateGate` check + single
+`requestConfiguration()` call (which issues `select.select_option`) that
+`AkvoFloorSurface` uses. The hero floor depth gauge is display-only. No raw motion.
+
+**Status**: ✅ built (sophisticated/tight/high-def pass). Needs runtime
+verification at 1366×1024 @2× that the deck fits with minimal scroll, the area
+filter matches expected Lutron areas, all three sub-surfaces populate together,
+and the depth gauge tracks real AKVO depth.

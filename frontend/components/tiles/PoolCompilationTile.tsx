@@ -18,35 +18,34 @@
  *       useLutronSurface() with a configurable area/name filter so only
  *       pool-area entities appear in the compilation panel.
  *
- * ANIMATED BACKDROP: a rich SVG + CSS caustics/ripple scene with multi-layer
- * depth gradients, animated caustic shimmer rings, refraction shimmer, and a
- * subtle depth-of-field blur on the pool floor — the liquid-glass cards float
- * above it. The backdrop is purely decorative and pointer-events: none.
+ * AESTHETIC: sophisticated, tight, high-definition — a premium product surface,
+ * not a busy schematic. The HERO is a high-fidelity CSS gradient-mesh water
+ * treatment (retina-sharp, slow/minimal motion only — no toy bubbles/ripples).
+ * The control deck is a tight full-width grid of VISUAL INSTRUMENT widgets (arc
+ * gauges, chemistry dials with healthy-range coloring, color swatches, shade
+ * glyphs, sliders) — minimal plain text rows. Primary target: iPad landscape
+ * 1366×1024 (one screen, minimal scroll); mobile stays responsive.
  *
  * CONFIGURABLE: All three integration feeds are gated by optional config baked
  * into the virtualDevice's state (a `PoolAreaConfig` object). Every field is
- * optional — sensible defaults cover the common case. In the Admin panel the
- * user can set JSON in the device state to control which sections appear and
- * which Lutron area slug(s) to filter on.
+ * optional — sensible defaults cover the common case.
  *
  * LAYOUT:
  *   ┌─────────────────────────────────────────────────────────────────────────┐
- *   │  HERO BAND — water temp + pool/spa status + floor position + live dot   │
+ *   │  HERO — high-fidelity water + temps/body toggles + AKVO depth gauge     │
  *   ├──────────────────┬──────────────────┬──────────────────────────────────┤
- *   │  POOL CONTROLS   │   CHEMISTRY      │   FLOOR (AKVO)                   │
- *   │  bodies          │   salt/pH/ORP    │   cross-section + presets        │
- *   │  heater/heat     │   SWG output     │   (safety-guarded)               │
- *   ├──────────────────┴──────────────────┼──────────────────────────────────┤
- *   │  PUMPS + SENSORS                    │   LIGHTING & SHADES (Lutron)     │
- *   │  arc gauges, speed setpoints        │   pool/patio area filtered       │
- *   │  probe temps                        │                                  │
- *   └─────────────────────────────────────┴──────────────────────────────────┘
+ *   │  POOL & SPA      │   MOVABLE FLOOR  │   LIGHTING & SHADES              │
+ *   │  bodies, lights, │   guarded preset │   swatch cards + shade glyphs    │
+ *   │  chem dials, SWG │   console        │   (pool-area filtered)           │
+ *   ├──────────────────┴──────────────────┴──────────────────────────────────┤
+ *   │  PUMPS & SENSORS (collapsed) — arc gauges, speed sliders, probes        │
+ *   └─────────────────────────────────────────────────────────────────────────┘
  *
  * Responsive: container-query driven. Narrow → single column stacked.
  *
- * SAFETY: AKVO section is display + guarded-preset ONLY. No raw motion. This
- * component NEVER directly calls any AKVO service — the entire AkvoFloorSurface
- * subtree is responsible for its own safety logic.
+ * SAFETY: AKVO section is display + guarded-preset ONLY. No raw motion. The hero
+ * floor depth gauge renders state only; the guarded console owns the single
+ * sanctioned write (select.select_option via requestConfiguration).
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
@@ -72,27 +71,26 @@ import {
   toggleLight as lutronToggleLight,
   setLightBrightness as lutronSetBrightness,
   openCover, closeCover, stopCover,
-  activateScene, pressButton,
+  activateScene,
 } from '../../services/lutron';
 import type { LutronLightState, LutronCoverState, LutronSceneState } from '../../services/lutron';
 
 // ── Design system ──────────────────────────────────────────────────────────────
-import { BuildBar, GlassPanel, GlassCard, GlassButton, useReducedMotion } from '../../design-system';
+import { useReducedMotion } from '../../design-system';
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 import {
-  IconThermometer, IconFlame, IconSnowflake, IconDroplets, IconZap,
-  IconWaves, IconPower, IconAlertTriangle, IconCheck, IconX,
-  IconActivity, IconLightbulb, IconSun, IconInfo,
-  IconLoader2, IconWifiOff, IconShieldAlert, IconShieldCheck,
-  IconAlertOctagon, IconMoveVertical, IconHand, IconCheckCircle,
+  IconThermometer, IconFlame, IconDroplets,
+  IconWaves, IconAlertTriangle, IconX,
+  IconActivity, IconLightbulb, IconSun,
+  IconLoader2, IconWifiOff, IconShieldAlert,
+  IconHand,
   IconLayers, IconChevronDown,
 } from '../icons';
 
 // ── Helpers from PoolSurfaceTile ───────────────────────────────────────────────
 import {
-  fluidTextXs, fluidTextSm, fluidTextBase, fluidTextLg, fluidTextXl,
-  fluidText2xl, fluidText3xl, fluidGap, fluidPad,
+  fluidTextXs, fluidTextSm, fluidTextLg,
 } from './tileScale';
 
 // ── AKVO types ─────────────────────────────────────────────────────────────────
@@ -171,101 +169,62 @@ function ensureAnims() {
   _animsInjected = true;
   const s = document.createElement('style');
   s.textContent = `
-/* Pool Compilation Tile - keyframes */
-@keyframes pool-comp-caustic-spin {
-  0%   { transform: rotate(0deg)   scale(1);    opacity: 0.18; }
-  50%  { transform: rotate(180deg) scale(1.08); opacity: 0.26; }
-  100% { transform: rotate(360deg) scale(1);    opacity: 0.18; }
+/* ── Pool Compilation Tile keyframes ─────────────────────────────────────────
+   SOPHISTICATED / RESTRAINED: motion is minimal, slow, and purposeful only.
+   No bubbles, no spinning caustics, no glint sweeps, no toy ripples. */
+
+/* Very slow, subtle caustic light drift across the hero water (15s+). */
+@keyframes pool-comp-caustic-drift {
+  0%   { transform: translate3d(0,0,0)        scale(1);    }
+  50%  { transform: translate3d(-2%, 1.5%, 0) scale(1.04); }
+  100% { transform: translate3d(0,0,0)        scale(1);    }
 }
-@keyframes pool-comp-caustic-spin2 {
-  0%   { transform: rotate(0deg)   scale(1);    opacity: 0.12; }
-  50%  { transform: rotate(-180deg) scale(1.12); opacity: 0.20; }
-  100% { transform: rotate(-360deg) scale(1);   opacity: 0.12; }
-}
-@keyframes pool-comp-ripple-expand {
-  0%   { transform: scale(0.8); opacity: 0.35; }
-  100% { transform: scale(2.2); opacity: 0;   }
-}
-@keyframes pool-comp-wave-drift {
-  0%   { transform: translateX(0);    }
-  100% { transform: translateX(-80px); }
-}
-@keyframes pool-comp-shimmer-sweep {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center;  }
-}
+/* Gentle luminance breathing for depth shafts — barely perceptible. */
 @keyframes pool-comp-depth-pulse {
-  0%,100% { opacity: 0.6; }
-  50%     { opacity: 0.9; }
+  0%,100% { opacity: 0.55; }
+  50%     { opacity: 0.78; }
 }
-@keyframes pool-comp-surface-glint {
-  0%,100% { opacity: 0; transform: translateX(-100%) skewX(-20deg); }
-  50%     { opacity: 1; transform: translateX(100%)  skewX(-20deg); }
+/* Slow surface specular travel (sophisticated highlight, ~14s). */
+@keyframes pool-comp-specular-travel {
+  0%   { transform: translateX(-12%); opacity: 0.0; }
+  35%  { opacity: 0.55; }
+  65%  { opacity: 0.55; }
+  100% { transform: translateX(12%);  opacity: 0.0; }
 }
-@keyframes pool-comp-live-pulse {
-  0%,100% { opacity: 1; transform: scale(1);   }
-  50%     { opacity: 0.4; transform: scale(1.9); }
-}
+/* Alert pulse — reserved strictly for fault/moving states. */
 @keyframes pool-comp-akvo-alert {
   0%,100% { opacity: 1;   }
-  50%     { opacity: 0.38; }
+  50%     { opacity: 0.42; }
 }
 @keyframes pool-comp-akvo-ripple {
   0%   { transform: scale(1);   opacity: 0.7; }
   100% { transform: scale(2.4); opacity: 0;   }
 }
 @keyframes pool-comp-section-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
-/* Hero scene */
-@keyframes pool-comp-hero-wave-drift {
-  0%   { transform: translateX(0);     }
-  100% { transform: translateX(-120px); }
-}
-@keyframes pool-comp-hero-wave-drift2 {
-  0%   { transform: translateX(0);    }
-  100% { transform: translateX(90px);  }
-}
-@keyframes pool-comp-hero-shimmer {
-  0%   { transform: translateY(0)   scaleY(1);    opacity: 0.5; }
-  50%  { transform: translateY(-4px) scaleY(1.04); opacity: 0.85; }
-  100% { transform: translateY(0)   scaleY(1);    opacity: 0.5; }
-}
-@keyframes pool-comp-bubble-rise {
-  0%   { transform: translateY(0)    scale(1);   opacity: 0;   }
-  15%  { opacity: 0.6; }
-  100% { transform: translateY(-120px) scale(0.4); opacity: 0; }
-}
-@keyframes pool-comp-cable-flow {
-  0%   { stroke-dashoffset: 16; }
-  100% { stroke-dashoffset: 0;  }
-}
-@keyframes pool-comp-plate-arrow {
-  0%,100% { opacity: 0.35; }
-  50%     { opacity: 1;    }
-}
-@keyframes pool-comp-readout-float {
-  0%,100% { transform: translateY(0);    }
-  50%     { transform: translateY(-3px); }
+/* Gauge needle/arc settle on mount + value change. */
+@keyframes pool-comp-gauge-sweep {
+  from { stroke-dashoffset: var(--gauge-circ); }
+  to   { stroke-dashoffset: var(--gauge-target); }
 }
 
-/* ── Full-width balanced control grid ────────────────────────────────────────
+/* ── Tight, full-width control grid (iPad-landscape first) ────────────────────
    Stretchy equal columns (NOT auto-fill) so cards fill the row edge-to-edge.
-   Column count steps up with the container width; tracks always 1fr. */
+   Primary target: iPad landscape 1366×1024 → 3 columns on one screen. */
 .pool-comp-deck {
   display: grid;
   grid-template-columns: 1fr;             /* mobile: single column */
-  gap: clamp(0.5rem, 2cqw, 0.9rem);
-  align-items: start;
+  gap: clamp(0.4rem, 1.4cqw, 0.7rem);
+  align-items: stretch;
   width: 100%;
 }
-@container (min-width: 40rem) {
+@container (min-width: 38rem) {
   .pool-comp-deck { grid-template-columns: 1fr 1fr; }
-  /* A single active section stays full-width even at tablet size. */
   .pool-comp-deck[data-cols="1"] { grid-template-columns: 1fr; }
 }
-@container (min-width: 64rem) {
+@container (min-width: 60rem) {
   .pool-comp-deck { grid-template-columns: 1fr 1fr 1fr; }
   .pool-comp-deck[data-cols="1"] { grid-template-columns: 1fr; }
   .pool-comp-deck[data-cols="2"] { grid-template-columns: 1fr 1fr; }
@@ -383,7 +342,7 @@ const SectionCard: React.FC<{
       boxShadow: active && accent
         ? `var(--rim), inset 0 0 24px -6px color-mix(in srgb, ${accent} 22%, transparent), var(--elev-2)`
         : 'var(--rim), var(--elev-1)',
-      padding: 'var(--space-4)',
+      padding: 'clamp(0.5rem, 1.6cqw, 0.85rem)',
       transition: `background-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)), border-color var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
       animation: 'pool-comp-section-in 380ms var(--spring-gentle, cubic-bezier(0.22,1,0.36,1)) both',
       ...style,
@@ -531,6 +490,294 @@ const ArcGauge: React.FC<{ value: number | null; max: number; label: string; uni
 };
 
 // =============================================================================
+// INSTRUMENT WIDGETS (chemistry dial, visual slider, light/shade glyphs)
+// =============================================================================
+
+/**
+ * ChemDial — a 270° radial dial reading a chemistry value, with a healthy band
+ * drawn into the track and a needle/value colored by whether the reading is in
+ * range. Sophisticated instrument, not a text row.
+ */
+const ChemDial: React.FC<{
+  label: string;
+  value: number | null;
+  unit?: string;
+  min: number;
+  max: number;
+  /** [lo, hi] healthy band in value units */
+  healthy: [number, number];
+  /** value formatting */
+  format?: (v: number) => string;
+  reduced: boolean;
+}> = ({ label, value, unit, min, max, healthy, format, reduced }) => {
+  const cx = 40, cy = 40, r = 30;
+  const circ = 2 * Math.PI * r;
+  const sweep = 0.75;                       // 270° dial
+  const trackLen = circ * sweep;
+  const norm = (v: number) => Math.max(0, Math.min(1, (v - min) / (max - min)));
+  const inRange = value != null && value >= healthy[0] && value <= healthy[1];
+  const tone = value == null
+    ? 'rgba(var(--text) / 0.4)'
+    : inRange ? PLUG
+    : (value < healthy[0] - (healthy[1] - healthy[0]) || value > healthy[1] + (healthy[1] - healthy[0])) ? ALERT
+    : WARN;
+  const valFrac = value != null ? norm(value) : 0;
+  const valLen = valFrac * trackLen;
+  // healthy band arc
+  const hLo = norm(healthy[0]) * trackLen;
+  const hHi = norm(healthy[1]) * trackLen;
+  const startRot = 135; // begin bottom-left, sweep clockwise
+
+  return (
+    <div className="flex flex-col items-center flex-1 min-w-0" style={{
+      borderRadius: 'var(--radius-control)',
+      padding: 'clamp(0.3rem, 1.6cqw, 0.55rem) clamp(0.2rem, 1.2cqw, 0.4rem)',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: value != null ? `color-mix(in srgb, ${tone} 13%, var(--glass-l3-bg))` : 'var(--glass-l3-bg)',
+      backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+      border: `1px solid ${value != null ? `color-mix(in srgb, ${tone} 34%, var(--glass-l3-border))` : 'var(--glass-l3-border)'}`,
+      boxShadow: value != null ? `var(--rim), 0 0 12px -4px color-mix(in srgb, ${tone} 30%, transparent)` : 'var(--rim), var(--elev-1)',
+      transition: 'all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))',
+    }}>
+      <svg viewBox="0 0 80 80" style={{ width: 'clamp(48px, 14cqw, 76px)', height: 'clamp(48px, 14cqw, 76px)' }}>
+        {/* base track */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6"
+          strokeDasharray={`${trackLen.toFixed(1)} ${circ.toFixed(1)}`} strokeLinecap="round"
+          style={{ transform: `rotate(${startRot - 90}deg)`, transformOrigin: `${cx}px ${cy}px` }} />
+        {/* healthy band */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={`color-mix(in srgb, ${PLUG} 60%, transparent)`} strokeWidth="6"
+          strokeDasharray={`${(hHi - hLo).toFixed(1)} ${circ.toFixed(1)}`} strokeDashoffset={`${(-hLo).toFixed(1)}`} strokeLinecap="butt"
+          style={{ transform: `rotate(${startRot - 90}deg)`, transformOrigin: `${cx}px ${cy}px`, opacity: 0.5 }} />
+        {/* value arc */}
+        {value != null && (
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={tone} strokeWidth="6"
+            strokeDasharray={`${valLen.toFixed(1)} ${circ.toFixed(1)}`} strokeLinecap="round"
+            style={{
+              transform: `rotate(${startRot - 90}deg)`, transformOrigin: `${cx}px ${cy}px`,
+              filter: `drop-shadow(0 0 4px ${tone})`,
+              transition: reduced ? 'none' : 'stroke-dasharray 0.7s cubic-bezier(0.22,1,0.36,1)',
+            }} />
+        )}
+        <text x={cx} y={cy + 2} textAnchor="middle" fill="rgb(var(--text))"
+          style={{ fontSize: '17px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+          {value != null ? (format ? format(value) : String(Math.round(value))) : '--'}
+        </text>
+        {unit && (
+          <text x={cx} y={cy + 14} textAnchor="middle" fill="rgba(var(--text) / 0.45)" style={{ fontSize: '8px', fontWeight: 600 }}>{unit}</text>
+        )}
+      </svg>
+      <span className="uppercase font-bold tracking-wider text-center truncate w-full"
+        style={{ fontSize: 'clamp(0.42rem, 2.6cqw, 0.58rem)', color: 'rgba(var(--text) / 0.55)', marginTop: 1 }}>
+        {label}
+      </span>
+    </div>
+  );
+};
+
+/**
+ * VisualSlider — a glass track + fill + stepper beads for a 0..max value
+ * (SWG output %, pump speed). Visual instrument, not a text row.
+ */
+const VisualSlider: React.FC<{
+  label: string; value: number | null; min: number; max: number; step: number;
+  unit?: string; color?: string; onChange: (v: number) => void;
+}> = ({ label, value, min, max, step, unit, color = WATER, onChange }) => {
+  const [local, setLocal] = useState<number | null>(null);
+  const v = local ?? value ?? min;
+  const pct = Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+  const dec = () => { const n = Math.max(min, v - step); setLocal(n); onChange(n); };
+  const inc = () => { const n = Math.min(max, v + step); setLocal(n); onChange(n); };
+  const Bead = ({ symbol, onClick }: { symbol: string; onClick: () => void }) => (
+    <button onClick={onClick} style={{
+      width: 22, height: 22, borderRadius: 999, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: 'var(--glass-l3-bg)', backgroundImage: 'var(--specular-strong), var(--glass-l3-tint)',
+      border: '1px solid var(--glass-l3-border)', boxShadow: 'var(--rim)',
+      color: 'rgb(var(--text))', fontSize: '0.85rem', fontWeight: 300, lineHeight: 1, cursor: 'pointer',
+      transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+    }}
+      onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.85)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+    >{symbol}</button>
+  );
+  return (
+    <div className="flex flex-col" style={{
+      borderRadius: 'var(--radius-control)', padding: 'clamp(0.3rem, 1.4cqw, 0.5rem)', gap: 4,
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: `color-mix(in srgb, ${color} 9%, var(--glass-l3-bg))`,
+      backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+      border: `1px solid color-mix(in srgb, ${color} 26%, var(--glass-l3-border))`,
+      boxShadow: 'var(--rim), var(--elev-1)',
+    }}>
+      <div className="flex items-center justify-between">
+        <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(var(--text) / 0.6)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>{label}</span>
+        <span style={{ fontSize: 'var(--type-sm)', fontWeight: 800, color, fontVariantNumeric: 'tabular-nums' as const }}>
+          {Math.round(v)}<span style={{ fontSize: '0.7em', fontWeight: 500, color: 'rgba(var(--text) / 0.45)', marginLeft: 1 }}>{unit}</span>
+        </span>
+      </div>
+      <div className="flex items-center" style={{ gap: 6 }}>
+        <Bead symbol="−" onClick={dec} />
+        <div className="relative flex-1 overflow-hidden" style={{ height: 6, borderRadius: 999, background: 'rgba(255,255,255,0.07)' }}>
+          <div className="absolute inset-y-0 left-0" style={{
+            width: `${pct}%`, borderRadius: 999,
+            background: `linear-gradient(90deg, color-mix(in srgb, ${color} 55%, transparent), ${color})`,
+            boxShadow: pct > 4 ? `0 0 6px ${color}` : 'none',
+            transition: 'width var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))',
+          }} />
+        </div>
+        <Bead symbol="+" onClick={inc} />
+      </div>
+    </div>
+  );
+};
+
+// HS (hue 0-360, sat 0-100) → RGB triplet.
+function hsToRgb(h: number, s: number): [number, number, number] {
+  const sat = s / 100, l = 0.6;
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const hp = h / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp >= 0 && hp < 1) [r, g, b] = [c, x, 0];
+  else if (hp < 2) [r, g, b] = [x, c, 0];
+  else if (hp < 3) [r, g, b] = [0, c, x];
+  else if (hp < 4) [r, g, b] = [0, x, c];
+  else if (hp < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+// Kelvin → approximate RGB (2000–7000K range warm→cool).
+function kelvinToRgb(k: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, (k - 2000) / 5000));
+  // warm amber (255,180,107) → cool white (201,226,255)
+  return [
+    Math.round(255 + t * (201 - 255)),
+    Math.round(180 + t * (226 - 180)),
+    Math.round(107 + t * (255 - 107)),
+  ];
+}
+function lutronLightRgb(l: LutronLightState): [number, number, number] | null {
+  if (l.hsColor) return hsToRgb(l.hsColor[0], l.hsColor[1]);
+  if (l.colorTempKelvin) return kelvinToRgb(l.colorTempKelvin);
+  return null;
+}
+
+/**
+ * LightSwatchCard — a light tile with a live COLOR SWATCH disk (reflecting the
+ * bulb's actual rgb/effect when on), a brightness ring, name, and toggle.
+ */
+const LightSwatchCard: React.FC<{
+  name: string; isOn: boolean; rgb?: [number, number, number] | null; brightness?: number | null;
+  hasFx?: boolean; onToggle: () => void; onFx?: () => void;
+}> = ({ name, isOn, rgb, brightness, hasFx, onToggle, onFx }) => {
+  const swatch = isOn
+    ? (rgb ? `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]})` : 'rgb(255 214 140)')
+    : 'rgba(255,255,255,0.10)';
+  const bpct = brightness != null ? Math.round(brightness) : null;
+  return (
+    <div className="flex items-center" style={{
+      gap: 8, borderRadius: 'var(--radius-control)', padding: 'clamp(0.3rem, 1.4cqw, 0.5rem) clamp(0.4rem, 1.6cqw, 0.6rem)',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: isOn ? `color-mix(in srgb, ${WARN} 12%, var(--glass-l3-bg))` : 'var(--glass-l3-bg)',
+      backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+      border: `1px solid ${isOn ? `color-mix(in srgb, ${WARN} 34%, var(--glass-l3-border))` : 'var(--glass-l3-border)'}`,
+      boxShadow: isOn ? `var(--rim), 0 0 10px -3px color-mix(in srgb, ${WARN} 30%, transparent)` : 'var(--rim)',
+      transition: 'all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))',
+    }}>
+      {/* swatch disk */}
+      <button onClick={onToggle} aria-label={`${name} toggle`} style={{
+        position: 'relative', width: 26, height: 26, borderRadius: 999, flexShrink: 0, cursor: 'pointer',
+        border: '1px solid rgba(255,255,255,0.25)', padding: 0,
+        background: swatch,
+        boxShadow: isOn ? `0 0 10px 1px ${swatch}, inset 0 1px 2px rgba(255,255,255,0.5)` : 'inset 0 1px 2px rgba(255,255,255,0.12)',
+        transition: 'all var(--dur-medium, 260ms) ease',
+      }}>
+        {!isOn && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <IconLightbulb style={{ width: 12, height: 12, color: 'rgba(255,255,255,0.4)' }} />
+        </span>}
+      </button>
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="truncate" style={{ fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.85)' }}>{name}</span>
+        <span style={{ fontSize: 'var(--type-2xs)', color: isOn ? WARN : 'rgba(var(--text) / 0.35)', fontWeight: 600 }}>
+          {isOn ? (bpct != null ? `${bpct}%` : 'On') : 'Off'}
+        </span>
+      </div>
+      {hasFx && (
+        <button onClick={onFx} title="Effect" style={{
+          fontSize: 'var(--type-2xs)', fontWeight: 700, color: WATER, cursor: 'pointer',
+          padding: '2px 6px', borderRadius: 'var(--radius-chip)',
+          backgroundColor: `color-mix(in srgb, ${WATER} 16%, var(--glass-l3-bg))`,
+          border: `1px solid color-mix(in srgb, ${WATER} 36%, var(--glass-l3-border))`,
+        }}>FX</button>
+      )}
+    </div>
+  );
+};
+
+/**
+ * ShadeGlyphCard — a window glyph with the shade drawn at its real position
+ * (0 = closed/down, 100 = open/up), plus open/stop/close beads.
+ */
+const ShadeGlyphCard: React.FC<{
+  name: string; position: number | null; onOpen: () => void; onStop: () => void; onClose: () => void;
+}> = ({ name, position, onOpen, onStop, onClose }) => {
+  const pos = position ?? 0;                  // 0..100 open
+  const shadeDrop = 100 - pos;                // % of window the shade covers from top
+  const Bead = ({ children, onClick, label }: { children: React.ReactNode; onClick: () => void; label: string }) => (
+    <button onClick={onClick} aria-label={label} title={label} style={{
+      width: 22, height: 22, borderRadius: 999, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: 'var(--glass-l3-bg)', backgroundImage: 'var(--specular-strong)',
+      border: '1px solid var(--glass-l3-border)', boxShadow: 'var(--rim)',
+      color: 'rgba(var(--text) / 0.75)', fontSize: '0.6rem', cursor: 'pointer',
+      transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
+    }}
+      onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.85)'; }}
+      onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+    >{children}</button>
+  );
+  return (
+    <div className="flex items-center" style={{
+      gap: 8, borderRadius: 'var(--radius-control)', padding: 'clamp(0.3rem, 1.4cqw, 0.5rem) clamp(0.4rem, 1.6cqw, 0.6rem)',
+      backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      backgroundColor: 'var(--glass-l3-bg)', backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
+      border: '1px solid var(--glass-l3-border)', boxShadow: 'var(--rim)',
+    }}>
+      {/* window glyph */}
+      <div className="relative flex-shrink-0 overflow-hidden" style={{
+        width: 22, height: 26, borderRadius: 4,
+        background: 'linear-gradient(180deg, rgba(125,211,252,0.28), rgba(56,189,248,0.10))',
+        border: '1px solid rgba(255,255,255,0.22)',
+      }}>
+        {/* shade */}
+        <div className="absolute left-0 right-0 top-0" style={{
+          height: `${shadeDrop}%`,
+          background: 'linear-gradient(180deg, rgba(80,96,120,0.95), rgba(60,74,96,0.92))',
+          borderBottom: '1px solid rgba(255,255,255,0.35)',
+          transition: 'height var(--dur-slow, 420ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))',
+        }} />
+      </div>
+      <div className="flex flex-col min-w-0 flex-1">
+        <span className="truncate" style={{ fontSize: 'var(--type-xs)', fontWeight: 600, color: 'rgba(var(--text) / 0.85)' }}>{name}</span>
+        <span style={{ fontSize: 'var(--type-2xs)', color: 'rgba(var(--text) / 0.45)', fontWeight: 600 }}>
+          {position != null ? `${Math.round(pos)}% open` : 'Shade'}
+        </span>
+      </div>
+      <div className="flex items-center" style={{ gap: 3 }}>
+        <Bead onClick={onOpen} label="Open">▲</Bead>
+        <Bead onClick={onStop} label="Stop">■</Bead>
+        <Bead onClick={onClose} label="Close">▼</Bead>
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
 // SECTION A — POOL / SPA CONTROLS
 // =============================================================================
 
@@ -603,10 +850,11 @@ const PoolSectionContent: React.FC<{
   setClimateTemp: (climateId: string, temp: number) => void;
   setNumberValue: (entityId: string, value: number) => void;
   onOpenEffectPicker: (light: LightState) => void;
+  reduced: boolean;
 }> = ({
   surface, toggleBody, toggleLight, setLightEffect,
   toggleWaterFeature, setWaterHeaterMode, setWaterHeaterTemp,
-  setClimateMode, setClimateTemp, setNumberValue, onOpenEffectPicker,
+  setClimateMode, setClimateTemp, setNumberValue, onOpenEffectPicker, reduced,
 }) => {
   if (!surface.detected) {
     return (
@@ -641,53 +889,21 @@ const PoolSectionContent: React.FC<{
         </div>
       )}
 
-      {/* Lights */}
+      {/* Pool lights — swatch cards */}
       {surface.lights.length > 0 && (
         <div className="flex flex-col" style={{ gap: 'var(--space-2)' }}>
           <SectionLabel icon={<IconLightbulb />} accent={WARN}>Pool Lights</SectionLabel>
-          <div className="flex flex-wrap" style={{ gap: 'var(--space-2)' }}>
+          <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
             {surface.lights.map(light => (
-              <div key={light.entityId}
-                className="flex items-center gap-1.5 flex-1"
-                style={{
-                  borderRadius: 'var(--radius-control)',
-                  backdropFilter: 'var(--glass-l3-backdrop)',
-                  WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-                  backgroundColor: light.isOn ? `color-mix(in srgb, ${WARN} 16%, var(--glass-l3-bg))` : 'var(--glass-l3-bg)',
-                  backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-                  border: `1px solid ${light.isOn ? `color-mix(in srgb, ${WARN} 40%, var(--glass-l3-border))` : 'var(--glass-l3-border)'}`,
-                  boxShadow: light.isOn ? `var(--rim), inset 0 0 14px -4px color-mix(in srgb, ${WARN} 28%, transparent), 0 0 12px -3px color-mix(in srgb, ${WARN} 36%, transparent)` : 'var(--rim)',
-                  padding: 'clamp(0.15rem, 1.4cqmin, 0.35rem)',
-                  minWidth: 'clamp(80px, 25cqw, 150px)',
-                  transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-                }}>
-                <IconLightbulb className="flex-shrink-0" style={{
-                  width: 'clamp(10px, 3.5cqmin, 14px)', height: 'clamp(10px, 3.5cqmin, 14px)',
-                  color: light.isOn ? WARN : 'rgba(var(--text) / 0.3)',
-                  filter: light.isOn ? `drop-shadow(0 0 4px ${WARN})` : undefined,
-                }} />
-                <span className="truncate flex-1" style={{ ...fluidTextXs, color: 'rgba(var(--text) / 0.8)' }}>{light.name}</span>
-                <ControlPill label={light.isOn ? 'ON' : 'OFF'} isOn={light.isOn}
-                  onClick={() => toggleLight(light.entityId, !light.isOn)} accent={WARN} />
-                {light.effectList.length > 0 && (
-                  <button onClick={() => onOpenEffectPicker(light)}
-                    style={{
-                      ...fluidTextXs,
-                      padding: '2px 5px', borderRadius: 'var(--radius-chip)',
-                      backdropFilter: 'var(--glass-l3-backdrop)',
-                      WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-                      backgroundColor: `color-mix(in srgb, ${WATER} 18%, var(--glass-l3-bg))`,
-                      border: `1px solid color-mix(in srgb, ${WATER} 38%, var(--glass-l3-border))`,
-                      color: WATER, fontWeight: 700, cursor: 'pointer',
-                      transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
-                    }}
-                    onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.88)'; }}
-                    onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
-                    onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
-                    title="Choose effect"
-                  >FX</button>
-                )}
-              </div>
+              <LightSwatchCard key={light.entityId}
+                name={light.name}
+                isOn={light.isOn}
+                rgb={null}
+                brightness={null}
+                hasFx={light.effectList.length > 0}
+                onToggle={() => toggleLight(light.entityId, !light.isOn)}
+                onFx={() => onOpenEffectPicker(light)}
+              />
             ))}
           </div>
         </div>
@@ -706,40 +922,39 @@ const PoolSectionContent: React.FC<{
         </div>
       )}
 
-      {/* Chemistry */}
-      {(surface.chem.salt !== null || surface.chem.ph !== null || surface.chem.orp !== null) && (
+      {/* Chemistry — instrument dials + salt gauge + SWG sliders */}
+      {(surface.chem.salt !== null || surface.chem.ph !== null || surface.chem.orp !== null || surface.chem.swgOutputs.length > 0) && (
         <div className="flex flex-col" style={{ gap: 'var(--space-2)' }}>
           <SectionLabel icon={<IconDroplets />} accent={PLUG}>Chemistry</SectionLabel>
-          {surface.chem.salt !== null && (
-            <div style={{
-              borderRadius: 'var(--radius-control)',
-              backdropFilter: 'var(--glass-l3-backdrop)',
-              WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${WATER} 10%, var(--glass-l3-bg))`,
-              backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${WATER} 28%, var(--glass-l3-border))`,
-              boxShadow: 'var(--rim), var(--elev-1)',
-              padding: 'clamp(0.2rem, 1.6cqmin, 0.4rem)',
-            }}>
-              <div className="flex items-center justify-between mb-1">
-                <span style={{ fontSize: 'clamp(0.42rem, 3.5cqmin, 0.58rem)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'rgba(var(--text) / 0.5)' }}>Salt</span>
-                <span style={{ fontSize: 'clamp(0.6rem, 5cqmin, 0.88rem)', fontWeight: 700, color: WATER }}>
-                  {Math.round(surface.chem.salt)} <span style={{ fontSize: '0.7em', fontWeight: 400, color: 'rgba(var(--text) / 0.45)' }}>{surface.chem.saltUnit}</span>
-                </span>
-              </div>
-              <BuildBar value={surface.chem.salt} min={0} max={4500} colorVar={WATER} active={false} height={5} label={`Salt ${Math.round(surface.chem.salt)} ${surface.chem.saltUnit}`} />
+
+          {/* pH + ORP dials side by side */}
+          {(surface.chem.ph !== null || surface.chem.orp !== null) && (
+            <div className="flex" style={{ gap: 'var(--space-2)' }}>
+              {surface.chem.ph !== null && (
+                <ChemDial label="pH" value={surface.chem.ph} min={6.6} max={8.4}
+                  healthy={[7.2, 7.8]} format={(v) => v.toFixed(1)} reduced={reduced} />
+              )}
+              {surface.chem.orp !== null && (
+                <ChemDial label="ORP" value={surface.chem.orp} unit={surface.chem.orpUnit} min={400} max={900}
+                  healthy={[650, 800]} reduced={reduced} />
+              )}
+              {surface.chem.salt !== null && (
+                <ChemDial label="Salt" value={surface.chem.salt} unit={surface.chem.saltUnit} min={0} max={4500}
+                  healthy={[2700, 3400]} format={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v)))} reduced={reduced} />
+              )}
             </div>
           )}
-          <div className="flex" style={{ gap: 'var(--space-2)' }}>
-            {surface.chem.ph !== null && (
-              <StatCard label="pH" value={surface.chem.ph.toFixed(1)}
-                accent={(surface.chem.ph >= 7.2 && surface.chem.ph <= 7.8) ? 'green' : surface.chem.ph < 7.0 || surface.chem.ph > 8.0 ? 'red' : 'amber'} />
-            )}
-            {surface.chem.orp !== null && (
-              <StatCard label="ORP" value={Math.round(surface.chem.orp)} unit={surface.chem.orpUnit}
-                accent={(surface.chem.orp >= 650 && surface.chem.orp <= 800) ? 'green' : surface.chem.orp < 500 ? 'red' : 'amber'} />
-            )}
-          </div>
+
+          {/* SWG output sliders */}
+          {surface.chem.swgOutputs.length > 0 && (
+            <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
+              {surface.chem.swgOutputs.map(swg => (
+                <VisualSlider key={swg.entityId}
+                  label={`SWG ${swg.bodyLabel}`} value={swg.value} min={0} max={100} step={5} unit="%"
+                  color={PLUG} onChange={(v) => setNumberValue(swg.entityId, v)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -756,7 +971,7 @@ const PumpSectionContent: React.FC<{
   speedSetpoints: SpeedSetpointState[];
   onSetSpeed: (eid: string, v: number) => void;
 }> = ({ pumps, probes, speedSetpoints, onSetSpeed }) => {
-  if (pumps.length === 0 && probes.length === 0) return null;
+  if (pumps.length === 0 && probes.length === 0 && speedSetpoints.length === 0) return null;
   return (
     <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
       {pumps.length > 0 && (
@@ -796,6 +1011,25 @@ const PumpSectionContent: React.FC<{
                   {pump.gpm !== null && <ArcGauge value={pump.gpm} max={150} label="GPM" unit="gpm" color="#34d399" />}
                 </div>
               </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Pump speed setpoints — visual sliders */}
+      {speedSetpoints.length > 0 && (
+        <>
+          <SectionLabel icon={<IconActivity />} accent={WATER}>Pump Speed</SectionLabel>
+          <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
+            {speedSetpoints.map(sp => (
+              <VisualSlider key={sp.entityId}
+                label={sp.name}
+                value={sp.value}
+                min={sp.min} max={sp.max}
+                step={sp.unit === 'gpm' ? 5 : 50}
+                unit={sp.unit}
+                color={WATER}
+                onChange={(v) => onSetSpeed(sp.entityId, v)} />
             ))}
           </div>
         </>
@@ -869,21 +1103,21 @@ function akvoFloorColor(s: AkvoState): { plate: string; glow: string } {
 }
 
 // =============================================================================
-// HERO — POOL DIVE-VIEW SCENE (the centerpiece)
+// HERO — HIGH-FIDELITY POOL WATER SURFACE (the centerpiece)
 // =============================================================================
 //
-// A full-bleed cross-section "pool window": you are looking at the pool in
-// profile. The water column fills the whole hero; animated caustics and surface
-// waves live HERE (not in a separate floating blob). The AKVO movable-floor
-// plate is suspended at its REAL depth in the water (negative = above deck,
-// positive = submerged), with lifting cables, motion arrows, and a depth
-// callout. Glass readout chips (pool/spa temp, floor status, lights) float over
-// the scene as legible HUD overlays — so the immersive water IS the UI, edge to
-// edge, with no dead zone.
+// SOPHISTICATED, not schematic. This is a refined "looking down into a calm,
+// deep, lit pool" treatment built entirely from layered CSS gradient meshes +
+// blurred radial light — photographic in feel, retina-sharp at any DPI (no
+// low-res SVG diagram). Motion is minimal: one very slow caustic drift, a slow
+// specular travel, and a barely-perceptible depth breathe. Everything else is
+// still.
 //
-// SAFETY: display-only. This scene renders AKVO state; it issues no commands.
-// The geometry/animation is adapted from AkvoFloorSurface.CrossSection but
-// stretched to fill the hero width.
+// The AKVO floor is expressed as an ELEGANT depth indicator (a thin luminous
+// rule that sits at the floor's real depth within a slim gauge), NOT a cartoon
+// platform diagram. Crisp glass HUD chips carry the live readouts.
+//
+// SAFETY: display-only. Renders AKVO state; issues no commands.
 
 interface PoolHeroSceneProps {
   areaName: string;
@@ -896,22 +1130,12 @@ interface PoolHeroSceneProps {
   reduced: boolean;
 }
 
-// Hero SVG coordinate system: 1000 wide x 460 tall.
-// Deck line at y = HERO_DECK_Y; positive depth goes DOWN.
-const HERO_VB_W = 1000;
-const HERO_VB_H = 460;
-const HERO_DECK_Y = 120;            // water surface / deck reference
-const HERO_PX_PER_M = 70;           // 1 m of floor travel = 70 px
-const HERO_PLATE_W = 420;           // main floor plate width
-const HERO_PLATE_H = 18;
-const HERO_BAJA_W = 230;
-const HERO_BAJA_H = 12;
-
-function heroDepthToPx(m: number | null): number {
-  const v = m ?? 0;
-  // Clamp so an out-of-range reading never escapes the water box.
-  const px = HERO_DECK_Y + v * HERO_PX_PER_M;
-  return Math.max(HERO_DECK_Y - 80, Math.min(HERO_VB_H - 40, px));
+// Map a signed depth (m, negative = above deck) to a 0..1 fraction down a slim
+// vertical depth gauge. Range −1m … +4m.
+function depthFraction(m: number | null): number {
+  if (m == null) return 0.5;
+  const min = -1, max = 4;
+  return Math.max(0, Math.min(1, (m - min) / (max - min)));
 }
 
 const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
@@ -927,218 +1151,110 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
   const isMoving = akvoState.floorsMoving === true;
   const isFault  = akvoState.emergencyStop === true || akvoState.systemFault === true;
   const showFloor = showAkvo && akvoState.present;
-  const { plate: plateColor, glow: glowColor } = akvoFloorColor(akvoState);
+  const { plate: plateColor } = akvoFloorColor(akvoState);
 
-  const mainY = heroDepthToPx(akvoState.mainFloorPosition);
-  const bajaY = akvoState.bajaPosition != null ? heroDepthToPx(akvoState.bajaPosition) : null;
-  const motionDir: 'up' | 'down' | null = isMoving
-    ? (akvoState.mainFloorPosition != null && akvoState.mainFloorPosition < 0 ? 'up' : 'down')
-    : null;
-
-  // Water tint warms slightly when heating, cools when idle.
-  const waterTop = anyHeating ? 'rgb(45 130 165)' : 'rgb(38 150 200)';
+  const floorFrac = depthFraction(akvoState.mainFloorPosition);
 
   return (
     <div
       className="relative w-full flex-shrink-0 overflow-hidden"
       style={{
-        // Hero is tall on a wide wall, shorter on mobile via aspect clamp.
-        height: 'clamp(15rem, 42cqw, 26rem)',
+        // Shorter, tighter hero so the deck fits one iPad-landscape screen.
+        height: 'clamp(11rem, 26cqw, 17rem)',
         borderTopLeftRadius: 'var(--radius-surface)',
         borderTopRightRadius: 'var(--radius-surface)',
-        borderBottom: `1px solid color-mix(in srgb, ${WATER} 22%, rgba(255,255,255,0.08))`,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}
     >
-      {/* ── The dive-view SVG (full bleed) ──────────────────────────────────── */}
-      <svg
-        className="absolute inset-0 w-full h-full"
-        viewBox={`0 0 ${HERO_VB_W} ${HERO_VB_H}`}
-        preserveAspectRatio="xMidYMid slice"
-        aria-label={`${areaName} pool cross-section`}
-      >
-        <defs>
-          {/* Deep water column gradient */}
-          <linearGradient id="heroWater" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={waterTop}      stopOpacity="0.55" />
-            <stop offset="45%"  stopColor="rgb(12 92 135)" stopOpacity="0.78" />
-            <stop offset="100%" stopColor="rgb(6 38 62)"   stopOpacity="0.95" />
-          </linearGradient>
-          {/* Sky / above-deck soft glow */}
-          <linearGradient id="heroSky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="rgb(10 40 64)" stopOpacity="0.0" />
-            <stop offset="100%" stopColor="rgb(14 70 102)" stopOpacity="0.25" />
-          </linearGradient>
-          {/* Caustic light shafts */}
-          <radialGradient id="heroCaustic1" cx="50%" cy="0%" r="80%">
-            <stop offset="0%"   stopColor="#7dd3fc" stopOpacity="0.22" />
-            <stop offset="55%"  stopColor="#38bdf8" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
-          </radialGradient>
-          <radialGradient id="heroCaustic2" cx="50%" cy="50%" r="55%">
-            <stop offset="0%"   stopColor="#bae6fd" stopOpacity="0.16" />
-            <stop offset="60%"  stopColor="#7dd3fc" stopOpacity="0.06" />
-            <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0.0" />
-          </radialGradient>
-          {/* Surface wave pattern */}
-          <pattern id="heroWavePat" x="0" y="0" width="120" height="20" patternUnits="userSpaceOnUse"
-            style={!reduced && anyBodyOn ? { animation: 'pool-comp-hero-wave-drift 5s linear infinite' } : {}}>
-            <path d="M0 10 Q15 3 30 10 Q45 17 60 10 Q75 3 90 10 Q105 17 120 10"
-              fill="none" stroke="#cdeefe" strokeWidth="2" strokeOpacity="0.5" />
-          </pattern>
-          <pattern id="heroWavePat2" x="0" y="0" width="90" height="16" patternUnits="userSpaceOnUse"
-            style={!reduced && anyBodyOn ? { animation: 'pool-comp-hero-wave-drift2 7s linear infinite' } : {}}>
-            <path d="M0 8 Q11 3 22 8 Q34 13 45 8 Q56 3 68 8 Q79 13 90 8"
-              fill="none" stroke="#7dd3fc" strokeWidth="1.4" strokeOpacity="0.32" />
-          </pattern>
-          {/* Plate glow */}
-          <filter id="heroPlateGlow" x="-30%" y="-150%" width="160%" height="400%">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="b" />
-            <feFlood floodColor={plateColor} floodOpacity="0.7" result="c" />
-            <feComposite in="c" in2="b" operator="in" result="g" />
-            <feMerge><feMergeNode in="g" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
+      {/* ── Layer 1: deep calm water — base depth gradient (navy → teal → abyss) */}
+      <div className="absolute inset-0" style={{
+        background: anyHeating
+          ? `linear-gradient(176deg,
+              rgb(20 78 104) 0%, rgb(13 74 104) 22%,
+              rgb(9 58 92) 52%, rgb(6 40 68) 80%, rgb(4 26 47) 100%)`
+          : `linear-gradient(176deg,
+              rgb(16 86 122) 0%, rgb(11 74 112) 22%,
+              rgb(8 58 96) 52%, rgb(5 40 70) 80%, rgb(3 26 48) 100%)`,
+        transition: 'background 1.2s ease',
+      }} />
 
-        {/* Above-deck region */}
-        <rect x="0" y="0" width={HERO_VB_W} height={HERO_DECK_Y} fill="url(#heroSky)" />
+      {/* ── Layer 2: refraction mesh — soft overlapping radial lights give the
+          water real depth + body without any cartoon ripple. Very slow drift. */}
+      <div className="absolute pointer-events-none" style={{
+        inset: '-8%',
+        background: `
+          radial-gradient(38% 44% at 22% 18%, rgba(120,200,238,0.30), transparent 70%),
+          radial-gradient(46% 52% at 78% 30%, rgba(86,176,224,0.24), transparent 72%),
+          radial-gradient(60% 60% at 55% 88%, rgba(6,30,54,0.55), transparent 70%),
+          radial-gradient(30% 36% at 88% 72%, rgba(150,222,255,0.16), transparent 70%)
+        `,
+        filter: 'blur(2px)',
+        animation: reduced ? 'none' : 'pool-comp-caustic-drift 22s ease-in-out infinite',
+      }} />
 
-        {/* Water column */}
-        <rect x="0" y={HERO_DECK_Y} width={HERO_VB_W} height={HERO_VB_H - HERO_DECK_Y} fill="url(#heroWater)" />
+      {/* ── Layer 3: fine caustic web — a crisp, high-frequency light lattice at
+          low opacity reads as real sunlit-water caustics (not toy rings). */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        opacity: reduced ? 0.12 : 0.18,
+        mixBlendMode: 'screen',
+        backgroundImage: `
+          repeating-linear-gradient(58deg,  rgba(170,225,255,0.10) 0 1px, transparent 1px 26px),
+          repeating-linear-gradient(-46deg, rgba(170,225,255,0.08) 0 1px, transparent 1px 34px)`,
+        maskImage: 'radial-gradient(120% 90% at 50% 0%, #000 35%, transparent 85%)',
+        WebkitMaskImage: 'radial-gradient(120% 90% at 50% 0%, #000 35%, transparent 85%)',
+        animation: reduced ? 'none' : 'pool-comp-depth-pulse 12s ease-in-out infinite',
+      }} />
 
-        {/* Caustic light shafts in the water */}
-        <ellipse cx="320" cy={HERO_DECK_Y + 40} rx="380" ry="220" fill="url(#heroCaustic1)"
-          style={!reduced ? { animation: 'pool-comp-depth-pulse 7s ease-in-out infinite' } : {}} />
-        <ellipse cx="760" cy={HERO_DECK_Y + 120} rx="320" ry="200" fill="url(#heroCaustic2)"
-          style={!reduced ? { animation: 'pool-comp-depth-pulse 9s ease-in-out infinite 1.5s' } : {}} />
+      {/* ── Layer 4: surface specular — a single slow, wide, soft highlight band
+          travels gently across the top third (premium, restrained). */}
+      {!reduced && (
+        <div className="absolute pointer-events-none" style={{
+          top: 0, left: 0, right: 0, height: '52%',
+          background: 'linear-gradient(100deg, transparent 30%, rgba(190,232,255,0.16) 50%, transparent 70%)',
+          animation: 'pool-comp-specular-travel 16s ease-in-out infinite',
+        }} />
+      )}
 
-        {/* Rising bubbles when a pump/body is running */}
-        {anyBodyOn && !reduced && (
-          <g>
-            {[
-              { x: 180, r: 4, dur: 6, delay: 0 },
-              { x: 250, r: 3, dur: 7.5, delay: 1.2 },
-              { x: 820, r: 5, dur: 5.5, delay: 0.6 },
-              { x: 880, r: 3, dur: 8, delay: 2 },
-              { x: 520, r: 3.5, dur: 6.8, delay: 1.8 },
-            ].map((b, i) => (
-              <circle key={i} cx={b.x} cy={HERO_VB_H - 30} r={b.r}
-                fill="#cdeefe" fillOpacity="0.4"
-                style={{ animation: `pool-comp-bubble-rise ${b.dur}s ease-in infinite`, animationDelay: `${b.delay}s` }} />
-            ))}
-          </g>
-        )}
+      {/* ── Layer 5: top sheen + bottom vignette for crisp, contained depth. */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: `
+          linear-gradient(180deg, rgba(220,244,255,0.10) 0%, transparent 14%),
+          radial-gradient(140% 100% at 50% 120%, rgba(2,16,32,0.66), transparent 60%)`,
+      }} />
 
-        {/* Water surface — animated wave bands */}
-        <g style={!reduced ? { animation: 'pool-comp-hero-shimmer 4s ease-in-out infinite' } : {}}>
-          <rect x="-120" y={HERO_DECK_Y - 10} width={HERO_VB_W + 240} height="20" fill="url(#heroWavePat)" opacity="0.85" />
-          <rect x="-120" y={HERO_DECK_Y - 2}  width={HERO_VB_W + 240} height="16" fill="url(#heroWavePat2)" opacity="0.6" />
-        </g>
+      {/* ── Layer 6: AKVO depth indicator — elegant, NOT a diagram ───────────
+          A slim vertical depth gauge pinned to the right; a thin luminous rule
+          marks the movable-floor's real depth. Display-only. */}
+      {showFloor && (
+        <div className="absolute pointer-events-none" style={{
+          top: 'clamp(2.5rem, 7cqw, 3.5rem)', bottom: 'clamp(2.5rem, 7cqw, 3.5rem)',
+          right: 'clamp(0.75rem, 3cqw, 1.5rem)', width: 3,
+          borderRadius: 999,
+          background: 'linear-gradient(180deg, rgba(190,232,255,0.30), rgba(190,232,255,0.06))',
+        }}>
+          {/* depth tick marks (0..4 m) */}
+          {[0, 0.2, 0.4, 0.6, 0.8, 1].map((f, i) => (
+            <div key={i} className="absolute" style={{
+              top: `${f * 100}%`, right: 6, width: 5, height: 1,
+              background: 'rgba(190,232,255,0.35)',
+            }} />
+          ))}
+          {/* floor marker — luminous rule at real depth, color reflects state */}
+          <div className="absolute" style={{
+            top: `${floorFrac * 100}%`, left: -5, right: -10, height: 2,
+            background: plateColor,
+            boxShadow: `0 0 8px 1px ${plateColor}`,
+            borderRadius: 999,
+            transform: 'translateY(-50%)',
+            transition: isMoving ? 'top 0.6s linear' : 'top 1.1s cubic-bezier(0.34,1.18,0.64,1)',
+            animation: isFault && !reduced ? 'pool-comp-akvo-alert 1.1s ease-in-out infinite' : 'none',
+          }} />
+        </div>
+      )}
 
-        {/* Deck reference line + label */}
-        <line x1="0" y1={HERO_DECK_Y} x2={HERO_VB_W} y2={HERO_DECK_Y}
-          stroke="rgba(205,238,254,0.35)" strokeWidth="1.5" strokeDasharray="8 6" />
-        <text x="22" y={HERO_DECK_Y - 12} fontSize="13" fontFamily="var(--font-numeric, monospace)"
-          fill="rgba(205,238,254,0.55)" letterSpacing="2" fontWeight="600">
-          WATER LINE · 0.00 m
-        </text>
-
-        {/* Depth ruler on the right edge */}
-        {[0, 1, 2, 3, 4].map((m) => {
-          const y = HERO_DECK_Y + m * HERO_PX_PER_M;
-          if (y > HERO_VB_H - 20) return null;
-          return (
-            <g key={m}>
-              <line x1={HERO_VB_W - 44} y1={y} x2={HERO_VB_W - 30} y2={y}
-                stroke="rgba(205,238,254,0.25)" strokeWidth="1.5" />
-              <text x={HERO_VB_W - 26} y={y + 4} fontSize="11" fontFamily="var(--font-numeric, monospace)"
-                fill="rgba(205,238,254,0.4)">{m}m</text>
-            </g>
-          );
-        })}
-
-        {/* ── AKVO floor plate (display only) ──────────────────────────────── */}
-        {showFloor && (
-          <>
-            {/* Baja shelf (secondary floor), if present */}
-            {bajaY != null && (
-              <g style={{
-                transition: isMoving ? 'transform 0.6s linear' : 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)',
-                transform: `translateY(${bajaY - HERO_DECK_Y}px)`,
-              }}>
-                <g transform={`translate(${HERO_VB_W / 2 - HERO_BAJA_W / 2 - 60}, ${HERO_DECK_Y})`}>
-                  <rect x="0" y="0" width={HERO_BAJA_W} height={HERO_BAJA_H} rx="3"
-                    fill="rgb(71 85 105)" stroke="rgb(148 163 184)" strokeWidth="1" opacity="0.72" />
-                  <text x={HERO_BAJA_W / 2} y={HERO_BAJA_H / 2 + 4} textAnchor="middle"
-                    fontSize="9" fill="rgb(186 230 253)" fontFamily="monospace" letterSpacing="2">BAJA</text>
-                </g>
-              </g>
-            )}
-
-            {/* Main floor plate — the hero element */}
-            <g style={{
-              transition: isMoving ? 'transform 0.6s linear' : 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)',
-              transform: `translateY(${mainY - HERO_DECK_Y}px)`,
-            }}>
-              <g transform={`translate(${HERO_VB_W / 2 - HERO_PLATE_W / 2}, ${HERO_DECK_Y})`}>
-                {/* Drop glow */}
-                <ellipse cx={HERO_PLATE_W / 2} cy={HERO_PLATE_H + 7} rx={HERO_PLATE_W / 2 - 8} ry="9"
-                  fill={glowColor}
-                  style={isFault ? { animation: 'pool-comp-akvo-alert 1s ease-in-out infinite' } : {}} />
-                {/* Lifting cables */}
-                {[40, HERO_PLATE_W - 40].map((cx, i) => (
-                  <line key={i} x1={cx} y1="0" x2={cx} y2={-(mainY - HERO_DECK_Y) - 4}
-                    stroke="rgb(120 140 165)" strokeWidth="2" strokeOpacity="0.5"
-                    strokeDasharray={isMoving ? '6 4' : 'none'}
-                    style={isMoving && !reduced ? { animation: `pool-comp-cable-flow 0.5s linear infinite ${i * 0.2}s` } : {}} />
-                ))}
-                {/* Plate body */}
-                <rect x="0" y="0" width={HERO_PLATE_W} height={HERO_PLATE_H} rx="4"
-                  fill={plateColor} filter="url(#heroPlateGlow)"
-                  opacity={isFault ? undefined : 0.94}
-                  style={isFault ? { animation: 'pool-comp-akvo-alert 1s ease-in-out infinite' } : {}} />
-                {/* Surface grip lines */}
-                {Array.from({ length: 9 }, (_, k) => 40 + k * 42).map(x => (
-                  <line key={x} x1={x} y1="3" x2={x} y2={HERO_PLATE_H - 3}
-                    stroke="rgba(0,0,0,0.18)" strokeWidth="1.5" />
-                ))}
-                {/* Label */}
-                <text x={HERO_PLATE_W / 2} y={HERO_PLATE_H / 2 + 4} textAnchor="middle"
-                  fontSize="11" fill="rgba(0,0,0,0.72)" fontFamily="monospace" fontWeight="bold" letterSpacing="3">
-                  MOVABLE FLOOR
-                </text>
-                {/* Motion arrows */}
-                {motionDir === 'up' && [0, 1].map(k => (
-                  <polygon key={k}
-                    points={`${HERO_PLATE_W / 2 - 9},${-6 - k * 16} ${HERO_PLATE_W / 2 + 9},${-6 - k * 16} ${HERO_PLATE_W / 2},${-18 - k * 16}`}
-                    fill={plateColor} style={{ animation: `pool-comp-plate-arrow 0.7s ease-in-out infinite ${k * 0.2}s` }} />
-                ))}
-                {motionDir === 'down' && [0, 1].map(k => (
-                  <polygon key={k}
-                    points={`${HERO_PLATE_W / 2 - 9},${HERO_PLATE_H + 6 + k * 16} ${HERO_PLATE_W / 2 + 9},${HERO_PLATE_H + 6 + k * 16} ${HERO_PLATE_W / 2},${HERO_PLATE_H + 18 + k * 16}`}
-                    fill={plateColor} style={{ animation: `pool-comp-plate-arrow 0.7s ease-in-out infinite ${k * 0.2}s` }} />
-                ))}
-              </g>
-            </g>
-
-            {/* Depth callout for the main floor */}
-            {akvoState.mainFloorPosition != null && (
-              <g style={{ transition: 'transform 1.1s cubic-bezier(0.34,1.18,0.64,1)', transform: `translateY(${mainY - HERO_DECK_Y}px)` }}>
-                <line x1={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 10} y1={HERO_DECK_Y + HERO_PLATE_H / 2}
-                  x2={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 44} y2={HERO_DECK_Y + HERO_PLATE_H / 2}
-                  stroke="rgba(205,238,254,0.4)" strokeWidth="1.5" />
-                <text x={HERO_VB_W / 2 - HERO_PLATE_W / 2 - 50} y={HERO_DECK_Y + HERO_PLATE_H / 2 + 5}
-                  textAnchor="end" fontSize="15" fill={plateColor} fontFamily="var(--font-numeric, monospace)" fontWeight="bold">
-                  {akvoState.mainFloorPosition.toFixed(2)} m
-                </text>
-              </g>
-            )}
-          </>
-        )}
-      </svg>
-
-      {/* ── HUD overlay: title + readout chips (legible glass over the scene) ─ */}
+      {/* ── HUD overlay: title + readout chips (crisp glass over the scene) ─── */}
       <div className="absolute inset-0 flex flex-col justify-between pointer-events-none"
-        style={{ padding: 'clamp(0.6rem, 3cqw, 1.25rem)' }}>
+        style={{ padding: 'clamp(0.55rem, 2.4cqw, 1rem)' }}>
 
         {/* Top row: area title (left) + lights/floor status (right) */}
         <div className="flex items-start justify-between gap-3">
@@ -1213,25 +1329,36 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
             )}
           </div>
 
-          {/* AKVO active config (bottom-right, anchors the right side) */}
+          {/* AKVO config + floor depth (bottom-right; sits left of the depth gauge) */}
           {showFloor && (
-            <div className="pointer-events-auto" style={{
-              borderRadius: 'var(--radius-control)',
-              padding: 'clamp(0.3rem, 1.2cqw, 0.5rem) clamp(0.5rem, 2cqw, 0.85rem)',
+            <div className="pointer-events-auto flex items-stretch" style={{
+              gap: 1, marginRight: 'clamp(1.25rem, 4cqw, 2rem)',
+              borderRadius: 'var(--radius-control)', overflow: 'hidden',
               backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-              backgroundColor: `color-mix(in srgb, ${akvoInfo.color} 14%, var(--glass-l3-bg))`,
+              backgroundColor: `color-mix(in srgb, ${akvoInfo.color} 13%, var(--glass-l3-bg))`,
               backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-              border: `1px solid color-mix(in srgb, ${akvoInfo.color} 38%, var(--glass-l3-border))`,
-              boxShadow: `var(--rim), 0 0 14px -4px color-mix(in srgb, ${akvoInfo.color} 32%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${akvoInfo.color} 36%, var(--glass-l3-border))`,
+              boxShadow: `var(--rim), 0 0 14px -4px color-mix(in srgb, ${akvoInfo.color} 30%, transparent)`,
             }}>
-              <div className="flex flex-col items-end">
+              <div className="flex flex-col items-start justify-center" style={{ padding: 'clamp(0.25rem, 1cqw, 0.45rem) clamp(0.45rem, 1.8cqw, 0.7rem)' }}>
                 <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
-                  Configuration
+                  Floor
                 </span>
-                <span style={{ fontSize: 'clamp(0.75rem, 1.5cqw, 1rem)', fontWeight: 700, color: 'rgb(245 250 255)' }}>
+                <span style={{ fontSize: 'clamp(0.72rem, 1.5cqw, 0.95rem)', fontWeight: 700, color: 'rgb(245 250 255)', lineHeight: 1.15 }}>
                   {akvoState.activeConfiguration ?? '—'}
                 </span>
               </div>
+              {akvoState.mainFloorPosition != null && (
+                <div className="flex flex-col items-end justify-center"
+                  style={{ padding: 'clamp(0.25rem, 1cqw, 0.45rem) clamp(0.45rem, 1.8cqw, 0.7rem)', borderLeft: `1px solid color-mix(in srgb, ${akvoInfo.color} 24%, transparent)` }}>
+                  <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const }}>
+                    Depth
+                  </span>
+                  <span style={{ fontSize: 'clamp(0.72rem, 1.5cqw, 0.95rem)', fontWeight: 700, color: akvoInfo.color, lineHeight: 1.15, fontVariantNumeric: 'tabular-nums' as const }}>
+                    {akvoState.mainFloorPosition.toFixed(2)}m
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1240,14 +1367,22 @@ const PoolHeroScene: React.FC<PoolHeroSceneProps> = ({
   );
 };
 
-// Small HUD tag (status word)
+// Small HUD tag (status word) — a refined glass pill, not bare text.
 const HeroTag: React.FC<{ label: string; color: string; pulse?: boolean }> = ({ label, color, pulse }) => (
   <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    padding: '2px 8px', borderRadius: 'var(--radius-pill)',
     fontSize: 'var(--type-2xs)', fontWeight: 700, color,
     letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase' as const,
-    textShadow: '0 1px 6px rgba(0,0,0,0.5)',
-    animation: pulse ? 'pool-comp-akvo-alert 0.8s ease-in-out infinite' : 'none',
-  }}>{label}</span>
+    backdropFilter: 'var(--glass-l3-backdrop)', WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+    backgroundColor: `color-mix(in srgb, ${color} 14%, var(--glass-l3-bg))`,
+    border: `1px solid color-mix(in srgb, ${color} 34%, transparent)`,
+    boxShadow: 'var(--rim)',
+    animation: pulse ? 'pool-comp-akvo-alert 1.4s ease-in-out infinite' : 'none',
+  }}>
+    <span style={{ width: 5, height: 5, borderRadius: 999, background: color, boxShadow: `0 0 5px ${color}` }} />
+    {label}
+  </span>
 );
 
 // HUD chip wrapper (glass)
@@ -1278,21 +1413,19 @@ const HeroChip: React.FC<{ color: string; children: React.ReactNode; stacked?: b
 const HeroTempReadout: React.FC<{
   body: BodyState; accent: string; tempUnit: string;
   onToggle: (on: boolean) => void; reduced: boolean;
-}> = ({ body, accent, tempUnit, onToggle, reduced }) => {
-  const isPool = body.name.toLowerCase().includes('pool');
+}> = ({ body, accent, tempUnit, onToggle }) => {
   return (
     <div style={{
       borderRadius: 'var(--radius-card)',
-      padding: 'clamp(0.35rem, 1.4cqw, 0.6rem) clamp(0.5rem, 2cqw, 0.85rem)',
+      padding: 'clamp(0.3rem, 1.2cqw, 0.5rem) clamp(0.45rem, 1.8cqw, 0.75rem)',
       backdropFilter: 'var(--glass-l2-backdrop)', WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
-      backgroundColor: body.isOn ? `color-mix(in srgb, ${accent} 18%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
-      backgroundImage: 'var(--sheen-default), var(--specular-default), var(--glass-l2-tint)',
-      border: `1px solid ${body.isOn ? `color-mix(in srgb, ${accent} 48%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
+      backgroundColor: body.isOn ? `color-mix(in srgb, ${accent} 16%, var(--glass-l2-bg))` : 'var(--glass-l2-bg)',
+      backgroundImage: 'var(--specular-default), var(--glass-l2-tint)',
+      border: `1px solid ${body.isOn ? `color-mix(in srgb, ${accent} 44%, var(--glass-l2-border))` : 'var(--glass-l2-border)'}`,
       boxShadow: body.isOn
-        ? `var(--rim), inset 0 0 26px -8px color-mix(in srgb, ${accent} 26%, transparent), 0 0 18px -4px color-mix(in srgb, ${accent} 36%, transparent)`
+        ? `var(--rim), 0 0 16px -5px color-mix(in srgb, ${accent} 34%, transparent)`
         : 'var(--rim), var(--elev-1)',
       transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-      animation: !reduced ? 'pool-comp-readout-float 6s ease-in-out infinite' : 'none',
     }}>
       <div className="flex items-center" style={{ gap: 'clamp(0.4rem, 1.5cqw, 0.7rem)' }}>
         <div className="flex flex-col">
@@ -1300,10 +1433,10 @@ const HeroTempReadout: React.FC<{
             {body.name}
           </span>
           <div className="flex items-baseline" style={{ gap: 2 }}>
-            <span style={{ fontSize: 'clamp(1.3rem, 3.4cqw, 2.4rem)', fontWeight: 800, lineHeight: 1, color: 'rgb(245 250 255)', fontVariantNumeric: 'tabular-nums' as const, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
+            <span style={{ fontSize: 'clamp(1.2rem, 3cqw, 2rem)', fontWeight: 800, lineHeight: 1, color: 'rgb(245 250 255)', fontVariantNumeric: 'tabular-nums' as const, textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>
               {body.waterTempC !== null ? Math.round(body.waterTempC) : '--'}
             </span>
-            <span style={{ fontSize: 'clamp(0.7rem, 1.2cqw, 1rem)', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>°{tempUnit}</span>
+            <span style={{ fontSize: 'clamp(0.65rem, 1.1cqw, 0.9rem)', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>°{tempUnit}</span>
           </div>
           {body.heaterIsOn && body.heaterTarget !== null && (
             <span className="flex items-center" style={{ gap: 3, fontSize: 'var(--type-2xs)', color: WARN, fontWeight: 600, marginTop: 1 }}>
@@ -1670,84 +1803,36 @@ const LutronSectionContent: React.FC<{
               {area.name}
             </SectionLabel>
 
-            {/* Lights */}
+            {/* Lights — swatch cards (live color + brightness) */}
             {area.lights.length > 0 && (
               <div className="flex flex-col" style={{ gap: 'var(--space-1)' }}>
                 {area.lights.map(light => {
                   const optBrightness = getOptimistic(light.entityId);
                   const displayBrightness = optBrightness ?? light.brightness;
                   return (
-                    <div key={light.entityId}
-                      className="flex items-center gap-2 rounded-control"
-                      style={{
-                        padding: 'clamp(0.2rem, 1.5cqmin, 0.4rem) clamp(0.3rem, 2cqmin, 0.6rem)',
-                        backdropFilter: 'var(--glass-l3-backdrop)',
-                        WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-                        backgroundColor: light.isOn ? `color-mix(in srgb, ${WARN} 14%, var(--glass-l3-bg))` : 'var(--glass-l3-bg)',
-                        backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-                        border: `1px solid ${light.isOn ? `color-mix(in srgb, ${WARN} 36%, var(--glass-l3-border))` : 'var(--glass-l3-border)'}`,
-                        boxShadow: light.isOn ? `var(--rim), 0 0 10px -3px color-mix(in srgb, ${WARN} 30%, transparent)` : 'var(--rim)',
-                        transition: `all var(--dur-medium, 260ms) var(--spring-gentle, cubic-bezier(0.22,1,0.36,1))`,
-                      }}>
-                      <button onClick={() => handleToggleLight(light)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }}>
-                        <IconLightbulb style={{ width: 14, height: 14, color: light.isOn ? WARN : 'rgba(var(--text) / 0.3)', filter: light.isOn ? `drop-shadow(0 0 4px ${WARN})` : undefined }} />
-                      </button>
-                      <span className="truncate flex-1" style={{ fontSize: 'var(--type-xs)', color: 'rgba(var(--text) / 0.8)' }}>{light.name}</span>
-                      {displayBrightness != null && (
-                        <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 700, color: light.isOn ? WARN : 'rgba(var(--text) / 0.35)', tabularNums: true } as any}>
-                          {Math.round(displayBrightness)}%
-                        </span>
-                      )}
-                      <ControlPill label={light.isOn ? 'ON' : 'OFF'} isOn={light.isOn}
-                        onClick={() => handleToggleLight(light)} accent={WARN} />
-                    </div>
+                    <LightSwatchCard key={light.entityId}
+                      name={light.name}
+                      isOn={light.isOn}
+                      rgb={light.isOn ? lutronLightRgb(light) : null}
+                      brightness={displayBrightness}
+                      onToggle={() => handleToggleLight(light)}
+                    />
                   );
                 })}
               </div>
             )}
 
-            {/* Covers / shades */}
+            {/* Covers / shades — window glyph at real position */}
             {hasCovers && (
-              <div className="flex flex-wrap mt-2" style={{ gap: 'var(--space-1)' }}>
+              <div className="flex flex-col mt-2" style={{ gap: 'var(--space-1)' }}>
                 {area.covers.map(cover => (
-                  <div key={cover.entityId}
-                    className="flex items-center gap-1 rounded-control flex-1"
-                    style={{
-                      padding: 'clamp(0.15rem, 1.2cqmin, 0.35rem)',
-                      backdropFilter: 'var(--glass-l3-backdrop)',
-                      WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-                      backgroundColor: 'var(--glass-l3-bg)',
-                      backgroundImage: 'var(--specular-default), var(--glass-l3-tint)',
-                      border: '1px solid var(--glass-l3-border)',
-                      boxShadow: 'var(--rim)',
-                      minWidth: 'clamp(100px, 30cqw, 180px)',
-                    }}>
-                    <span className="truncate flex-1" style={{ fontSize: 'var(--type-2xs)', color: 'rgba(var(--text) / 0.7)' }}>{cover.name}</span>
-                    {[
-                      { label: '▲', action: 'open' as const },
-                      { label: '■', action: 'stop' as const },
-                      { label: '▼', action: 'close' as const },
-                    ].map(({ label, action }) => (
-                      <button key={action} onClick={() => handleCover(cover, action)}
-                        style={{
-                          width: 24, height: 24, borderRadius: 'var(--radius-pill)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          backdropFilter: 'var(--glass-l3-backdrop)',
-                          WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
-                          backgroundColor: 'var(--glass-l3-bg)',
-                          backgroundImage: 'var(--specular-strong)',
-                          border: '1px solid var(--glass-l3-border)',
-                          boxShadow: 'var(--rim)',
-                          color: 'rgba(var(--text) / 0.7)',
-                          fontSize: '0.6rem', fontWeight: 600, cursor: 'pointer',
-                          transition: 'transform var(--dur-fast, 160ms) var(--spring-snappy, cubic-bezier(0.34,1.56,0.64,1))',
-                        }}
-                        onPointerDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.85)'; }}
-                        onPointerUp={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
-                        onPointerLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
-                      >{label}</button>
-                    ))}
-                  </div>
+                  <ShadeGlyphCard key={cover.entityId}
+                    name={cover.name}
+                    position={cover.currentPosition}
+                    onOpen={() => handleCover(cover, 'open')}
+                    onStop={() => handleCover(cover, 'stop')}
+                    onClose={() => handleCover(cover, 'close')}
+                  />
                 ))}
               </div>
             )}
@@ -1955,7 +2040,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
   // cards STRETCH edge-to-edge instead of left-packing at fixed width. When fewer
   // than 3 sections are enabled we cap the column count so a lone card doesn't
   // leave a hole on the right.
-  const hasPumps = config.showPool && (surface.pumps.length > 0 || surface.probeTemps.length > 0);
+  const hasPumps = config.showPool && (surface.pumps.length > 0 || surface.probeTemps.length > 0 || surface.speedSetpoints.length > 0);
   const activeSectionCount =
     (config.showPool ? 1 : 0) + (config.showAkvo ? 1 : 0) + (config.showLighting ? 1 : 0);
 
@@ -2002,10 +2087,10 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
         <div
           className="relative z-10 flex-1 overflow-y-auto min-h-0"
           style={{
-            padding: 'clamp(0.6rem, 2.5cqw, 1.1rem)',
+            padding: 'clamp(0.45rem, 1.6cqw, 0.8rem)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 'clamp(0.5rem, 2cqw, 0.9rem)',
+            gap: 'clamp(0.4rem, 1.4cqw, 0.7rem)',
           }}
         >
           {/*
@@ -2038,6 +2123,7 @@ const PoolCompilationTile: React.FC<TileProps> = ({ tile, device }) => {
                   setClimateTemp={setClimateTemp}
                   setNumberValue={setNumberValue}
                   onOpenEffectPicker={setEffectTarget}
+                  reduced={reduced}
                 />
               </CollapsibleSection>
             )}

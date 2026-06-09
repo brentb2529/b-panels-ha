@@ -473,54 +473,57 @@ PoolCompilationTile
   ├─ useAkvoFloor()           → movable floor monitor + guarded preset
   ├─ useLutronSurface()       → lights/shades/scenes (area-filtered)
   │
-  ├─ PoolHeroScene            → FULL-BLEED dive-view centerpiece (see below)
+  ├─ PoolHeroScene            → high-fidelity water hero (CSS gradient mesh)
   ├─ PoolWaterBackdrop        → quiet edge-anchored depth wash behind the deck
-  └─ .pool-comp-deck          → full-width balanced grid of CollapsibleSection cards
+  └─ .pool-comp-deck          → full-width instrument grid of CollapsibleSection cards
 ```
 
-**Hero-first composition (the load-bearing layout rule).** A compilation panel
-must NOT be a grid of equal cards floating on a decorative background — that
-left-packs the cards and leaves dead space (e.g. a centered glowing ellipse) on
-wide wall panels. Instead:
+**Sophisticated, tight, high-definition (the aesthetic rule).** A compilation
+panel must read like a premium product surface — restrained, retina-sharp,
+densely composed — NOT a busy schematic with toy animation. Primary target is
+**iPad landscape 1366×1024 (4:3): the hero + deck fit one screen with minimal
+scroll.**
 
-1. **A full-bleed HERO scene owns the top of the surface.** `PoolHeroScene` is a
-   real cross-section "pool window": the water column fills the entire hero width,
-   animated caustics + surface waves live HERE (not in a floating blob), and the
-   **AKVO movable-floor plate is drawn at its real depth** (negative = above deck,
-   positive = submerged) with lifting cables, motion arrows, and a depth callout —
-   geometry adapted from `AkvoFloorSurface.CrossSection`, stretched edge-to-edge.
-   Pool/spa temps, body on/off, floor status, and lights-on float over the scene
-   as legible glass HUD chips anchored to BOTH left and right, so the right side is
-   used, not empty. Hero height: `clamp(15rem, 42cqw, 26rem)`. Display-only — it
-   issues no commands.
+1. **HERO is a high-fidelity CSS water treatment, not an SVG diagram.**
+   `PoolHeroScene` is built from layered gradient meshes (deep navy→teal depth
+   gradient, blurred overlapping radial "refraction" lights, a low-opacity
+   `repeating-linear-gradient` caustic lattice masked toward the surface, a single
+   slow specular travel band, top sheen + bottom vignette). It is resolution-
+   independent and sharp at 2×. **Motion is minimal and slow only** (one ~22s
+   caustic drift, one ~16s specular travel, a ~12s luminance breathe) — no
+   bubbles, spinning caustics, glint sweeps, or cartoon ripples. Hero height is
+   tight: `clamp(11rem, 26cqw, 17rem)`.
 
-2. **Controls lay out FULL-WIDTH below the hero** via `.pool-comp-deck`, a
-   container-query grid with **stretchy `1fr` tracks** (not `auto-fill` capped at a
-   fixed card width). Column count steps with container width — 3 cols ≥ 64rem,
-   2 cols ≥ 40rem, 1 col mobile — and a `data-cols` attribute caps the count to the
-   number of active sections so a lone card still stretches full-width. No dead
-   zones at wall resolution.
+2. **The AKVO floor is an ELEGANT depth indicator, not a platform diagram.** A
+   slim vertical depth gauge on the right edge carries a thin luminous rule at the
+   floor's real depth (state-colored), with subtle tick marks. Crisp glass HUD
+   chips (title + status tags, lights/floor status, pool/spa temps with body
+   toggles, floor config + depth) overlay the water. Display-only.
 
-3. **The decorative backdrop is quiet and edge-anchored.** `PoolWaterBackdrop` is
-   now a vertical depth gradient + two faint caustic washes pinned to the LEFT and
-   RIGHT edges (filling corners), never a central blob. The hero carries the
-   "immersive water," the backdrop just keeps the scroll deck reading underwater.
+3. **Controls are visual INSTRUMENT widgets, not text rows.** Pump RPM/W/GPM as
+   `ArcGauge` dials; chemistry pH/ORP/Salt as `ChemDial` (270° dial with a healthy
+   band drawn into the track + in-range coloring: green in-range, amber marginal,
+   red far out); SWG% and pump-speed as `VisualSlider` (glass track + fill +
+   stepper beads); lights as `LightSwatchCard` (live color-swatch disk from
+   hs/CCT + brightness); shades as `ShadeGlyphCard` (window glyph with the shade
+   drawn at its real position).
 
-4. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
+4. **Tight full-width grid.** `.pool-comp-deck` uses stretchy `1fr` tracks
+   (container queries: 3 cols ≥ 60rem, 2 ≥ 38rem, 1 mobile) with a `data-cols`
+   cap so a lone section still fills the row. Tight, consistent gaps/padding
+   (clamped ~0.4–0.85rem) keep the deck dense and on one iPad-landscape screen.
+
+5. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
    `device.state` as JSON. All fields optional; sensible defaults cover the common
    case. Admin sets JSON → tile re-parses on each render.
 
-5. **CollapsibleSection**: `glass-l2` card with a spring chevron toggle and
-   `animation: pool-comp-section-in` entry. Default-open for the three main
-   sections; default-collapsed for pumps/sensors (telemetry on demand).
-
-6. **AKVO safety preserved**: `AkvoSectionContent` duplicates the same
+6. **AKVO safety preserved (unchanged):** `AkvoSectionContent` duplicates the same
    `HOLD_MS = 2000` RAF-based press-and-hold, `evaluateGate` check, and single
    `requestConfiguration()` call. The hero floor visualization is display-only.
    No raw motion anywhere. AKVO is still the authority.
 
-7. **prefers-reduced-motion**: `useReducedMotion()` gates the hero waves,
-   caustics, bubbles, and cable flow into a static variant.
+7. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
+   drift / specular travel / breathe into a static variant.
 
 ### How to author another compilation panel
 
@@ -528,8 +531,10 @@ wide wall panels. Instead:
 2. Add `MyArea = 'MY_AREA'` to `DeviceType` in `types.ts`.
 3. Register in `tileRegistry.tsx` and `Admin.tsx` (virtualTypes list).
 4. Pull the hooks you need; their data and service calls are already wired.
-5. **Build a full-bleed hero scene** that visualizes the area's defining element
-   (water + floor for pool, flame for a fireplace, plant canopy for a garden) and
-   overlays the key live readouts as glass HUD chips anchored to both edges.
-6. Lay controls in a full-width stretchy grid below the hero — never an auto-fill
-   grid that caps card width and packs to one side.
+5. **Build a high-fidelity hero** from layered CSS gradient meshes (not an SVG
+   diagram) that evokes the area's defining element — sharp at 2×, with slow,
+   minimal motion only — and overlay key live readouts as crisp glass HUD chips.
+6. Lay controls in a tight full-width stretchy grid (`1fr` tracks, container
+   queries, `data-cols` cap) of visual instrument widgets — dials, gauges,
+   swatches, sliders — not text rows. Optimize the primary layout for iPad
+   landscape 1366×1024 (one screen, minimal scroll); keep mobile responsive.
