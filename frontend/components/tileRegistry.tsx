@@ -32,6 +32,7 @@ import AkvoFloorSurface from './tiles/AkvoFloorSurface';
 import CoolMasterTile from './tiles/CoolMasterTile';
 import LutronSurface from './tiles/LutronSurface';
 import UnifiSecurityTile from './tiles/UnifiSecurityTile';
+import PoolCompilationTile from './tiles/PoolCompilationTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -111,6 +112,14 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // entities via subscribeEntities. No RTSP creds, no plate text (PII), no
   // floodlight control (equipment-gated).
   [DeviceType.UnifiSecurity]: UnifiSecurityTile,
+
+  // Surface 6 — Pool Area compilation panel.
+  // Multi-integration: IntelliCenter pool/spa + AKVO floor (safety-intact) +
+  // Lutron lights/shades (area-filtered). Animated water backdrop. All three
+  // surface hooks run concurrently; the tile is the single composition point.
+  // Config via device.state JSON (PoolAreaConfig). AKVO safety: guarded preset
+  // only, never raw motion.
+  [DeviceType.PoolArea]: PoolCompilationTile,
 };
 
 // Resolve the component for a device:

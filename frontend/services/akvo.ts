@@ -78,6 +78,10 @@ export interface AkvoState {
         options: string[];          // real presets (sentinel filtered out)
         current: string | null;     // current selected option (may be sentinel)
         available: boolean;
+        // The actual sentinel/"no request" option string present on the live
+        // select (e.g. "—"), used to CANCEL/clear a running request. null when
+        // the select offers no sentinel. STOP selects this; it is NOT a preset.
+        noneOption: string | null;
     } | null;
 }
 
@@ -204,11 +208,18 @@ export function buildAkvoState(entities: HassEntities): AkvoState {
             ? (selectEnt.attributes!.options as string[])
             : [];
         const options = rawOptions.filter((o) => !SENTINEL_OPTIONS.has(String(o).trim().toLowerCase()));
+        // The first sentinel option present (prefer the em-dash) is the
+        // "no request" / cancel option we select to clear a running request.
+        const noneOption =
+            rawOptions.find((o) => o === '—') ??
+            rawOptions.find((o) => SENTINEL_OPTIONS.has(String(o).trim().toLowerCase())) ??
+            null;
         requestSelect = {
             entityId: selectEnt.entity_id,
             options,
             current: typeof selectEnt.state === 'string' ? selectEnt.state : null,
             available: isAvailable(selectEnt),
+            noneOption,
         };
     }
 
@@ -281,6 +292,28 @@ export async function requestConfiguration(
         'select_option',
         { option: preset },
         { entity_id: state.requestSelect.entityId }
+    );
+    return true;
+}
+
+// --- Cancel / STOP the running request ---------------------------------------
+// Selecting the sentinel ("—" / "no request") option clears the active command;
+// the AKVO controller then HALTS the running configuration. This is the cancel
+// path used by the STOP control while the floor is moving.
+//
+// IMPORTANT: cancelling is NOT gated and is ALWAYS permitted — stopping must
+// work even when (especially when) the floor is moving, faulted, or e-stopped.
+// This is intentionally the opposite of the start path's fail-closed gate. It is
+// a request-channel cancel, NOT the certified hardware E-stop on the AKVO
+// controller. Returns false only when there is no select / no sentinel option.
+export async function cancelMovement(state: AkvoState): Promise<boolean> {
+    const sel = state.requestSelect;
+    if (!sel || !sel.noneOption) return false;
+    await haClient.callService(
+        'select',
+        'select_option',
+        { option: sel.noneOption },
+        { entity_id: sel.entityId }
     );
     return true;
 }

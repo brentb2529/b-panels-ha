@@ -444,3 +444,85 @@ Sibling correlation uses the HA entity-registry device map (fallback: name-prefi
 5. Generator composite + Tempest weather + Sonos player.
 6. ✅ **Lutron HomeWorks QSX surface** — `LutronSurface`.
 7. Keypad / Panic if applicable.
+8. ✅ **Pool Area Compilation Panel** — `PoolCompilationTile` (see section below).
+
+---
+
+## Pool Area Compilation Panel — `DeviceType.PoolArea` / `PoolCompilationTile`
+
+A flagship multi-integration surface that composes three existing surface hooks
+into one cohesive, immersive area view. **No new data plumbing** — all entity
+wiring is delegated to the three sub-hooks already verified above.
+
+| Sub-surface | Hook | Entities | Status |
+| --- | --- | --- | --- |
+| IntelliCenter pool/spa controls | `usePoolSurface()` | All bodies/pumps/lights/chemistry/probes | ✅ (delegates to verified hook) |
+| AKVO Movable Floor monitor + presets | `useAkvoFloor()` | All akvo binary_sensor/sensor/select entities | ✅ (safety-intact, AKVO is authority) |
+| Lutron lights/shades/scenes (area filtered) | `useLutronSurface()` | light.*/cover.*/scene.* filtered by area slug | ✅ (delegates to verified hook) |
+
+**Configurable filters** (set via `device.state` JSON `PoolAreaConfig`):
+
+| Field | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `showPool` | boolean | `true` | Show IntelliCenter section |
+| `showAkvo` | boolean | `true` | Show AKVO floor section |
+| `showLighting` | boolean | `true` | Show Lutron lighting section |
+| `lutronAreaFilter` | string[] | `['pool','patio','spa','cabana','outdoor']` | Area name contains-match filter |
+| `areaName` | string | `'Pool Area'` | Hero header display name (overridden by `tile.label`) |
+| `showQuickActions` | boolean | `true` | Show the one-tap routines bar |
+| `quickActions` | QuickAction[] | sensible default set | Routines (heat/body/lights/feature one-tap; floor = guarded hold) |
+
+**Layout (sophisticated / tight / high-def; iPad-landscape first)**: a high-
+fidelity CSS gradient-mesh water hero (`PoolHeroScene`, NOT an SVG diagram) is the
+centerpiece — deep navy→teal depth, blurred refraction lights, a masked caustic
+lattice, one slow specular travel, top sheen + vignette; retina-sharp at 2×. The
+AKVO floor reads as an elegant right-edge depth gauge (luminous rule at real
+depth, state-colored), with crisp glass HUD chips (temps + body toggles, floor
+status/config/depth, lights). Below, a tight full-width instrument grid (`1fr`
+tracks, container queries 3/2/1 cols, `data-cols` cap) sized to fit iPad landscape
+1366×1024 on one screen.
+
+**Visual instrument widgets (no text rows)**: pump RPM/W/GPM `ArcGauge` dials;
+chemistry pH/ORP/Salt `ChemDial` (270° dial with healthy band + in-range color);
+SWG% and pump-speed `VisualSlider` (track + fill + stepper beads); lights
+`LightSwatchCard` (live hs/CCT color swatch + brightness); shades `ShadeGlyphCard`
+(window glyph with shade at real position).
+
+**State-reactive UX**: (1) when `floors_moving`, the hero depth-gauge marker
+travels smoothly toward target + glows + shows directional chevrons (up rising /
+down lowering), settling at real depth when stopped; (2) when a body is heating,
+a warm amber gradient rises through that body's water in the hero (positioned to
+the heating body's side) and on its temp readout + deck card.
+
+**Quick-actions / routines bar** (`QuickActionsBar`, between hero and deck):
+configurable one-tap routines wired to real services — `heat`/`heatOff`
+(water_heater), `body` (e.g. Spa Mode), `feature`, `lights` (IntelliCenter +
+area-filtered Lutron). `floor` routines command AKVO motion and are rendered as a
+GUARDED press-and-hold (`QuickHoldChip`) — never one-tap.
+
+**STOP control (cancel a running move)**: whenever `floors_moving`, a sticky red
+**STOP banner** (`FloorStopBanner`) appears at the top of the surface (above the
+hero) plus an inline STOP in the console move-feedback. STOP is **immediate
+one-tap** (never gated) and calls `cancelMovement()` → `select.select_option` with
+the request select's sentinel ("—") option (`requestSelect.noneOption`), which
+clears the active command so AKVO halts. Labelled "STOP FLOOR" + subtext noting
+the certified E-stop is on the AKVO controller (not implied here). Starting motion
+stays guarded press-and-hold; only stopping is one-tap (asymmetric by design).
+`cancelMovement` added to `services/akvo.ts` and `useAkvoFloor`.
+
+**AKVO safety (unchanged start path)**: `AkvoSectionContent` AND the quick-action
+`floor` path replicate the same `HOLD_MS = 2000` press-and-hold gate +
+`evaluateGate` check + single `requestConfiguration()` call (which issues
+`select.select_option`) that `AkvoFloorSurface` uses. The hero floor depth gauge
+is display-only. Floor motion is never *started* by a bare tap.
+
+**Light-mode legibility**: the tile is a dark water scene in every theme, so a
+scoped `body.light-mode .pool-comp-root` block pins light `--text` + the dark
+glass recipe inside the tile (light mode only) — labels/values/chips read clearly
+over the dark water instead of dark-slate-on-dark. Dark + ambient unchanged.
+
+**Status**: ✅ built (UX iteration: floor-motion, heating gradient, quick-actions,
+STOP control, light-mode fix). Needs runtime verification at 1366×1024 @2× of:
+light-mode contrast across the whole tile; the STOP banner appearing + one-tap
+cancelling while the floor moves; deck fits with minimal scroll; area filter +
+all three sub-surfaces populate; depth gauge tracks real AKVO depth.

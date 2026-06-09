@@ -84,6 +84,16 @@ export enum DeviceType {
   // entities dynamically. Display-only: no RTSP creds, no plate text (PII),
   // no floodlight control (equipment-gated).
   UnifiSecurity = 'UNIFI_SECURITY',
+
+  // Surface 6 — Pool Area compilation panel.
+  // Flagship multi-integration surface composing IntelliCenter (pool/spa),
+  // AKVO Movable Floor (monitor + guarded preset), and Lutron lights/shades
+  // filtered to pool/patio/spa areas — all in one immersive view with an
+  // animated water-caustics backdrop. Configurable via device.state JSON
+  // (see PoolAreaConfig in PoolCompilationTile.tsx). AKVO safety is fully
+  // preserved: the embedded AkvoSectionContent replicates the same
+  // HoldToRequest gate and single select.select_option write path.
+  PoolArea = 'POOL_AREA',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home

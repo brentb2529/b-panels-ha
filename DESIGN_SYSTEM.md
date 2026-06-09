@@ -455,3 +455,134 @@ values under `:root`, `body.light-mode`, and `body.ambient-night`.
 All `color-mix(in srgb, ...)` calls blend the semantic accent CSS var into the
 glass background, so mode/state changes produce a smooth vibrancy shift instead
 of a hard color swap.
+
+---
+
+## Compilation Panels
+
+A **compilation panel** is a single tile that composes multiple self-driven
+surface hooks into one cohesive, immersive area view. Each sub-surface keeps its
+own hook, data binding, and service-call layer unchanged — the compilation panel
+is purely a composition point.
+
+### Pattern (`PoolCompilationTile` as reference)
+
+```
+PoolCompilationTile
+  ├─ usePoolSurface()         → pool/spa controls + telemetry
+  ├─ useAkvoFloor()           → movable floor monitor + guarded preset
+  ├─ useLutronSurface()       → lights/shades/scenes (area-filtered)
+  │
+  ├─ PoolHeroScene            → high-fidelity water hero (CSS gradient mesh)
+  ├─ PoolWaterBackdrop        → quiet edge-anchored depth wash behind the deck
+  └─ .pool-comp-deck          → full-width instrument grid of CollapsibleSection cards
+```
+
+**Sophisticated, tight, high-definition (the aesthetic rule).** A compilation
+panel must read like a premium product surface — restrained, retina-sharp,
+densely composed — NOT a busy schematic with toy animation. Primary target is
+**iPad landscape 1366×1024 (4:3): the hero + deck fit one screen with minimal
+scroll.**
+
+1. **HERO is a high-fidelity CSS water treatment, not an SVG diagram.**
+   `PoolHeroScene` is built from layered gradient meshes (deep navy→teal depth
+   gradient, blurred overlapping radial "refraction" lights, a low-opacity
+   `repeating-linear-gradient` caustic lattice masked toward the surface, a single
+   slow specular travel band, top sheen + bottom vignette). It is resolution-
+   independent and sharp at 2×. **Motion is minimal and slow only** (one ~22s
+   caustic drift, one ~16s specular travel, a ~12s luminance breathe) — no
+   bubbles, spinning caustics, glint sweeps, or cartoon ripples. Hero height is
+   tight: `clamp(11rem, 26cqw, 17rem)`.
+
+2. **The AKVO floor is an ELEGANT depth indicator, not a platform diagram.** A
+   slim vertical depth gauge on the right edge carries a thin luminous rule at the
+   floor's real depth (state-colored), with subtle tick marks. Crisp glass HUD
+   chips (title + status tags, lights/floor status, pool/spa temps with body
+   toggles, floor config + depth) overlay the water. Display-only.
+
+3. **Controls are visual INSTRUMENT widgets, not text rows.** Pump RPM/W/GPM as
+   `ArcGauge` dials; chemistry pH/ORP/Salt as `ChemDial` (270° dial with a healthy
+   band drawn into the track + in-range coloring: green in-range, amber marginal,
+   red far out); SWG% and pump-speed as `VisualSlider` (glass track + fill +
+   stepper beads); lights as `LightSwatchCard` (live color-swatch disk from
+   hs/CCT + brightness); shades as `ShadeGlyphCard` (window glyph with the shade
+   drawn at its real position).
+
+4. **Tight full-width grid.** `.pool-comp-deck` uses stretchy `1fr` tracks
+   (container queries: 3 cols ≥ 60rem, 2 ≥ 38rem, 1 mobile) with a `data-cols`
+   cap so a lone section still fills the row. Tight, consistent gaps/padding
+   (clamped ~0.4–0.85rem) keep the deck dense and on one iPad-landscape screen.
+
+5. **State-reactive cues (UX).** The surface visibly reacts to live state:
+   • **Floor moving** — when `floors_moving` is true the hero depth-gauge marker
+     travels smoothly toward target (linear transition), glows brighter
+     (`pool-comp-floor-move`), and shows directional **chevrons** (up when rising
+     toward deck, down when lowering, `pool-comp-chev-up/down`); it settles at the
+     real depth when stopped.
+   • **Heating** — when a body's heater is on, a warm amber **heating gradient
+     rises** through that body's water (`pool-comp-heat-rise`): in the hero
+     positioned to the heating body's side (pool = left, spa = right, both =
+     center bloom), and on the body's temp readout + deck card. Reads at a glance
+     which body is calling for heat.
+
+6. **Quick-actions / routines bar.** A one-tap routines band (`QuickActionsBar`)
+   sits between hero and deck, wired to real service calls. `QuickAction` kinds:
+   `heat` / `heatOff` (water_heater set_operation_mode + set_temperature),
+   `body` (toggle a body, e.g. "Spa Mode"), `feature` (water-feature toggle),
+   `lights` (IntelliCenter + area-filtered Lutron lights together), and `floor`
+   (AKVO preset). **SAFETY:** `floor` actions command motion, so they render as a
+   GUARDED press-and-hold chip (`QuickHoldChip`, same `HOLD_MS=2000` + RAF +
+   `requestConfiguration` path, gated by the live AKVO gate) — never one-tap.
+   All other kinds are low-hazard one-tap. The action list is configurable via
+   `PoolAreaConfig.quickActions` (defaults in `DEFAULT_QUICK_ACTIONS`).
+
+7. **Configurable area/entity filter**: the `PoolAreaConfig` shape is baked into
+   `device.state` as JSON. All fields optional; sensible defaults cover the common
+   case. Admin sets JSON → tile re-parses on each render.
+
+8. **STOP control (asymmetric safety).** Whenever `floors_moving` is true, a sticky
+   urgent **red STOP banner** (`FloorStopBanner`) appears at the very top of the
+   surface (above the hero, never buried), and an inline STOP also shows in the
+   floor console's moving feedback. STOP is **IMMEDIATE ONE-TAP** (plain onClick,
+   no hold) and **never gated** — stopping must always be instant. It calls
+   `cancelMovement()` which selects the request select's sentinel ("—") option via
+   `select.select_option`, clearing the active command so AKVO halts the running
+   configuration. This is deliberately the inverse of the start path (which is
+   guarded press-and-hold + fail-closed gate). It is labelled "STOP FLOOR" with
+   subtext clarifying it cancels the requested movement and that the **certified
+   E-stop is on the AKVO controller** — it does NOT imply a certified safety E-stop.
+   The new `cancelMovement` lives in `services/akvo.ts` (+ `requestSelect.noneOption`)
+   and is exposed via `useAkvoFloor`.
+
+9. **AKVO safety preserved (unchanged):** `AkvoSectionContent` and the quick-action
+   `floor` path both use the same `HOLD_MS = 2000` RAF-based press-and-hold,
+   `evaluateGate` gate, and single `requestConfiguration()` call. The hero floor
+   visualization is display-only. STARTING motion is gated press-and-hold; only
+   STOPPING is one-tap. AKVO is still the authority.
+
+10. **Light-mode legibility (dark-surface pin).** The Pool tile is intentionally a
+    DARK water scene in every theme. Under `body.light-mode` the global `--text`
+    (dark slate) over the dark water would be unreadable and the light glass tokens
+    turn murky, so a scoped `body.light-mode .pool-comp-root` block pins the
+    **dark-surface context** inside the tile only: light `--text` (236 244 255) plus
+    the dark `--glass-l*` recipe. Scoped to `.pool-comp-root` — no effect on other
+    surfaces or the global theme. Dark + ambient-night already use this context and
+    are unchanged.
+
+11. **prefers-reduced-motion**: `useReducedMotion()` neutralizes the slow caustic
+    drift / specular travel / breathe AND the floor-motion / heating-rise / STOP
+    pulse loops into static variants.
+
+### How to author another compilation panel
+
+1. Create `components/tiles/MyAreaTile.tsx`.
+2. Add `MyArea = 'MY_AREA'` to `DeviceType` in `types.ts`.
+3. Register in `tileRegistry.tsx` and `Admin.tsx` (virtualTypes list).
+4. Pull the hooks you need; their data and service calls are already wired.
+5. **Build a high-fidelity hero** from layered CSS gradient meshes (not an SVG
+   diagram) that evokes the area's defining element — sharp at 2×, with slow,
+   minimal motion only — and overlay key live readouts as crisp glass HUD chips.
+6. Lay controls in a tight full-width stretchy grid (`1fr` tracks, container
+   queries, `data-cols` cap) of visual instrument widgets — dials, gauges,
+   swatches, sliders — not text rows. Optimize the primary layout for iPad
+   landscape 1366×1024 (one screen, minimal scroll); keep mobile responsive.
