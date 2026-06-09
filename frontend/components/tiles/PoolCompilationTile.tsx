@@ -1184,6 +1184,26 @@ const LutronSectionContent: React.FC<{
     );
   }, [state.scenes, state.present, areaFilter]);
 
+  // All hooks must be called unconditionally before any early return (Rules of Hooks).
+  const handleToggleLight = useCallback((light: LutronLightState) => {
+    void lutronToggleLight(light.entityId, !light.isOn);
+  }, []);
+
+  const handleBrightness = useCallback((light: LutronLightState, pct: number) => {
+    setOptimistic(light.entityId, pct);
+    void lutronSetBrightness(light.entityId, pct);
+  }, [setOptimistic]);
+
+  const handleCover = useCallback((cover: LutronCoverState, action: 'open' | 'close' | 'stop') => {
+    if (action === 'open') void openCover(cover.entityId);
+    else if (action === 'close') void closeCover(cover.entityId);
+    else void stopCover(cover.entityId);
+  }, []);
+
+  const handleScene = useCallback((scene: LutronSceneState) => {
+    void activateScene(scene.entityId);
+  }, []);
+
   if (!state.present) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-4" style={{ gap: 'var(--space-2)' }}>
@@ -1209,25 +1229,6 @@ const LutronSectionContent: React.FC<{
       </div>
     );
   }
-
-  const handleToggleLight = useCallback((light: LutronLightState) => {
-    void lutronToggleLight(light.entityId, !light.isOn);
-  }, []);
-
-  const handleBrightness = useCallback((light: LutronLightState, pct: number) => {
-    setOptimistic(light.entityId, pct);
-    void lutronSetBrightness(light.entityId, pct);
-  }, [setOptimistic]);
-
-  const handleCover = useCallback((cover: LutronCoverState, action: 'open' | 'close' | 'stop') => {
-    if (action === 'open') void openCover(cover.entityId);
-    else if (action === 'close') void closeCover(cover.entityId);
-    else void stopCover(cover.entityId);
-  }, []);
-
-  const handleScene = useCallback((scene: LutronSceneState) => {
-    void activateScene(scene.entityId);
-  }, []);
 
   return (
     <div className="flex flex-col" style={{ gap: 'var(--space-3)' }}>
