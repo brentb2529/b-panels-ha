@@ -94,6 +94,12 @@ export enum DeviceType {
   // preserved: the embedded AkvoSectionContent replicates the same
   // HoldToRequest gate and single select.select_option write path.
   PoolArea = 'POOL_AREA',
+
+  // Surface 7 — Climate Area compilation panel.
+  // Multi-integration HVAC dashboard composing Airzone per-room zones,
+  // Mitsubishi AE-200E City Multi groups, and CoolMaster VRF units into one
+  // immersive climate overview. Config via device.state JSON (ClimateAreaConfig).
+  ClimateArea = 'CLIMATE_AREA',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home
