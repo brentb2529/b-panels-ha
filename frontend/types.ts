@@ -106,6 +106,12 @@ export enum DeviceType {
   // control, no arm/disarm, no recording-mode change, no siren control —
   // all security-hardware writes are deferred/equipment-gated.
   SecurityArea = 'SECURITY_AREA',
+
+  // Surface 8 — Climate Area compilation panel.
+  // Multi-integration HVAC dashboard composing Airzone per-room zones,
+  // Mitsubishi AE-200E City Multi groups, and CoolMaster VRF units into one
+  // immersive climate overview. Config via device.state JSON (ClimateAreaConfig).
+  ClimateArea = 'CLIMATE_AREA',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home

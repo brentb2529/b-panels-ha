@@ -359,6 +359,9 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         // subscribeEntities. device.state carries optional SecurityAreaConfig
         // (areaName, showEvents, showSensors, maxCameras); empty object is safe.
         case DeviceType.SecurityArea:
+        // Climate compilation is self-driven via useClimateZones + device list;
+        // device.state holds ClimateAreaConfig. An empty object enables defaults.
+        case DeviceType.ClimateArea:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty

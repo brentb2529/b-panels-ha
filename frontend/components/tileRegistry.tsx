@@ -34,6 +34,7 @@ import LutronSurface from './tiles/LutronSurface';
 import UnifiSecurityTile from './tiles/UnifiSecurityTile';
 import PoolCompilationTile from './tiles/PoolCompilationTile';
 import SecurityCompilationTile from './tiles/SecurityCompilationTile';
+import ClimateCompilationTile from './tiles/ClimateCompilationTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -128,6 +129,13 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   // control, no recording mode, no siren). Quick-actions are navigation-only
   // (focus a camera, scroll events). Config via device.state JSON (SecurityAreaConfig).
   [DeviceType.SecurityArea]: SecurityCompilationTile,
+
+  // Surface 8 — Climate Area compilation panel.
+  // Multi-integration HVAC dashboard: Airzone per-room zones + AE-200E City Multi
+  // groups + CoolMaster VRF units. Hero with outdoor temp + zone mode summary.
+  // Quick-actions bar fans out to all three integrations. Config via device.state
+  // JSON (ClimateAreaConfig). Low-hazard: standard climate service calls only.
+  [DeviceType.ClimateArea]: ClimateCompilationTile,
 };
 
 // Resolve the component for a device:

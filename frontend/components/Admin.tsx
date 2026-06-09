@@ -41,6 +41,7 @@ const TilePreviewIcon = ({ type }: { type: DeviceType }) => {
         case DeviceType.AkvoFloor: return <IconWaves {...iconProps} className="w-8 h-8 text-cyan-400" />;
         case DeviceType.PoolArea: return <IconWaves {...iconProps} className="w-8 h-8 text-sky-300" />;
         case DeviceType.SecurityArea: return <IconShieldAlert {...iconProps} className="w-8 h-8 text-emerald-400" />;
+        case DeviceType.ClimateArea: return <IconWind {...iconProps} className="w-8 h-8 text-cyan-300" />;
         case DeviceType.RSSFeed: return <IconRss {...iconProps} className="w-8 h-8 text-orange-400" />;
         case DeviceType.WaterSensor: 
         case DeviceType.Valve: return <IconDroplets {...iconProps} className="w-8 h-8 text-blue-400" />;
@@ -1845,6 +1846,7 @@ const VirtualDeviceManager = () => {
         { value: DeviceType.AkvoFloor, label: 'AKVO Movable Floor' },
         { value: DeviceType.PoolArea, label: 'Pool Area (Compilation Panel)' },
         { value: DeviceType.SecurityArea, label: 'Security Area (Compilation Panel)' },
+        { value: DeviceType.ClimateArea, label: 'Climate Area (Compilation Panel)' },
         { value: DeviceType.RSSFeed, label: 'RSS Feed' },
         { value: DeviceType.InternetMonitor, label: 'Internet Monitor' },
         { value: DeviceType.FishingReport, label: 'Fishing Report' },
