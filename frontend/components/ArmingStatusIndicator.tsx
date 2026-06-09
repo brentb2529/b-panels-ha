@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDashboard } from '../hooks/useDashboard';
 import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from './icons';
+import SecurityModal from './SecurityModal';
 
 // Header chrome for the alarm: an arm-state badge (Disarmed / Armed Stay /
 // Armed Away / Intrusion) plus, while disarmed, a zone-readiness badge
@@ -8,8 +9,14 @@ import { IconShield, IconShieldCheck, IconShieldAlert, IconShieldOff } from './i
 // entirely by the live alarm state from the websocket — no per-panel toggle or
 // configured "status device" required. Renders nothing until an
 // alarm_control_panel is present.
+//
+// Tapping the badge opens SecurityModal, which is portal-rendered into
+// document.body to avoid being clipped by the Header's backdrop-filter ancestor
+// (Chromium makes backdrop-filter elements the containing block for position:fixed
+// children, which would clip the modal to the 64px header bar).
 const ArmingStatusIndicator = () => {
   const { alarmState, armingState } = useDashboard();
+  const [showModal, setShowModal] = useState(false);
 
   if (!alarmState || typeof alarmState.armState === 'undefined') {
     return null;
@@ -17,15 +24,25 @@ const ArmingStatusIndicator = () => {
 
   const isViolation = alarmState.securityState === 'VIOLATION';
 
-  const badge = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium';
+  const badge = 'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer select-none transition-opacity hover:opacity-80 active:opacity-60';
 
   // --- Intrusion takes over the whole indicator ---
   if (isViolation) {
     return (
-      <div title="Intrusion detected" className={`${badge} bg-red-500/25 text-red-200 animate-pulse`}>
-        <IconShieldAlert className="w-5 h-5" />
-        <span className="hidden sm:inline">Intrusion</span>
-      </div>
+      <>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          title="Intrusion detected — tap for details"
+          className={`${badge} bg-red-500/25 text-red-200 animate-pulse`}
+          aria-haspopup="dialog"
+          aria-expanded={showModal}
+        >
+          <IconShieldAlert className="w-5 h-5" />
+          <span className="hidden sm:inline">Intrusion</span>
+        </button>
+        {showModal && <SecurityModal onClose={() => setShowModal(false)} />}
+      </>
     );
   }
 
@@ -43,18 +60,28 @@ const ArmingStatusIndicator = () => {
     : { text: 'Not Ready', icon: <IconShieldOff className="w-5 h-5" />, className: 'bg-orange-500/20 text-orange-300' };
 
   return (
-    <div className="flex items-center gap-2">
-      <div title={`Alarm: ${armConfig.text}`} className={`${badge} ${armConfig.className}`}>
-        {armConfig.icon}
-        <span className="hidden sm:inline">{armConfig.text}</span>
+    <>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          title={`Alarm: ${armConfig.text} — tap for details`}
+          className={`${badge} ${armConfig.className}`}
+          aria-haspopup="dialog"
+          aria-expanded={showModal}
+        >
+          {armConfig.icon}
+          <span className="hidden sm:inline">{armConfig.text}</span>
+        </button>
+        {showReadiness && (
+          <div title={`Zone: ${readyConfig.text}`} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${readyConfig.className}`}>
+            {readyConfig.icon}
+            <span className="hidden sm:inline">{readyConfig.text}</span>
+          </div>
+        )}
       </div>
-      {showReadiness && (
-        <div title={`Zone: ${readyConfig.text}`} className={`${badge} ${readyConfig.className}`}>
-          {readyConfig.icon}
-          <span className="hidden sm:inline">{readyConfig.text}</span>
-        </div>
-      )}
-    </div>
+      {showModal && <SecurityModal onClose={() => setShowModal(false)} />}
+    </>
   );
 };
 

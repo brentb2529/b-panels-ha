@@ -20,6 +20,8 @@ import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
 import NavRail from './components/NavRail';
 import HomeOverview from './components/HomeOverview';
 import AreaView from './components/AreaView';
+import { ScopedPanelProvider, useScopedPanel } from './hooks/useScopedPanel';
+import DeviceSetup from './components/DeviceSetup';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -285,6 +287,7 @@ const ThemeManager = ({ activePanelId }: { activePanelId: string | null }) => {
 
 const AppContent = () => {
   const { isAudioUnlocked, unlockAudio, ipFilterEnabled, allowedIPs, activePanelId } = useDashboard();
+  const { needsDeviceSetup } = useScopedPanel();
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthorized, setAuthorized] = useState<boolean | null>(null);
@@ -481,6 +484,9 @@ const AppContent = () => {
       <ThemeManager activePanelId={activePanelId} />
       <NotificationHost />
       <GlobalSoundPlayer />
+      {/* Device-setup screen: shown exactly once on first launch (no stored default).
+          Admin/login routes skip it — they don't use the scoped-panel system. */}
+      {needsDeviceSetup && isDashboardRoute && <DeviceSetup />}
       {/* Audio unlock is only relevant to the dashboard (TTS alerts). Don't show
           its full-screen overlay over /admin or /login, where it would sit on top
           (z-100) and silently swallow the first click on every control. */}
@@ -504,9 +510,14 @@ function App() {
   return (
     <AuthProvider>
       <DashboardProvider>
-          <HashRouter>
-              <AppContent />
-          </HashRouter>
+        {/* ScopedPanelProvider must be inside HashRouter so useScopedPanel
+            consumers (NavRail, HomeOverview, AreaView) can access router context
+            through the same tree. */}
+        <HashRouter>
+          <ScopedPanelProvider>
+            <AppContent />
+          </ScopedPanelProvider>
+        </HashRouter>
       </DashboardProvider>
     </AuthProvider>
   );

@@ -26,6 +26,7 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../hooks/useDashboard';
 import { useWeather } from '../hooks/useWeather';
+import { useScopedPanel } from '../hooks/useScopedPanel';
 import { DeviceType } from '../types';
 import {
   IconWaves,
@@ -525,6 +526,7 @@ const HomeOverview: React.FC = () => {
   const { devices, deviceMap, alarmState } = useDashboard();
   const { weather } = useWeather();
   const navigate = useNavigate();
+  const { isAreaAllowed } = useScopedPanel();
 
   const poolStatus = usePoolStatus(devices, deviceMap);
   const climateStatus = useClimateStatus(devices, deviceMap);
@@ -609,90 +611,146 @@ const HomeOverview: React.FC = () => {
         </div>
       </div>
 
-      {/* Area cards grid — fills remaining height */}
-      <div
-        className="flex-1 grid gap-4 overflow-hidden"
-        style={{
-          // 2 rows: top row (Pool + Climate, 55%) + bottom row (Security + Lights + Generator, 45%)
-          gridTemplateRows: '1fr 1fr',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          // Pool and Climate each span 1.5 of the 3 columns effectively by using 3-col and spanning
-        }}
-      >
-        {/* Pool — large, top-left */}
-        <AreaCard
-          areaKey="pool"
-          title="Pool"
-          subtitle="Backyard"
-          status={poolStatus}
-          icon={<IconWaves className="w-6 h-6" />}
-          accentColor="rgb(56,189,248)"
-          onClick={() => navigate('/area/pool')}
-          style={{ gridColumn: '1 / 2', gridRow: '1 / 2' }}
-        />
+      {/* Area cards grid — fills remaining height.
+          Cards are filtered by the active panel scope. When all 5 areas are
+          visible the original 2-row, 3-column layout is preserved. With fewer
+          cards we fall back to a simple auto-flow grid so remaining cards
+          still fill the space attractively. */}
+      {(() => {
+        // Determine which cards are in-scope for this panel.
+        const allCards = [
+          {
+            key: 'pool',
+            el: (style: React.CSSProperties) => (
+              <AreaCard
+                key="pool"
+                areaKey="pool"
+                title="Pool"
+                subtitle="Backyard"
+                status={poolStatus}
+                icon={<IconWaves className="w-6 h-6" />}
+                accentColor="rgb(56,189,248)"
+                onClick={() => navigate('/area/pool')}
+                style={style}
+              />
+            ),
+          },
+          {
+            key: 'climate',
+            el: (style: React.CSSProperties) => (
+              <AreaCard
+                key="climate"
+                areaKey="climate"
+                title="Heating & Cooling"
+                subtitle="Whole home"
+                status={climateStatus}
+                icon={<IconWind className="w-6 h-6" />}
+                accentColor="rgb(var(--accent))"
+                onClick={() => navigate('/area/climate')}
+                style={style}
+              />
+            ),
+          },
+          {
+            key: 'security',
+            el: (style: React.CSSProperties) => (
+              <AreaCard
+                key="security"
+                areaKey="security"
+                title="Security"
+                subtitle="Cameras & sensors"
+                status={securityStatus}
+                icon={
+                  securityStatus.alertLevel === 'alert' ? (
+                    <IconAlertTriangle className="w-6 h-6" />
+                  ) : securityStatus.alertLevel === 'warn' ? (
+                    <IconShieldAlert className="w-6 h-6" />
+                  ) : (
+                    <IconShieldCheck className="w-6 h-6" />
+                  )
+                }
+                accentColor={
+                  securityStatus.alertLevel === 'alert'
+                    ? 'rgb(var(--accent-alert))'
+                    : securityStatus.alertLevel === 'warn'
+                    ? 'rgb(var(--accent-warn))'
+                    : 'rgb(52,211,153)'
+                }
+                onClick={() => navigate('/area/security')}
+                style={style}
+              />
+            ),
+          },
+          {
+            key: 'lights',
+            el: (style: React.CSSProperties) => (
+              <AreaCard
+                key="lights"
+                areaKey="lights"
+                title="Lights"
+                subtitle="Lutron & HA"
+                status={lightStatus}
+                icon={<IconLightbulb className="w-6 h-6" />}
+                accentColor="rgb(var(--accent-light))"
+                onClick={() => navigate('/area/lights')}
+                style={style}
+              />
+            ),
+          },
+          {
+            key: 'generator',
+            el: (style: React.CSSProperties) => (
+              <AreaCard
+                key="generator"
+                areaKey="generator"
+                title="Generator"
+                subtitle="Standby power"
+                status={generatorStatus}
+                icon={<IconZap className="w-6 h-6" />}
+                accentColor="rgb(var(--accent-plug))"
+                onClick={() => navigate('/area/generator')}
+                style={style}
+              />
+            ),
+          },
+        ];
 
-        {/* Climate — large, top-center+right */}
-        <AreaCard
-          areaKey="climate"
-          title="Heating & Cooling"
-          subtitle="Whole home"
-          status={climateStatus}
-          icon={<IconWind className="w-6 h-6" />}
-          accentColor="rgb(var(--accent))"
-          onClick={() => navigate('/area/climate')}
-          style={{ gridColumn: '2 / 4', gridRow: '1 / 2' }}
-        />
+        const visible = allCards.filter(c => isAreaAllowed(c.key));
+        const count = visible.length;
 
-        {/* Security — bottom-left */}
-        <AreaCard
-          areaKey="security"
-          title="Security"
-          subtitle="Cameras & sensors"
-          status={securityStatus}
-          icon={
-            securityStatus.alertLevel === 'alert' ? (
-              <IconAlertTriangle className="w-6 h-6" />
-            ) : securityStatus.alertLevel === 'warn' ? (
-              <IconShieldAlert className="w-6 h-6" />
-            ) : (
-              <IconShieldCheck className="w-6 h-6" />
-            )
-          }
-          accentColor={
-            securityStatus.alertLevel === 'alert'
-              ? 'rgb(var(--accent-alert))'
-              : securityStatus.alertLevel === 'warn'
-              ? 'rgb(var(--accent-warn))'
-              : 'rgb(52,211,153)'
-          }
-          onClick={() => navigate('/area/security')}
-          style={{ gridColumn: '1 / 2', gridRow: '2 / 3' }}
-        />
+        // Full 5-card layout: use the original fixed grid placement.
+        if (count === 5) {
+          const positions: Record<string, React.CSSProperties> = {
+            pool:      { gridColumn: '1 / 2', gridRow: '1 / 2' },
+            climate:   { gridColumn: '2 / 4', gridRow: '1 / 2' },
+            security:  { gridColumn: '1 / 2', gridRow: '2 / 3' },
+            lights:    { gridColumn: '2 / 3', gridRow: '2 / 3' },
+            generator: { gridColumn: '3 / 4', gridRow: '2 / 3' },
+          };
+          return (
+            <div
+              className="flex-1 grid gap-4 overflow-hidden"
+              style={{ gridTemplateRows: '1fr 1fr', gridTemplateColumns: '1fr 1fr 1fr' }}
+            >
+              {visible.map(c => c.el(positions[c.key] ?? {}))}
+            </div>
+          );
+        }
 
-        {/* Lights — bottom-center */}
-        <AreaCard
-          areaKey="lights"
-          title="Lights"
-          subtitle="Lutron & HA"
-          status={lightStatus}
-          icon={<IconLightbulb className="w-6 h-6" />}
-          accentColor="rgb(var(--accent-light))"
-          onClick={() => navigate('/area/lights')}
-          style={{ gridColumn: '2 / 3', gridRow: '2 / 3' }}
-        />
-
-        {/* Generator — bottom-right */}
-        <AreaCard
-          areaKey="generator"
-          title="Generator"
-          subtitle="Standby power"
-          status={generatorStatus}
-          icon={<IconZap className="w-6 h-6" />}
-          accentColor="rgb(var(--accent-plug))"
-          onClick={() => navigate('/area/generator')}
-          style={{ gridColumn: '3 / 4', gridRow: '2 / 3' }}
-        />
-      </div>
+        // Fewer cards: auto-flow grid, 1 or 2 columns depending on count.
+        const cols = count === 1 ? 1 : count <= 4 ? 2 : 3;
+        return (
+          <div
+            className="flex-1 grid gap-4 overflow-hidden"
+            style={{
+              gridTemplateColumns: `repeat(${cols}, 1fr)`,
+              gridAutoRows: '1fr',
+            }}
+          >
+            {visible.map(c => c.el({}))}
+          </div>
+        );
+      })()}
     </div>
   );
 };

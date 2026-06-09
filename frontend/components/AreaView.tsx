@@ -21,8 +21,9 @@
  */
 
 import React, { useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useDashboard } from '../hooks/useDashboard';
+import { useScopedPanel } from '../hooks/useScopedPanel';
 import { resolveTile } from './tileRegistry';
 import { Device, DeviceService, DeviceType } from '../types';
 import { IconArrowLeft, IconHome } from './icons';
@@ -92,9 +93,17 @@ const AreaView: React.FC = () => {
   const { areaKey = '' } = useParams<{ areaKey: string }>();
   const { virtualDevices } = useDashboard();
   const navigate = useNavigate();
+  const { isAreaAllowed } = useScopedPanel();
 
   const deviceType = AREA_DEVICE_TYPE[areaKey];
   const areaLabel = AREA_LABELS[areaKey] || areaKey;
+
+  // Scope guard: redirect to /home if this area is not in the active panel.
+  // The underlying route and component are NOT removed — the redirect is
+  // UI-level only. See config/panels.ts for the security disclaimer.
+  if (areaKey && !isAreaAllowed(areaKey)) {
+    return <Navigate to="/home" replace />;
+  }
 
   // Find matching virtualDevice in saved config, or synthesize one
   const device = useMemo<Device | null>(() => {
