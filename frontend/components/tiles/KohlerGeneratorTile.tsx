@@ -8,21 +8,26 @@ import {
     IconWifiOff, IconCpu, IconX, IconHome, IconSettings,
 } from '../icons';
 import { fluidTextSm, fluidTextXs, fluidTextLg, fluidText2xl, fluidGap } from './tileScale';
+import {
+    GlassPanel, GlassCard, GlassButton,
+    glassMaterial, glassMaterialActive,
+    BuildBar,
+    radius, spring, duration, accentVar as dsAccentVar,
+} from '../../design-system';
 
 // =============================================================================
-// Kohler / Rehlko standby-generator surface — DISPLAY-ONLY.
+// Kohler / Rehlko standby-generator surface — DISPLAY-ONLY.  (liquid-glass rollout)
 //
-// Bound to the HA core `rehlko` integration via the `rehlko:generator`
-// composite (built in useDashboard from the generator's prefixed sensor /
-// binary_sensor entities). rehlko ships NO control entities, so this surface
-// renders telemetry and NEVER commands the unit — there is no start / stop /
-// exercise affordance anywhere in this file by design (safety: equipment-gated
-// actuation is escalated, not wired).
-//
-// All data arrives via the live HA entity subscription (subscribeEntities) and
-// reconciles in place — no polling here. device.state is the composite
-// GeneratorRehlkoState; `isPreview` marks representative fixture data so the
-// surface is never mistaken for live telemetry.
+// GLASS ROLLOUT:
+//   • Outer tile: GlassPanel (level-1, glass-mount)
+//   • Vital stat cells: GlassCard (level-3 = control-bead material)
+//   • Load percentage: BuildBar widget (springs to value on mount + change)
+//   • Status indicator: living glow dot with running/standby/exercise/fault tone
+//     using glassMaterialActive (green=running, sky=exercise, muted=standby, red=fault)
+//   • Generator graphic: mode-tinted glow using design tokens, not hardcoded hex
+//   • Modal: GlassPanel (level-2) + GlassButton close
+//   • Preview badge: unchanged (amber pattern ribbon, no glass treatment needed)
+//   • All data bindings, composites, display-only contract UNCHANGED.
 // =============================================================================
 
 const fmtNum = (v: number | null | undefined, digits = 0): string =>
@@ -52,13 +57,12 @@ const relativeTo = (iso: string | null): string | null => {
 };
 
 // --- Headline derivation -----------------------------------------------------
-// Collapse engineState/status/running into one bold, room-legible headline.
 type Headline = { word: string; tone: 'running' | 'exercise' | 'standby' | 'fault' | 'offline' };
+
 function headlineFor(s: GeneratorRehlkoState): Headline {
     if (s.isConnected === false) return { word: 'Offline', tone: 'offline' };
     if (s.isExercising) return { word: 'Exercising', tone: 'exercise' };
     if (s.isRunning) return { word: 'Running', tone: 'running' };
-    // Map a few common controller words; otherwise show the reported state.
     const es = (s.engineState || s.status || '').toLowerCase();
     if (/standby|ready/.test(es)) return { word: 'Standby', tone: 'standby' };
     if (/off|switchstateoff|shutdown/.test(es)) return { word: 'Off', tone: 'offline' };
@@ -66,12 +70,22 @@ function headlineFor(s: GeneratorRehlkoState): Headline {
     return { word: 'Standby', tone: 'standby' };
 }
 
-const TONE_COLOR: Record<Headline['tone'], string> = {
-    running: '#22c55e',
+// Map tone to design-system accent CSS vars (no hardcoded hex in component code)
+const TONE_ACCENT_VAR: Record<Headline['tone'], string> = {
+    running:  'var(--accent-plug)',    // green — actively running / generating
+    exercise: 'var(--accent-water)',   // sky — scheduled exercise run
+    standby:  'var(--accent)',         // brand blue — healthy standby
+    fault:    'var(--accent-alert)',   // red — fault / error
+    offline:  'var(--accent-warn)',    // amber — disconnected
+};
+
+// Fallback hex for contexts that need a concrete color (glow div, svg fills)
+const TONE_HEX: Record<Headline['tone'], string> = {
+    running:  '#22c55e',
     exercise: '#38bdf8',
-    standby: '#94a3b8',
-    fault: '#ef4444',
-    offline: '#9ca3af',
+    standby:  '#94a3b8',
+    fault:    '#ef4444',
+    offline:  '#9ca3af',
 };
 
 // --- Attention derivation ----------------------------------------------------
@@ -82,34 +96,81 @@ function attentionFor(s: GeneratorRehlkoState): { severity: 'error' | 'warning';
     return out;
 }
 
-// --- Power-source pill --------------------------------------------------------
+// --- Power-source pill -------------------------------------------------------
 const PowerSourcePill = ({ source }: { source: GeneratorRehlkoState['powerSource'] }) => {
     const onGen = source === 'generator';
     const onUtil = source === 'utility';
     const label = onGen ? 'On Generator' : onUtil ? 'On Utility' : 'Source n/a';
-    const color = onGen ? '#22c55e' : onUtil ? '#38bdf8' : '#9ca3af';
+    const accentCssVar = onGen ? 'var(--accent-plug)' : onUtil ? 'var(--accent-water)' : undefined;
     const Icon = onGen ? IconZap : IconHome;
+
     return (
-        <div
-            className="flex items-center gap-2 rounded-full border px-3 py-1.5"
+        <GlassButton
+            active={!!accentCssVar}
+            accentVar={accentCssVar}
             style={{
-                borderColor: `${color}55`,
-                background: `color-mix(in srgb, ${color} 16%, transparent)`,
+                gap: 6, padding: '4px 10px 4px 8px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: 'var(--type-2xs)',
+                fontWeight: 'var(--weight-bold)',
+                letterSpacing: 'var(--tracking-caps)',
+                textTransform: 'uppercase',
+                cursor: 'default',
+                color: accentCssVar ? accentCssVar : 'rgb(var(--text) / 0.45)',
             }}
         >
-            <Icon className="shrink-0" style={{ width: '1rem', height: '1rem', color }} />
-            <span className="font-bold uppercase tracking-wider" style={{ ...fluidTextXs, color }}>{label}</span>
-        </div>
+            <Icon style={{ width: '1rem', height: '1rem', flexShrink: 0 }} />
+            {label}
+        </GlassButton>
     );
 };
 
-// --- Generator graphic (echoes the legacy tile's enclosure, source-aware) ----
+// --- Living status dot -------------------------------------------------------
+// A glass-bead indicator that pulses when the generator is active.
+// Adapts its glow color to tone via design-system accent vars.
+const LivingStatusDot = ({ tone }: { tone: Headline['tone'] }) => {
+    const isActive = tone === 'running' || tone === 'exercise';
+    const isFault  = tone === 'fault';
+    const accentCssVar = TONE_ACCENT_VAR[tone];
+    const hex = TONE_HEX[tone];
+
+    return (
+        <span
+            style={{
+                display: 'inline-block',
+                width: '0.7rem', height: '0.7rem',
+                borderRadius: '50%', flexShrink: 0,
+                background: hex,
+                boxShadow: `0 0 ${isActive ? 14 : isFault ? 10 : 6}px ${hex}`,
+                animation: isActive
+                    ? 'widget-idle-breathe 1.8s ease-in-out infinite'
+                    : isFault
+                    ? 'glass-pulse-ring 1.2s ease-in-out infinite'
+                    : 'none',
+                transition: `background var(--dur-medium) var(--spring-gentle), box-shadow var(--dur-medium) var(--spring-gentle)`,
+            }}
+        />
+    );
+};
+
+// --- Generator graphic — mode-tinted glow now via design tokens --------------
 const GeneratorGraphic = ({ running, fault, exercising }: { running: boolean; fault: boolean; exercising: boolean }) => {
-    const glow = fault ? '#ef4444' : exercising ? '#38bdf8' : running ? '#22c55e' : 'transparent';
+    const tone: Headline['tone'] = fault ? 'fault' : exercising ? 'exercise' : running ? 'running' : 'standby';
+    const glowHex = fault ? '#ef4444' : exercising ? '#38bdf8' : running ? '#22c55e' : 'transparent';
+    const showGlow = glowHex !== 'transparent';
+
     return (
         <div className="relative flex items-center justify-center" style={{ width: 'clamp(3.5rem, 30cqmin, 6.5rem)', aspectRatio: '200 / 140' }}>
-            {glow !== 'transparent' && (
-                <div className="absolute rounded-full blur-2xl pointer-events-none" style={{ width: '88%', height: '82%', background: glow, opacity: fault ? 0.45 : 0.38 }} />
+            {showGlow && (
+                <div
+                    className="absolute rounded-full blur-2xl pointer-events-none"
+                    style={{
+                        width: '88%', height: '82%',
+                        background: `color-mix(in srgb, ${TONE_ACCENT_VAR[tone]} 60%, transparent)`,
+                        opacity: fault ? 0.45 : 0.38,
+                        animation: (running || exercising) ? 'widget-idle-breathe 2s ease-in-out infinite' : 'none',
+                    }}
+                />
             )}
             <svg viewBox="0 0 200 140" className="relative w-full h-full" style={{ filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.4))' }}>
                 <defs>
@@ -131,35 +192,92 @@ const GeneratorGraphic = ({ running, fault, exercising }: { running: boolean; fa
                 <line x1="42" y1="66" x2="158" y2="66" stroke="#64748b" strokeWidth="3" strokeLinecap="round" opacity="0.7" />
                 <line x1="42" y1="80" x2="158" y2="80" stroke="#64748b" strokeWidth="3" strokeLinecap="round" opacity="0.7" />
                 <rect x="8" y="116" width="184" height="16" rx="3" fill="#1e293b" />
-                <circle cx="170" cy="106" r="5"
-                    fill={fault ? '#ef4444' : exercising ? '#38bdf8' : running ? '#22c55e' : '#475569'}
-                    style={glow !== 'transparent' ? { filter: `drop-shadow(0 0 4px ${glow})` } : undefined}>
-                    {(running || exercising) && !fault && <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />}
+                {/* Status LED — uses design token hex fallbacks */}
+                <circle
+                    cx="170" cy="106" r="5"
+                    fill={glowHex !== 'transparent' ? glowHex : '#475569'}
+                    style={showGlow ? { filter: `drop-shadow(0 0 4px ${glowHex})` } : undefined}
+                >
+                    {(running || exercising) && !fault && (
+                        <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />
+                    )}
                 </circle>
             </svg>
         </div>
     );
 };
 
-// --- Vital stat cell ----------------------------------------------------------
+// --- Vital stat cell — glass-bead (level-3) ----------------------------------
 const Vital = ({ icon: Icon, label, value, unit }: { icon: any; label: string; value: string; unit?: string }) => (
     <div
-        className="flex flex-col items-center justify-center rounded-control py-1.5 px-1 flex-1 min-w-0 border border-white/10"
-        style={{ background: 'rgb(0 0 0 / 0.22)', boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.06), inset 0 -2px 5px rgb(0 0 0 / 0.35)' }}
+        className="flex flex-col items-center justify-center flex-1 min-w-0"
+        style={{
+            borderRadius: 'var(--radius-control)',
+            padding: '6px 4px',
+            ...glassMaterial(3),
+        }}
     >
         <div className="flex items-center gap-1 mb-0.5">
             <Icon style={{ width: '0.7rem', height: '0.7rem' }} className="text-gray-400 shrink-0" />
-            <span className="uppercase font-bold tracking-wider text-gray-300" style={{ fontSize: 'clamp(0.42rem, 4cqmin, 0.58rem)' }}>{label}</span>
+            <span
+                className="uppercase font-bold tracking-wider"
+                style={{ fontSize: 'clamp(0.42rem, 4cqmin, 0.58rem)', color: 'rgb(var(--text) / 0.45)' }}
+            >
+                {label}
+            </span>
         </div>
-        <span className="font-bold text-white leading-none tabular-nums" style={fluidTextSm}>
-            {value}{unit && <span className="text-gray-400 ml-0.5 font-normal" style={{ fontSize: 'clamp(0.42rem, 3.5cqmin, 0.6rem)' }}>{unit}</span>}
+        <span
+            className="font-bold leading-none tabular-nums"
+            style={{ ...fluidTextSm, color: 'rgb(var(--text))' }}
+        >
+            {value}
+            {unit && (
+                <span
+                    className="font-normal ml-0.5"
+                    style={{ fontSize: 'clamp(0.42rem, 3.5cqmin, 0.6rem)', color: 'rgb(var(--text) / 0.45)' }}
+                >
+                    {unit}
+                </span>
+            )}
         </span>
     </div>
 );
 
+// --- Load bar row — BuildBar with % and watt label ---------------------------
+const LoadBar = ({ loadPercent, loadWatts, isActive }: { loadPercent: number | null; loadWatts: number | null; isActive: boolean }) => {
+    const pct = loadPercent !== null && Number.isFinite(loadPercent) ? Math.max(0, Math.min(100, loadPercent)) : 0;
+    const kw  = loadWatts !== null && Number.isFinite(loadWatts) ? loadWatts : 0;
+    const kwLabel = kw >= 1000 ? `${(kw / 1000).toFixed(1)} kW` : `${Math.round(kw)} W`;
+
+    return (
+        <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'rgb(var(--text) / 0.45)' }}>
+                    Load
+                </span>
+                <span style={{ fontFamily: 'var(--font-numeric)', fontSize: 'var(--type-xs)', fontWeight: 'var(--weight-bold)', color: isActive ? 'var(--accent-plug)' : 'rgb(var(--text) / 0.7)' }}>
+                    {loadPercent !== null && Number.isFinite(loadPercent) ? `${Math.round(loadPercent)}%` : 'n/a'}
+                    {kw > 0 && (
+                        <span style={{ fontSize: 'var(--type-2xs)', fontWeight: 400, color: 'rgb(var(--text) / 0.45)', marginLeft: 4 }}>
+                            {kwLabel}
+                        </span>
+                    )}
+                </span>
+            </div>
+            <BuildBar
+                value={pct}
+                min={0} max={100}
+                colorVar={isActive ? 'var(--accent-plug)' : 'var(--accent)'}
+                height={6}
+                active={isActive}
+                label={`Load ${Math.round(pct)}%`}
+            />
+        </div>
+    );
+};
+
 // --- Preview ribbon ----------------------------------------------------------
-// Unmistakable, theme-stable banner so a representative fixture is NEVER read
-// as live telemetry. Shown on both the tile and the modal.
+// Unmistakable, theme-stable banner — preserved from original (pattern ribbon works in all themes)
 const PreviewBadge = ({ compact }: { compact?: boolean }) => (
     <div
         className="flex items-center gap-1 rounded-full font-bold uppercase tracking-wider"
@@ -176,91 +294,170 @@ const PreviewBadge = ({ compact }: { compact?: boolean }) => (
     </div>
 );
 
-// --- Detail modal -------------------------------------------------------------
+// --- Detail modal — now GlassPanel + GlassButton ---------------------------
 const KohlerGeneratorModal = ({ s, onClose }: { s: GeneratorRehlkoState; onClose: () => void }) => {
     const attention = attentionFor(s);
     const hl = headlineFor(s);
+    const toneHex = TONE_HEX[hl.tone];
+
     const rows: { label: string; value: string; header?: boolean }[] = [
-        { label: 'Engine state', value: s.engineState ?? 'n/a' },
+        { label: 'Engine state',      value: s.engineState ?? 'n/a' },
         { label: 'Controller status', value: s.status ?? 'n/a' },
-        { label: 'Power source', value: s.powerSource ? (s.powerSource === 'generator' ? 'Generator' : 'Utility') : 'n/a' },
-        { label: 'Auto mode', value: s.autoRun === null ? 'n/a' : s.autoRun ? 'Armed' : 'Off' },
-        { label: 'Connectivity', value: s.isConnected === null ? 'n/a' : s.isConnected ? 'Online' : 'Offline' },
+        { label: 'Power source',      value: s.powerSource ? (s.powerSource === 'generator' ? 'Generator' : 'Utility') : 'n/a' },
+        { label: 'Auto mode',         value: s.autoRun === null ? 'n/a' : s.autoRun ? 'Armed' : 'Off' },
+        { label: 'Connectivity',      value: s.isConnected === null ? 'n/a' : s.isConnected ? 'Online' : 'Offline' },
         { label: 'Electrical', value: '', header: true },
         { label: 'Generator output (avg)', value: `${fmtNum(s.generatorVoltage)} V` },
-        { label: 'Utility voltage (avg)', value: `${fmtNum(s.utilityVoltage)} V` },
-        { label: 'Frequency', value: `${fmtNum(s.engineFrequency, 1)} Hz` },
-        { label: 'Load', value: `${fmtNum(s.loadWatts)} W (${fmtNum(s.loadPercent)} %)` },
+        { label: 'Utility voltage (avg)',   value: `${fmtNum(s.utilityVoltage)} V` },
+        { label: 'Frequency',         value: `${fmtNum(s.engineFrequency, 1)} Hz` },
+        { label: 'Load',              value: `${fmtNum(s.loadWatts)} W (${fmtNum(s.loadPercent)} %)` },
         { label: 'Engine', value: '', header: true },
-        { label: 'Engine speed', value: `${fmtNum(s.engineSpeed)} rpm` },
-        { label: 'Battery', value: `${fmtNum(s.batteryVoltage, 1)} V` },
-        { label: 'Oil pressure', value: `${fmtNum(s.oilPressure)} psi` },
-        { label: 'Coolant temp', value: `${fmtNum(s.coolantTemp)} °F` },
-        { label: 'Oil temp', value: `${fmtNum(s.oilTemp)} °F` },
-        { label: 'Controller temp', value: `${fmtNum(s.controllerTemp)} °F` },
-        { label: 'Total runtime', value: `${fmtNum(s.totalRuntimeHours, 1)} h` },
-        { label: 'Fuel level', value: 'n/a (NG/LP — no tank sender)' },
+        { label: 'Engine speed',      value: `${fmtNum(s.engineSpeed)} rpm` },
+        { label: 'Battery',           value: `${fmtNum(s.batteryVoltage, 1)} V` },
+        { label: 'Oil pressure',      value: `${fmtNum(s.oilPressure)} psi` },
+        { label: 'Coolant temp',      value: `${fmtNum(s.coolantTemp)} °F` },
+        { label: 'Oil temp',          value: `${fmtNum(s.oilTemp)} °F` },
+        { label: 'Controller temp',   value: `${fmtNum(s.controllerTemp)} °F` },
+        { label: 'Total runtime',     value: `${fmtNum(s.totalRuntimeHours, 1)} h` },
+        { label: 'Fuel level',        value: 'n/a (NG/LP — no tank sender)' },
         { label: 'Schedule', value: '', header: true },
-        { label: 'Next exercise', value: fmtTimestamp(s.nextExercise) },
-        { label: 'Last run', value: fmtTimestamp(s.lastRun) },
-        { label: 'Last maintenance', value: fmtTimestamp(s.lastMaintenance) },
-        { label: 'Next maintenance', value: fmtTimestamp(s.nextMaintenance) },
+        { label: 'Next exercise',     value: fmtTimestamp(s.nextExercise) },
+        { label: 'Last run',          value: fmtTimestamp(s.lastRun) },
+        { label: 'Last maintenance',  value: fmtTimestamp(s.lastMaintenance) },
+        { label: 'Next maintenance',  value: fmtTimestamp(s.nextMaintenance) },
     ];
 
     return ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={onClose}>
-            <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg overflow-hidden border border-gray-700 max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700 shrink-0">
-                    <div className="flex items-center gap-2">
-                        <span className="rounded-full" style={{ width: '0.7rem', height: '0.7rem', background: TONE_COLOR[hl.tone], boxShadow: `0 0 8px ${TONE_COLOR[hl.tone]}` }} />
+        <div
+            className="fixed inset-0 flex items-center justify-center z-[100] p-4"
+            style={{ backdropFilter: 'blur(12px)', background: 'rgba(0,0,0,0.6)' }}
+            onClick={onClose}
+        >
+            <GlassPanel
+                level={2}
+                animate
+                borderRadius="var(--radius-surface)"
+                className="w-full max-w-lg overflow-hidden max-h-[88vh] flex flex-col"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Modal header */}
+                <div
+                    style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: 'var(--space-4)', borderBottom: '1px solid var(--glass-l2-border)',
+                        flexShrink: 0,
+                        background: 'var(--glass-l1-tint)',
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <LivingStatusDot tone={hl.tone} />
                         <div>
-                            <h3 className="text-lg font-bold text-white">{s.generatorName}</h3>
-                            <p className="text-xs text-gray-400">{hl.word}{s.powerSource ? ` · ${s.powerSource === 'generator' ? 'On Generator' : 'On Utility'}` : ''}</p>
+                            <h3 style={{ fontSize: 'var(--type-lg)', fontWeight: 'var(--weight-bold)', color: 'rgb(var(--text))' }}>
+                                {s.generatorName}
+                            </h3>
+                            <p style={{ fontSize: 'var(--type-xs)', color: 'rgb(var(--text) / 0.45)' }}>
+                                {hl.word}{s.powerSource ? ` · ${s.powerSource === 'generator' ? 'On Generator' : 'On Utility'}` : ''}
+                            </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {s.isPreview && <PreviewBadge />}
-                        <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 transition-colors">
-                            <IconX className="w-6 h-6" />
-                        </button>
+                        <GlassButton
+                            onClick={onClose}
+                            style={{ padding: 8, borderRadius: 'var(--radius-control)' }}
+                            aria-label="Close"
+                        >
+                            <IconX className="w-5 h-5" style={{ color: 'rgb(var(--text) / 0.6)' }} />
+                        </GlassButton>
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-0">
+
+                {/* Body */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
                     {s.isPreview && (
-                        <div className="p-3 bg-amber-900/30 border-b border-amber-500/40 text-amber-200 text-xs leading-snug">
-                            Representative fixture — NOT live telemetry. Values are simulated and go live when the Rehlko (Kohler Energy Management) account is connected to the core <span className="font-mono">rehlko</span> integration.
+                        <div style={{
+                            padding: 'var(--space-3)',
+                            background: 'color-mix(in srgb, var(--accent-warn) 8%, var(--glass-l2-bg))',
+                            borderBottom: '1px solid color-mix(in srgb, var(--accent-warn) 30%, transparent)',
+                            color: 'var(--accent-warn)',
+                            fontSize: 'var(--type-xs)',
+                            lineHeight: 1.5,
+                        }}>
+                            Representative fixture — NOT live telemetry. Values are simulated and go live when the Rehlko (Kohler Energy Management) account is connected to the core <span style={{ fontFamily: 'var(--font-numeric)' }}>rehlko</span> integration.
                         </div>
                     )}
                     {attention.length > 0 && (
-                        <div className={`p-4 border-b ${attention.some(a => a.severity === 'error') ? 'bg-red-900/30 border-red-500/40' : 'bg-yellow-900/30 border-yellow-500/40'}`}>
-                            <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider mb-2 ${attention.some(a => a.severity === 'error') ? 'text-red-300' : 'text-yellow-300'}`}>
-                                <IconAlertTriangle className="w-4 h-4" /> Attention
+                        <div style={{
+                            padding: 'var(--space-4)',
+                            borderBottom: `1px solid ${attention.some(a => a.severity === 'error')
+                                ? 'color-mix(in srgb, var(--accent-alert) 30%, transparent)'
+                                : 'color-mix(in srgb, var(--accent-warn) 30%, transparent)'}`,
+                            background: `color-mix(in srgb, ${attention.some(a => a.severity === 'error') ? 'var(--accent-alert)' : 'var(--accent-warn)'} 8%, var(--glass-l2-bg))`,
+                        }}>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                fontSize: 'var(--type-xs)', fontWeight: 'var(--weight-bold)',
+                                textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)',
+                                marginBottom: 8,
+                                color: attention.some(a => a.severity === 'error') ? 'var(--accent-alert)' : 'var(--accent-warn)',
+                            }}>
+                                <IconAlertTriangle style={{ width: 14, height: 14 }} /> Attention
                             </div>
-                            <ul className="space-y-1 text-sm">
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {attention.map((a, i) => (
-                                    <li key={i} className="flex items-baseline gap-2">
-                                        <span className={`inline-block w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${a.severity === 'error' ? 'bg-red-400' : 'bg-yellow-400'}`} />
-                                        <span className={a.severity === 'error' ? 'text-red-100' : 'text-yellow-100'}>{a.text}</span>
+                                    <li key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                        <span style={{
+                                            display: 'inline-block', width: 6, height: 6,
+                                            borderRadius: '50%', flexShrink: 0, marginTop: 4,
+                                            background: a.severity === 'error' ? 'var(--accent-alert)' : 'var(--accent-warn)',
+                                        }} />
+                                        <span style={{ fontSize: 'var(--type-sm)', color: 'rgb(var(--text) / 0.85)' }}>{a.text}</span>
                                     </li>
                                 ))}
                             </ul>
                         </div>
                     )}
-                    <table className="w-full text-left text-sm">
-                        <tbody className="divide-y divide-gray-700/50">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--type-sm)' }}>
+                        <tbody>
                             {rows.map(({ label, value, header }) => (
-                                <tr key={label} className={header ? 'bg-gray-900/50' : 'hover:bg-gray-700/30'}>
-                                    <td className={`p-3 font-medium ${header ? 'text-white' : 'text-gray-400'} w-1/2 border-r border-gray-700/30`}>{label}</td>
-                                    <td className="p-3 text-gray-200 font-mono break-all">{value}</td>
+                                <tr
+                                    key={label}
+                                    style={{
+                                        background: header ? 'var(--glass-l1-tint)' : undefined,
+                                        borderBottom: '1px solid var(--glass-l2-border)',
+                                    }}
+                                >
+                                    <td style={{
+                                        padding: 'var(--space-3)',
+                                        fontWeight: header ? 'var(--weight-semibold)' : 'var(--weight-medium)',
+                                        color: header ? 'rgb(var(--text))' : 'rgb(var(--text) / 0.55)',
+                                        width: '50%',
+                                        borderRight: '1px solid var(--glass-l2-border)',
+                                    }}>
+                                        {label}
+                                    </td>
+                                    <td style={{
+                                        padding: 'var(--space-3)',
+                                        color: 'rgb(var(--text) / 0.85)',
+                                        fontFamily: value !== '' ? 'var(--font-numeric)' : undefined,
+                                        wordBreak: 'break-all',
+                                    }}>
+                                        {value}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                    <div className="p-3 text-[10px] text-gray-500 leading-snug border-t border-gray-700/50">
-                        Display-only. The <span className="font-mono">rehlko</span> integration exposes no control entities; start / stop / exercise are not available from this surface.
+                    <div style={{
+                        padding: 'var(--space-3)',
+                        fontSize: 'var(--type-2xs)', color: 'rgb(var(--text) / 0.35)',
+                        lineHeight: 1.5,
+                        borderTop: '1px solid var(--glass-l2-border)',
+                    }}>
+                        Display-only. The <span style={{ fontFamily: 'var(--font-numeric)' }}>rehlko</span> integration exposes no control entities; start / stop / exercise are not available from this surface.
                     </div>
                 </div>
-            </div>
+            </GlassPanel>
         </div>,
         document.body
     );
@@ -277,13 +474,13 @@ const KohlerGeneratorTile = ({ device, tile, isEditor, cornerClassName }: {
     const isLocked = !!tile.isLocked;
     const s = (device.state && typeof device.state === 'object' ? device.state : {}) as Partial<GeneratorRehlkoState>;
 
-    // Graceful degradation: before the composite is populated.
+    // Graceful degradation
     if (!s || !('engineState' in s)) {
         return (
             <TileWrapper label={tile.label || device.name} isLocked={isLocked} isEditor={isEditor} className={cornerClassName} accent="warn">
-                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <div className="flex flex-col items-center justify-center h-full" style={{ color: 'rgb(var(--text) / 0.45)' }}>
                     <IconPower className="w-7 h-7 mb-2 opacity-50" />
-                    <span className="text-xs">Generator — loading…</span>
+                    <span style={{ fontSize: 'var(--type-xs)' }}>Generator — loading…</span>
                 </div>
             </TileWrapper>
         );
@@ -293,15 +490,17 @@ const KohlerGeneratorTile = ({ device, tile, isEditor, cornerClassName }: {
     const hl = headlineFor(state);
     const attention = attentionFor(state);
     const hasError = attention.some(a => a.severity === 'error');
-    const hasWarning = attention.some(a => a.severity === 'warning');
     const isActive = state.isRunning || state.isExercising || hasError;
 
     const accent: 'alert' | 'brand' | 'warn' = hasError ? 'alert' : isActive ? 'brand' : 'warn';
     const animation = (hasError || state.isRunning || state.isExercising)
-        ? { enabled: true, effect: 'pulse' as const, color: hasError ? '#ef4444' : state.isExercising ? '#38bdf8' : '#22c55e' }
+        ? { enabled: true, effect: 'pulse' as const, color: TONE_HEX[hl.tone] }
         : tile.animation;
 
     const nextEx = relativeTo(state.nextExercise);
+
+    // Load metrics for BuildBar
+    const loadPct = state.loadPercent !== null && Number.isFinite(state.loadPercent) ? state.loadPercent : 0;
 
     return (
         <>
@@ -309,76 +508,118 @@ const KohlerGeneratorTile = ({ device, tile, isEditor, cornerClassName }: {
                 label=""
                 isLocked={isLocked}
                 isEditor={isEditor}
-                className={`!p-3 !block ${cornerClassName || ''}`}
+                className={`!p-0 !block ${cornerClassName || ''}`}
                 isActive={isActive}
                 accent={accent}
                 animation={animation as any}
                 onClick={() => { if (!isEditor && !isLocked) setShowDetails(true); }}
             >
-                <div className="flex flex-col h-full">
-                    {/* Header: name + preview badge + connectivity */}
-                    <div className="flex items-start justify-between gap-2">
-                        <h2 className="font-bold text-white leading-tight min-w-0 truncate" style={fluidTextLg}>{device.name || state.generatorName}</h2>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                {/* GlassPanel wraps the tile body — level-1, glass-mount */}
+                <GlassPanel
+                    level={1}
+                    animate
+                    borderRadius="0"
+                    style={{ padding: 'var(--space-3)', height: '100%', display: 'flex', flexDirection: 'column' }}
+                >
+                    {/* ── Header: name + preview + connectivity ── */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                        <h2
+                            className="font-bold leading-tight min-w-0 truncate"
+                            style={{ ...fluidTextLg, color: 'rgb(var(--text))' }}
+                        >
+                            {device.name || state.generatorName}
+                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             {state.isPreview && <PreviewBadge compact />}
-                            {state.isConnected === false && <IconWifiOff className="w-4 h-4 text-gray-400" />}
+                            {state.isConnected === false && (
+                                <IconWifiOff style={{ width: 14, height: 14, color: 'rgb(var(--text) / 0.4)' }} />
+                            )}
                         </div>
                     </div>
 
-                    {/* HERO: headline state + power source */}
-                    <div className="flex items-center justify-between gap-2 mt-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span className="rounded-full shrink-0" style={{ width: '0.7rem', height: '0.7rem', background: TONE_COLOR[hl.tone], boxShadow: `0 0 10px ${TONE_COLOR[hl.tone]}` }} />
-                            <span className="font-extrabold text-white leading-none truncate" style={fluidText2xl}>{hl.word}</span>
-                        </div>
+                    {/* ── Hero: living status dot + headline + source pill ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                        <LivingStatusDot tone={hl.tone} />
+                        <span
+                            className="font-extrabold leading-none truncate"
+                            style={{ ...fluidText2xl, color: 'rgb(var(--text))' }}
+                        >
+                            {hl.word}
+                        </span>
                     </div>
-                    <div className="mt-1.5">
+                    <div style={{ marginTop: 6 }}>
                         <PowerSourcePill source={state.powerSource} />
                     </div>
 
-                    {/* Attention caption */}
+                    {/* ── Attention caption ── */}
                     {attention.length > 0 && (
-                        <div className={`mt-1.5 flex items-center gap-1.5 leading-tight ${hasError ? 'text-red-300' : 'text-yellow-300'}`} style={fluidTextXs}>
-                            <IconAlertTriangle className="w-3 h-3 shrink-0" />
+                        <div
+                            className="flex items-center gap-1.5 leading-tight"
+                            style={{
+                                marginTop: 6,
+                                ...fluidTextXs,
+                                color: hasError ? 'var(--accent-alert)' : 'var(--accent-warn)',
+                            }}
+                        >
+                            <IconAlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
                             <span className="truncate font-semibold">{attention[0].text}</span>
-                            {attention.length > 1 && <span className="text-gray-400">+{attention.length - 1}</span>}
+                            {attention.length > 1 && (
+                                <span style={{ color: 'rgb(var(--text) / 0.45)' }}>+{attention.length - 1}</span>
+                            )}
                         </div>
                     )}
 
-                    {/* Graphic */}
-                    <div className="flex-1 flex items-center justify-center min-h-0 py-1">
+                    {/* ── Generator graphic — mode-tinted glow ── */}
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, padding: '4px 0' }}>
                         <GeneratorGraphic running={state.isRunning} exercising={state.isExercising} fault={hasError} />
                     </div>
 
-                    {/* Vitals row 1 */}
-                    <div className="flex w-full mb-1.5" style={fluidGap(0.375)}>
-                        <Vital icon={IconBattery} label="Batt" value={fmtNum(state.batteryVoltage, 1)} unit="V" />
-                        <Vital icon={IconZap} label="Load" value={fmtNum(state.loadWatts >= 1000 ? state.loadWatts / 1000 : state.loadWatts, state.loadWatts >= 1000 ? 1 : 0)} unit={state.loadWatts !== null && state.loadWatts >= 1000 ? 'kW' : 'W'} />
-                        <Vital icon={IconActivity} label="Out" value={fmtNum(state.generatorVoltage)} unit="V" />
-                    </div>
-                    {/* Vitals row 2 */}
-                    <div className="flex w-full" style={fluidGap(0.375)}>
-                        <Vital icon={IconActivity} label="Hz" value={fmtNum(state.engineFrequency, 1)} />
-                        <Vital icon={IconCpu} label="RPM" value={fmtNum(state.engineSpeed)} />
-                        <Vital icon={IconClock} label="Hrs" value={fmtNum(state.totalRuntimeHours, 0)} />
+                    {/* ── Load BuildBar ── */}
+                    <div style={{ marginBottom: 8 }}>
+                        <LoadBar loadPercent={state.loadPercent} loadWatts={state.loadWatts} isActive={isActive} />
                     </div>
 
-                    {/* Footer: next exercise + auto mode */}
-                    <div className="mt-1.5 flex items-center justify-between gap-2 text-gray-300" style={fluidTextXs}>
-                        <span className="flex items-center gap-1 min-w-0 truncate">
-                            <IconClock className="w-3 h-3 shrink-0 text-gray-400" />
-                            {nextEx ? <>Exercise <span className="text-white font-semibold">{nextEx}</span></> : 'No exercise scheduled'}
+                    {/* ── Vitals row 1 — GlassCard bead cells ── */}
+                    <div style={{ display: 'flex', width: '100%', marginBottom: 6, gap: 6 }}>
+                        <Vital icon={IconBattery}   label="Batt" value={fmtNum(state.batteryVoltage, 1)} unit="V" />
+                        <Vital icon={IconZap}       label="Out"  value={fmtNum(state.generatorVoltage)} unit="V" />
+                        <Vital icon={IconActivity}  label="Hz"   value={fmtNum(state.engineFrequency, 1)} />
+                    </div>
+                    {/* ── Vitals row 2 ── */}
+                    <div style={{ display: 'flex', width: '100%', gap: 6 }}>
+                        <Vital icon={IconCpu}   label="RPM" value={fmtNum(state.engineSpeed)} />
+                        <Vital icon={IconClock} label="Hrs" value={fmtNum(state.totalRuntimeHours, 0)} />
+                        <Vital icon={IconThermometer} label="Cool" value={fmtNum(state.coolantTemp)} unit="°F" />
+                    </div>
+
+                    {/* ── Footer: next exercise + auto mode ── */}
+                    <div
+                        style={{
+                            marginTop: 6,
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                            color: 'rgb(var(--text) / 0.45)',
+                            ...fluidTextXs,
+                        }}
+                    >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+                            <IconClock style={{ width: 12, height: 12, flexShrink: 0, color: 'rgb(var(--text) / 0.35)' }} />
+                            <span className="truncate">
+                                {nextEx
+                                    ? <>Exercise <span style={{ color: 'rgb(var(--text))', fontWeight: 600 }}>{nextEx}</span></>
+                                    : 'No exercise scheduled'}
+                            </span>
                         </span>
                         {state.autoRun !== null && (
-                            <span className="flex items-center gap-1 shrink-0">
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                                 {state.autoRun
-                                    ? <><IconCheckCircle className="w-3 h-3 text-green-400" /> Auto</>
-                                    : <><IconPowerOff className="w-3 h-3 text-gray-500" /> Manual</>}
+                                    ? <><IconCheckCircle style={{ width: 12, height: 12, color: 'var(--accent-plug)' }} /> Auto</>
+                                    : <><IconPowerOff style={{ width: 12, height: 12, color: 'rgb(var(--text) / 0.35)' }} /> Manual</>}
                             </span>
                         )}
                     </div>
-                </div>
+                </GlassPanel>
             </TileWrapper>
+
             {showDetails && <KohlerGeneratorModal s={state} onClose={() => setShowDetails(false)} />}
         </>
     );

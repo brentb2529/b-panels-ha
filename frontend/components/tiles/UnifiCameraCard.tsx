@@ -1,6 +1,15 @@
 /**
  * UnifiCameraCard — single camera card within the UnifiSecuritySurface grid.
  *
+ * GLASS ROLLOUT: Replaced hardcoded noir (#050a0f) backgrounds with design-system
+ * tokens so the card is theme-aware:
+ *   - Card border/background: glass tokens (var(--glass-l2-bg/border))
+ *   - CameraThumb background: var(--glass-l1-bg) instead of hardcoded #050a0f
+ *   - RecentEventsTape gradient: token-based overlay
+ *   - SmartDetectChips, LiveBadge, StaleIndicator: token colors + glass backdrop
+ *   - FloodlightStateBadge: glass-l3 material when off
+ * All detection/pulse/doorbell/floodlight visual logic is PRESERVED.
+ *
  * SECURITY CONTRACT (hard limits, must not be relaxed):
  *  - Video via HA-proxied HLS only (getCameraStreamUrl). No RTSP/RTSPS creds.
  *  - License plate: boolean indicator only. Plate text is NEVER shown (PII).
@@ -155,7 +164,7 @@ const SmartDetectChips = ({
             fontWeight: 700,
             letterSpacing: '0.04em',
             fontSize: 'clamp(0.45rem, 5cqmin, 0.6rem)',
-            backdropFilter: 'blur(4px)',
+            backdropFilter: 'var(--glass-l3-backdrop)',
             boxShadow: `0 0 8px -2px ${chip.color}`,
             animation: 'unifi-chip-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both',
           }}
@@ -186,7 +195,7 @@ const RecentEventsTape = ({ events }: { events: UnifiEvent[] }) => {
       className="absolute inset-x-0 bottom-0 pointer-events-none overflow-hidden"
       style={{
         zIndex: 7,
-        background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 60%, transparent 100%)',
+        background: 'linear-gradient(to top, color-mix(in srgb, var(--glass-l1-bg) 85%, transparent) 0%, color-mix(in srgb, var(--glass-l1-bg) 55%, transparent) 60%, transparent 100%)',
         paddingTop: '1.2rem',
         paddingBottom: '0.35rem',
         paddingLeft: '0.45rem',
@@ -301,9 +310,10 @@ const LiveBadge = () => (
       zIndex: 9,
       padding: '0.15rem 0.45rem',
       borderRadius: '0.3rem',
-      background: 'rgba(0,0,0,0.55)',
-      backdropFilter: 'blur(4px)',
-      border: '1px solid rgba(255,255,255,0.1)',
+      background: 'var(--glass-l3-bg)',
+      backdropFilter: 'var(--glass-l3-backdrop)',
+      WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
+      border: '1px solid var(--glass-l3-border)',
     }}
   >
     <span
@@ -434,7 +444,7 @@ const CameraThumb = ({
     : null;
 
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{ background: '#050a0f' }}>
+    <div className="absolute inset-0 overflow-hidden" style={{ background: 'var(--glass-l1-bg)' }}>
       {/* Video element always mounted; hidden until ready */}
       <video
         ref={videoRef}
@@ -490,7 +500,7 @@ const CameraLabel = ({ name }: { name: string }) => (
     className="absolute inset-x-0 bottom-0 pointer-events-none"
     style={{
       zIndex: 6,
-      background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 45%)',
+      background: 'linear-gradient(to top, color-mix(in srgb, var(--glass-l1-bg) 80%, transparent) 0%, transparent 45%)',
       paddingBottom: '0.4rem',
       paddingTop: '1.5rem',
       paddingLeft: '0.5rem',
@@ -532,9 +542,10 @@ const FloodlightStateBadge = ({ isOn }: { isOn: boolean }) => (
       gap: '0.25rem',
       padding: '0.15rem 0.4rem',
       borderRadius: '0.3rem',
-      background: isOn ? 'rgba(254,240,138,0.18)' : 'rgba(0,0,0,0.45)',
-      border: `1px solid ${isOn ? 'rgba(254,240,138,0.6)' : 'rgba(255,255,255,0.1)'}`,
-      backdropFilter: 'blur(4px)',
+      background: isOn ? 'rgba(254,240,138,0.18)' : 'var(--glass-l3-bg)',
+      border: `1px solid ${isOn ? 'rgba(254,240,138,0.6)' : 'var(--glass-l3-border)'}`,
+      backdropFilter: 'var(--glass-l3-backdrop)',
+      WebkitBackdropFilter: 'var(--glass-l3-backdrop)',
       transition: 'all 0.3s ease',
     }}
   >
@@ -603,17 +614,21 @@ const UnifiCameraCard: React.FC<UnifiCameraCardProps> = ({ camera, featured, sty
     <div
       className={`relative overflow-hidden ${className ?? ''}`}
       style={{
-        borderRadius: '0.75rem',
-        background: '#050a0f',
+        borderRadius: 'var(--radius-card)',
+        // Theme-adaptive base: glass-l2-bg shows the background through
+        // (dark navy, light frosted, ambient charcoal) instead of hardcoded black.
+        background: 'var(--glass-l2-bg)',
+        backdropFilter: 'var(--glass-l2-backdrop)',
+        WebkitBackdropFilter: 'var(--glass-l2-backdrop)',
         border: anyActive
           ? `1px solid ${pulseColor}`
           : camera.floodlightOn
           ? '1px solid rgba(254,240,138,0.3)'
-          : '1px solid rgba(255,255,255,0.07)',
+          : '1px solid var(--glass-l2-border)',
         boxShadow: anyActive
-          ? `0 0 0 1px ${pulseColor}22, 0 2px 16px -4px ${pulseColor}66, inset 0 1px 0 rgba(255,255,255,0.06)`
-          : '0 2px 8px -2px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)',
-        transition: 'border-color 0.25s ease, box-shadow 0.25s ease',
+          ? `var(--rim), 0 0 0 1px ${pulseColor}22, 0 2px 16px -4px ${pulseColor}66`
+          : 'var(--rim), var(--elev-2)',
+        transition: `border-color var(--dur-medium) var(--spring-gentle), box-shadow var(--dur-medium) var(--spring-gentle)`,
         aspectRatio: '16 / 9',
         ...style,
       }}
