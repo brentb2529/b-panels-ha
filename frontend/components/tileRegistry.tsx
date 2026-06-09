@@ -25,6 +25,7 @@ import GeneratorTile from './tiles/GeneratorTile';
 import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
 import AirControlSurface from './tiles/AirControlSurface';
+import PoolSurfaceTile from './tiles/PoolSurfaceTile';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -80,6 +81,11 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.AlarmHistory]: AlarmHistoryTile,
   [DeviceType.AirControl]: AirControlSurface,
   [DeviceType.Folder]: FolderTile,
+
+  // Surface 1 — Pool / Spa (Pentair IntelliCenter).
+  // Self-driven composite: resolves all IntelliCenter entities at runtime.
+  // Add a tile of this type to any panel to get the full pool dashboard.
+  [DeviceType.IntelliCenterPool]: PoolSurfaceTile,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a
   // bespoke tile above; presentation is derived from the entity's inferred

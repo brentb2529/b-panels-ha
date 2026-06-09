@@ -348,6 +348,9 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.Generator:
         case DeviceType.LitterRobot:
         case DeviceType.AirControl:
+        // Pool surface is self-driven via usePoolSurface; its device.state is
+        // not used for rendering. An empty object is the correct default.
+        case DeviceType.IntelliCenterPool:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty
