@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../../hooks/useDashboard';
 import { useHomeEntities } from './useHomeEntities';
+import PanelShell from '../shell/PanelShell';
 import './homePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -48,48 +49,6 @@ const weatherEmoji = (cond: string, day: boolean | null): string => {
 };
 
 const greetingFor = (h: number) => (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening');
-
-// ── arming bar (display-only) — derives look from the REAL Alarmo state ──────
-const ArmingBar = () => {
-  const { alarmState, armingState } = useDashboard();
-  const phase = alarmState?.phase ?? 'idle';
-  const arm = alarmState?.armState ?? 'disarmed';
-
-  let cls = 'hp-arm-ready';
-  let state = 'Disarmed · Ready';
-  let sub = 'All sensors clear · ready to arm';
-  let pulse = true;
-  let shieldStroke = 'var(--sem-ready)';
-
-  if (!alarmState) {
-    cls = 'hp-arm-notready'; state = 'Alarm · Unavailable'; sub = 'No alarm panel connected'; pulse = false; shieldStroke = 'var(--sem-notready)';
-  } else if (phase === 'triggered' || alarmState.securityState === 'VIOLATION') {
-    cls = 'hp-arm-triggered'; state = 'Intrusion'; sub = alarmState.trigger?.name ? `Triggered · ${alarmState.trigger.name}` : 'Alarm triggered'; shieldStroke = 'var(--sem-triggered)';
-  } else if (arm === 'armedAway') {
-    cls = 'hp-arm-away'; state = 'Armed · Away'; sub = 'Perimeter + interior armed'; pulse = false; shieldStroke = 'var(--sem-armed-away)';
-  } else if (arm === 'armedStay') {
-    cls = 'hp-arm-stay'; state = 'Armed · Stay'; sub = 'Perimeter armed · home'; pulse = false; shieldStroke = 'var(--sem-armed-stay)';
-  } else if (armingState === 'not_ready') {
-    cls = 'hp-arm-notready'; state = 'Disarmed · Not Ready';
-    const open = alarmState.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0;
-    sub = open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
-    shieldStroke = 'var(--sem-notready)';
-  }
-
-  return (
-    <div className={`hp-arming ${cls}`} title={`Alarm: ${state}`}>
-      <div className="hp-arming-shield">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={shieldStroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
-        </svg>
-      </div>
-      <div className="hp-arming-text">
-        <span className="hp-arming-state"><span className={`hp-arming-dot${pulse ? ' pulse' : ''}`} />{state}</span>
-        <span className="hp-arming-sub">{sub}</span>
-      </div>
-    </div>
-  );
-};
 
 const HomePanel = () => {
   const h = useHomeEntities();
@@ -142,6 +101,7 @@ const HomePanel = () => {
     : h.security.summary;
 
   return (
+    <PanelShell kind="home">
     <div className="hp-scope">
       <div className="hp-canvas" />
       {h.status === 'stale' && <div className="hp-stale">Live feed stale — reconnecting…</div>}
@@ -357,46 +317,8 @@ const HomePanel = () => {
         </div>
       </div>
 
-      <BottomSwitcher />
     </div>
-  );
-};
-
-// Bottom area-switcher. Home item active; others link to sibling panels matched
-// by name (inert if absent — never breaks when those panels don't exist).
-const BottomSwitcher = () => {
-  const { panels } = useDashboard();
-  const findPanel = (re: RegExp) => panels.find((p) => re.test(p.name))?.id;
-  const poolId = findPanel(/pool/i);
-  const climateId = findPanel(/climate|air/i);
-  const securityId = findPanel(/security|alarm/i);
-  const lightsId = findPanel(/light/i);
-
-  const NavLink = ({ to, label, active, children }: { to?: string; label: string; active?: boolean; children: React.ReactNode; }) => {
-    const inner = (<><span className="hp-nav-ico">{children}</span><span className="hp-nav-label">{label}</span></>);
-    const cls = `hp-nav${active ? ' active' : ''}`;
-    return to ? <Link className={cls} to={`/dashboard/${to}`}>{inner}</Link> : <button className={cls} type="button">{inner}</button>;
-  };
-
-  return (
-    <nav className="hp-switcher">
-      <ArmingBar />
-      <NavLink label="Home" active>
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-      </NavLink>
-      <NavLink to={poolId} label="Pool">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12h2c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 7 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41h.34c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 13 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41H16c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 19 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.59.41" /></svg>
-      </NavLink>
-      <NavLink to={climateId} label="Climate">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
-      </NavLink>
-      <NavLink to={securityId} label="Security">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-security)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-      </NavLink>
-      <NavLink to={lightsId} label="Lights">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="1.5" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>
-      </NavLink>
-    </nav>
+    </PanelShell>
   );
 };
 

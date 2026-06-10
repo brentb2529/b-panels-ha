@@ -1,0 +1,225 @@
+/* =============================================================================
+ * b-panels App-Wide Navigation Shell — shell.css  (Increment 9)
+ * -----------------------------------------------------------------------------
+ * The shared navigation chrome consumed by ALL 7 compilation panels: the
+ * persistent bottom AREA-SWITCHER (Home · Rooms | Pool · Climate · Security ·
+ * Lights + "All Rooms" pill), the persistent ARMING INDICATOR (real Alarmo,
+ * display-only), and the full-screen "Go Anywhere" sheet (v1.3 nav model).
+ *
+ * Faithful to the locked liquid-glass language + v1.2.1 cool palette — these
+ * styles are LIFTED VERBATIM from the per-panel switcher/arming CSS that the 7
+ * panels each duplicated (kp-/hp-/pp-/cp-/ps-/secp-/ltp- prefixes), unified
+ * under one `bps-*` namespace so nav/arming are byte-for-byte consistent.
+ *
+ * SCOPING — non-breaking by construction:
+ *   Everything is namespaced `bps-*` and the token block lives on `.bps-shell`,
+ *   NOT on :root, so it cannot leak onto the legacy dashboard or restyle any
+ *   panel body. Each panel keeps its own scope + body styles untouched; the
+ *   shell only adds the bottom chrome + sheet on top.
+ * ===========================================================================*/
+
+.bps-shell {
+  /* token block — self-contained mirror of the per-panel cool palette so the
+     shell renders identically regardless of which panel scope wraps it. */
+  --bps-text-primary: #EEF2F5;
+  --bps-text-secondary: rgba(238,242,245,0.58);
+  --bps-text-dim: rgba(238,242,245,0.32);
+  --bps-accent-room: #C7D2DA;     --bps-accent-room-rgb: 199,210,218;
+  --bps-accent-pool: #3AB5D4;     --bps-accent-pool-rgb: 58,181,212;
+  --bps-accent-climate: #7A9BBF;  --bps-accent-climate-rgb: 122,155,191;
+  --bps-accent-security: #5B6CC9; --bps-accent-security-rgb: 91,108,201;
+  --bps-accent-lights: #C7D2DA;   --bps-accent-lights-rgb: 199,210,218;
+  /* arming semantics (locked v1.2.1) */
+  --sem-armed-away: #3FA776; --sem-armed-away-rgb: 63,167,118;
+  --sem-armed-stay: #3FA9C9; --sem-armed-stay-rgb: 63,169,201;
+  --sem-ready: #9AA7B8;      --sem-ready-rgb: 154,167,184;
+  --sem-notready: #7E8CE8;   --sem-notready-rgb: 126,140,232;
+  --sem-pending: #5B8DEF;    --sem-pending-rgb: 91,141,239;
+  --sem-triggered: #E5484D;  --sem-triggered-rgb: 229,72,77;
+
+  position: absolute;
+  inset: 0;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+body.light-mode .bps-shell {
+  --bps-text-primary: #121821;
+  --bps-text-secondary: rgba(18,24,33,0.58);
+  --bps-text-dim: rgba(18,24,33,0.34);
+  --bps-accent-room: #6E7C88;     --bps-accent-room-rgb: 110,124,136;
+  --bps-accent-pool: #1A8FB0;     --bps-accent-pool-rgb: 26,143,176;
+  --bps-accent-climate: #4A78A8;  --bps-accent-climate-rgb: 74,120,168;
+  --bps-accent-security: #4A55B0; --bps-accent-security-rgb: 74,85,176;
+  --bps-accent-lights: #6E7C88;   --bps-accent-lights-rgb: 110,124,136;
+}
+
+/* The panel body fills the shell; the bottom chrome floats over it (the panels
+   already pad their content for a 76px-tall switcher). */
+.bps-shell-body { position: absolute; inset: 0; }
+
+/* ── Bottom area-switcher ──────────────────────────────────────────────────── */
+.bps-switcher {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 76px;
+  background: rgba(11,15,20,0.90);
+  backdrop-filter: blur(24px) saturate(130%); -webkit-backdrop-filter: blur(24px) saturate(130%);
+  border-top: 1px solid rgba(255,255,255,0.09);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+body.light-mode .bps-switcher { background: rgba(238,241,245,0.92); border-top-color: rgba(0,0,0,0.08); }
+.bps-nav { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0 26px; position: relative; cursor: pointer; background: none; border: none; text-decoration: none; }
+.bps-nav-ico { width: 22px; height: 22px; opacity: 0.4; }
+.bps-nav-label { font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--bps-text-dim); }
+.bps-nav.active .bps-nav-ico { opacity: 1; }
+.bps-nav.active .bps-nav-label { color: var(--bps-nav-accent, var(--bps-accent-room)); }
+.bps-nav.active::after {
+  content: ''; position: absolute; bottom: -1px; left: 50%; transform: translateX(-50%);
+  width: 24px; height: 2px; background: var(--bps-nav-accent, var(--bps-accent-room));
+  border-radius: 1px 1px 0 0; box-shadow: 0 0 8px rgba(var(--bps-nav-accent-rgb, var(--bps-accent-room-rgb)),0.5);
+}
+/* the leading divider that separates area-nav (Home·Rooms) from function-nav */
+.bps-nav-divider::before { content: ''; position: absolute; left: -1px; top: 18px; bottom: 18px; width: 1px; background: rgba(255,255,255,0.10); }
+body.light-mode .bps-nav-divider::before { background: rgba(0,0,0,0.10); }
+
+/* ── Persistent arming indicator (far-left, display-only) ──────────────────── */
+.bps-arming {
+  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 11px; padding: 9px 16px 9px 13px;
+  border-radius: 16px; border: 1px solid var(--arm-border, rgba(255,255,255,0.14));
+  background: var(--arm-bg, rgba(255,255,255,0.06));
+  box-shadow: 0 0 0 1px var(--arm-ring, transparent), 0 6px 20px rgba(0,0,0,0.30);
+  max-width: 280px;
+}
+.bps-arming-shield { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: var(--arm-icon-bg, rgba(255,255,255,0.08)); color: var(--arm-fg); flex-shrink: 0; }
+.bps-arming-text { display: flex; flex-direction: column; gap: 1px; line-height: 1.05; min-width: 0; }
+.bps-arming-state { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--arm-fg); white-space: nowrap; display: flex; align-items: center; gap: 7px; }
+.bps-arming-sub { font-size: 10.5px; color: var(--bps-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.bps-arming-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--arm-fg); flex-shrink: 0; }
+.bps-arming-dot.pulse { animation: bps-pulse-dot 2.4s ease-in-out infinite; }
+.bps-arm-ready    { --arm-fg: var(--sem-ready);      --arm-bg: rgba(var(--sem-ready-rgb),0.12);      --arm-border: rgba(var(--sem-ready-rgb),0.36);      --arm-icon-bg: rgba(var(--sem-ready-rgb),0.18); }
+.bps-arm-notready { --arm-fg: var(--sem-notready);   --arm-bg: rgba(var(--sem-notready-rgb),0.12);   --arm-border: rgba(var(--sem-notready-rgb),0.36);   --arm-icon-bg: rgba(var(--sem-notready-rgb),0.18); }
+.bps-arm-pending  { --arm-fg: var(--sem-pending);    --arm-bg: rgba(var(--sem-pending-rgb),0.13);    --arm-border: rgba(var(--sem-pending-rgb),0.40);    --arm-icon-bg: rgba(var(--sem-pending-rgb),0.20); }
+.bps-arm-stay     { --arm-fg: var(--sem-armed-stay); --arm-bg: rgba(var(--sem-armed-stay-rgb),0.14); --arm-border: rgba(var(--sem-armed-stay-rgb),0.40); --arm-icon-bg: rgba(var(--sem-armed-stay-rgb),0.20); }
+.bps-arm-away     { --arm-fg: var(--sem-armed-away); --arm-bg: rgba(var(--sem-armed-away-rgb),0.14); --arm-border: rgba(var(--sem-armed-away-rgb),0.40); --arm-icon-bg: rgba(var(--sem-armed-away-rgb),0.20); }
+.bps-arm-triggered{ --arm-fg: var(--sem-triggered);  --arm-bg: rgba(var(--sem-triggered-rgb),0.16);  --arm-border: rgba(var(--sem-triggered-rgb),0.50);  --arm-icon-bg: rgba(var(--sem-triggered-rgb),0.22); }
+
+/* ── "All Rooms" hub pill (far-right) ──────────────────────────────────────── */
+.bps-rooms-hub {
+  position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 9px; padding: 9px 15px; border-radius: 16px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); cursor: pointer;
+  color: var(--bps-text-secondary); transition: background-color 160ms ease, border-color 160ms ease;
+}
+.bps-rooms-hub:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.18); }
+body.light-mode .bps-rooms-hub { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.08); }
+.bps-rooms-hub .bps-rh-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--bps-text-secondary); }
+.bps-rh-grid { display:grid; grid-template-columns: repeat(2,5px); grid-template-rows: repeat(2,5px); gap: 3px; }
+.bps-rh-grid span { width: 5px; height: 5px; border-radius: 1.5px; background: var(--bps-accent-room); opacity: 0.85; }
+
+@keyframes bps-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.65;} }
+
+/* =============================================================================
+ * "Go Anywhere" sheet — full-screen glass sheet over the dimmed current view
+ * (faithful to exemplar-nav-rooms-v13).
+ * ===========================================================================*/
+.bps-sheet-backdrop {
+  position: absolute; inset: 0; z-index: 200;
+  background: rgba(6,9,13,0.62);
+  backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%);
+  display: flex; align-items: center; justify-content: center; padding: 38px;
+  animation: bps-sheet-fade 220ms var(--bps-ease, cubic-bezier(0.22,1,0.36,1)) both;
+}
+body.light-mode .bps-sheet-backdrop { background: rgba(210,216,224,0.55); }
+@keyframes bps-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.bps-sheet {
+  width: 100%; max-width: 1180px; max-height: 100%;
+  border-radius: 26px; overflow: auto;
+  background: rgba(18,22,28,0.86);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 40px 100px rgba(0,0,0,0.6);
+  backdrop-filter: blur(36px) saturate(135%); -webkit-backdrop-filter: blur(36px) saturate(135%);
+  padding: 30px 34px 26px;
+  animation: bps-sheet-rise 280ms var(--bps-ease, cubic-bezier(0.22,1,0.36,1)) both;
+}
+body.light-mode .bps-sheet { background: rgba(248,250,252,0.92); border-color: rgba(0,0,0,0.07); box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 30px 80px rgba(31,45,61,0.28); }
+@keyframes bps-sheet-rise { from { opacity: 0; transform: translateY(18px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+.bps-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.bps-sheet-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--bps-text-dim); }
+.bps-sheet-title { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 300; font-size: 44px; line-height: 1.0; letter-spacing: -0.02em; color: var(--bps-text-primary); margin-top: 4px; }
+.bps-sheet-back {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 13px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.13); cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: var(--bps-text-secondary); white-space: nowrap; flex-shrink: 0;
+  transition: background-color 160ms ease;
+}
+.bps-sheet-back:hover { background: rgba(255,255,255,0.12); }
+body.light-mode .bps-sheet-back { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.08); }
+
+/* curation-not-restriction explainer banner */
+.bps-sheet-explain {
+  display: flex; align-items: flex-start; gap: 12px; margin: 18px 0 6px;
+  padding: 13px 16px; border-radius: 15px;
+  background: rgba(var(--bps-accent-room-rgb),0.08); border: 1px solid rgba(var(--bps-accent-room-rgb),0.20);
+  font-size: 12.5px; line-height: 1.5; color: var(--bps-text-secondary);
+}
+.bps-sheet-explain svg { flex-shrink: 0; margin-top: 1px; color: var(--bps-accent-room); }
+.bps-sheet-explain b { color: var(--bps-text-primary); font-weight: 600; }
+
+.bps-sheet-section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--bps-text-dim); margin: 22px 0 12px; display: flex; gap: 10px; align-items: baseline; }
+.bps-sheet-section-label span { font-weight: 500; letter-spacing: 0.04em; color: var(--bps-text-dim); }
+
+/* Rooms grid */
+.bps-rooms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.bps-room-card {
+  position: relative; text-align: left; cursor: pointer;
+  padding: 16px 16px 14px; min-height: 92px; border-radius: 17px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+  display: flex; flex-direction: column; justify-content: space-between;
+  transition: transform 120ms var(--bps-ease, cubic-bezier(0.22,1,0.36,1)), background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  overflow: hidden;
+}
+body.light-mode .bps-room-card { background: rgba(255,255,255,0.66); border-color: rgba(0,0,0,0.07); }
+.bps-room-card:hover { transform: translateY(-2px); background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); }
+.bps-room-card:active { transform: scale(0.985); }
+.bps-room-card.is-home { border-color: rgba(var(--bps-accent-room-rgb),0.45); background: rgba(var(--bps-accent-room-rgb),0.10); }
+.bps-room-card.is-home:hover { box-shadow: 0 0 0 1px rgba(var(--bps-accent-room-rgb),0.35), 0 10px 30px rgba(var(--bps-accent-room-rgb),0.14); }
+.bps-room-name { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 400; font-size: 23px; line-height: 1.0; color: var(--bps-text-primary); letter-spacing: -0.01em; }
+.bps-room-meta { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--bps-text-secondary); }
+.bps-room-meta .bps-room-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bps-accent-room); opacity: 0.8; flex-shrink: 0; }
+.bps-home-badge {
+  position: absolute; top: 13px; right: 13px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 8px; color: var(--bps-accent-room);
+  background: rgba(var(--bps-accent-room-rgb),0.16); border: 1px solid rgba(var(--bps-accent-room-rgb),0.36);
+}
+/* a room not yet built as a curated page — shown, but inert + dimmed */
+.bps-room-card.is-stub { opacity: 0.5; cursor: default; }
+.bps-room-card.is-stub:hover { transform: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.10); }
+
+/* Function panels row */
+.bps-fn-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.bps-fn-card {
+  text-align: left; cursor: pointer; padding: 16px; border-radius: 17px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+  display: flex; flex-direction: column; gap: 10px;
+  transition: transform 120ms var(--bps-ease, cubic-bezier(0.22,1,0.36,1)), background-color 160ms ease, border-color 160ms ease;
+}
+body.light-mode .bps-fn-card { background: rgba(255,255,255,0.66); border-color: rgba(0,0,0,0.07); }
+.bps-fn-card:hover { transform: translateY(-2px); background: rgba(255,255,255,0.09); border-color: rgba(var(--bps-fn-rgb, var(--bps-accent-room-rgb)),0.4); }
+.bps-fn-card:active { transform: scale(0.985); }
+.bps-fn-card.is-stub { opacity: 0.45; cursor: default; }
+.bps-fn-card.is-stub:hover { transform: none; background: rgba(255,255,255,0.05); }
+.bps-fn-ico { width: 26px; height: 26px; color: var(--bps-fn-color, var(--bps-accent-room)); }
+.bps-fn-name { font-size: 14px; font-weight: 600; color: var(--bps-text-primary); }
+.bps-fn-sub { font-size: 10.5px; color: var(--bps-text-secondary); margin-top: 2px; }
+
+.bps-sheet-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 22px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+body.light-mode .bps-sheet-foot { border-top-color: rgba(0,0,0,0.07); }
+.bps-foot-note { font-size: 11px; color: var(--bps-text-dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bps-sheet-backdrop, .bps-sheet, .bps-room-card, .bps-fn-card, .bps-arming-dot.pulse {
+    animation: none !important; transition-duration: 0.001ms !important;
+  }
+}

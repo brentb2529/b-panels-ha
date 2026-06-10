@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useDashboard } from '../../hooks/useDashboard';
 import { usePrimarySuiteEntities, type LightView, type ClimateMode } from './usePrimarySuiteEntities';
+import { useDashboard } from '../../hooks/useDashboard';
+import PanelShell from '../shell/PanelShell';
+import { useIsThisPanelHome } from '../shell/usePanelDefault';
 import './primarySuitePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -51,83 +52,7 @@ const fmtTime = (sec: number) => {
 };
 
 // ── arming bar (display-only) — derives look from real Alarmo state ─────────
-const ArmingBar = () => {
-  const { alarmState, armingState } = useDashboard();
 
-  const phase = alarmState?.phase ?? 'idle';
-  const arm = alarmState?.armState ?? 'disarmed';
-
-  let cls = 'ps-arm-ready';
-  let state = 'Disarmed · Ready';
-  let sub = 'All sensors clear · ready to arm';
-  let pulse = true;
-  let shieldStroke = 'var(--sem-ready)';
-  let shieldPath = (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <polyline points="9 12 11 14 15 10" />
-    </>
-  );
-
-  if (!alarmState) {
-    cls = 'ps-arm-notready';
-    state = 'Alarm · Unavailable';
-    sub = 'No alarm panel connected';
-    pulse = false;
-    shieldStroke = 'var(--sem-notready)';
-  } else if (phase === 'triggered' || alarmState.securityState === 'VIOLATION') {
-    cls = 'ps-arm-triggered';
-    state = 'Intrusion';
-    sub = alarmState.trigger?.name ? `Triggered · ${alarmState.trigger.name}` : 'Alarm triggered';
-    shieldStroke = 'var(--sem-triggered)';
-  } else if (arm === 'armedAway') {
-    cls = 'ps-arm-away';
-    state = 'Armed · Away';
-    sub = 'Perimeter + interior armed';
-    pulse = false;
-    shieldStroke = 'var(--sem-armed-away)';
-  } else if (arm === 'armedStay') {
-    // The exemplar's contextual bedroom state — occupants home at night.
-    cls = 'ps-arm-stay';
-    state = 'Armed · Stay';
-    sub = 'Perimeter armed · home';
-    pulse = true;
-    shieldStroke = 'var(--sem-armed-stay)';
-    shieldPath = (
-      <>
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        <path d="M9 12h6" />
-      </>
-    );
-  } else {
-    if (armingState === 'not_ready') {
-      cls = 'ps-arm-notready';
-      state = 'Disarmed · Not Ready';
-      const open = alarmState.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0;
-      sub = open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
-      shieldStroke = 'var(--sem-notready)';
-    } else {
-      cls = 'ps-arm-ready';
-      state = 'Disarmed · Ready';
-      sub = 'All sensors clear · ready to arm';
-      shieldStroke = 'var(--sem-ready)';
-    }
-  }
-
-  return (
-    <div className={`ps-arming ${cls}`} title={`Alarm: ${state}`}>
-      <div className="ps-arming-shield">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={shieldStroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          {shieldPath}
-        </svg>
-      </div>
-      <div className="ps-arming-text">
-        <span className="ps-arming-state"><span className={`ps-arming-dot${pulse ? ' pulse' : ''}`} />{state}</span>
-        <span className="ps-arming-sub">{sub}</span>
-      </div>
-    </div>
-  );
-};
 
 // ── a single bedside / cove dimming fixture row ─────────────────────────────
 const FixtureRow = ({ light, onSet, onToggle }: { light: LightView; onSet: (lvl: number) => void; onToggle: () => void }) => {
@@ -160,6 +85,9 @@ const FixtureRow = ({ light, onSet, onToggle }: { light: LightView; onSet: (lvl:
 
 const PrimarySuitePanel = () => {
   const s = usePrimarySuiteEntities();
+  // Per-DEVICE default: badge shows only when this device lands on this panel.
+  const { activePanelId } = useDashboard();
+  const isThisPanelHome = useIsThisPanelHome(activePanelId);
   const [firedScene, setFiredScene] = useState<string | null>(null);
   const fireTimer = useRef<number | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -217,6 +145,7 @@ const PrimarySuitePanel = () => {
   const MODES: ClimateMode[] = ['cool', 'heat', 'auto', 'off'];
 
   return (
+    <PanelShell kind="primary-suite">
     <div className="ps-scope">
       {s.status === 'stale' && <div className="ps-stale">Live feed stale — reconnecting…</div>}
 
@@ -228,10 +157,12 @@ const PrimarySuitePanel = () => {
           <div className="ps-hero-left">
             <div className="ps-eyebrow">
               Bensten Residence · Room
+              {isThisPanelHome && (
               <span className="ps-home-badge">
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
                 This panel's home
               </span>
+              )}
             </div>
             <div className="ps-title">Primary Suite</div>
             <div className="ps-sub">
@@ -450,60 +381,9 @@ const PrimarySuitePanel = () => {
       </div>
 
       {/* ── Bottom switcher ── */}
-      <BottomSwitcher />
+      
     </div>
-  );
-};
-
-// Bottom area-switcher. Nav items link to sibling panels when present (matched
-// by name), else are inert affordances — never breaking if those panels don't
-// exist in the current config.
-const BottomSwitcher = () => {
-  const { panels } = useDashboard();
-  const findPanel = (re: RegExp) => panels.find((p) => re.test(p.name))?.id;
-  const homeId = findPanel(/home|overview|main/i);
-  const poolId = findPanel(/pool/i);
-  const climateId = findPanel(/climate|air/i);
-  const securityId = findPanel(/security|alarm/i);
-  const lightsId = findPanel(/light/i);
-
-  const NavLink = ({ to, label, active, children }: { to?: string; label: string; active?: boolean; children: React.ReactNode; }) => {
-    const inner = (
-      <>
-        <span className="ps-nav-ico">{children}</span>
-        <span className="ps-nav-label">{label}</span>
-      </>
-    );
-    const cls = `ps-nav${active ? ' active' : ''}${label === 'Rooms' ? ' ps-nav-rooms' : ''}`;
-    return to ? <Link className={cls} to={`/dashboard/${to}`}>{inner}</Link> : <button className={cls} type="button">{inner}</button>;
-  };
-
-  return (
-    <nav className="ps-switcher">
-      <ArmingBar />
-      <NavLink to={homeId} label="Home">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-      </NavLink>
-      <NavLink label="Rooms" active>
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-room)" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-      </NavLink>
-      <NavLink to={poolId} label="Pool">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12h2c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 7 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41h.34c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 13 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41H16c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 19 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.59.41" /></svg>
-      </NavLink>
-      <NavLink to={climateId} label="Climate">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
-      </NavLink>
-      <NavLink to={securityId} label="Security">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-      </NavLink>
-      <NavLink to={lightsId} label="Lights">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>
-      </NavLink>
-      <div className="ps-rooms-hub">
-        <div className="ps-rh-grid"><span /><span /><span /><span /></div>
-        <span className="rh-label">All Rooms</span>
-      </div>
-    </nav>
+    </PanelShell>
   );
 };
 

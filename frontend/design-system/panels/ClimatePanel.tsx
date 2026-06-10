@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useDashboard } from '../../hooks/useDashboard';
 import { useClimateEntities, type ZoneView, type ClimateMode } from './useClimateEntities';
+import PanelShell from '../shell/PanelShell';
 import './climatePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -28,75 +27,7 @@ import './climatePanel.css';
 // ---------------------------------------------------------------------------
 
 // ── arming bar (display-only) — derives look from real Alarmo state ─────────
-const ArmingBar = () => {
-  const { alarmState, armingState } = useDashboard();
-  const phase = alarmState?.phase ?? 'idle';
-  const arm = alarmState?.armState ?? 'disarmed';
 
-  let cls = 'cp-arm-ready';
-  let state = 'Disarmed · Ready';
-  let sub = 'All sensors clear · ready to arm';
-  let pulse = true;
-  let shieldStroke = 'var(--sem-ready)';
-  let shieldPath = (
-    <>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <polyline points="9 12 11 14 15 10" />
-    </>
-  );
-
-  if (!alarmState) {
-    cls = 'cp-arm-notready';
-    state = 'Alarm · Unavailable';
-    sub = 'No alarm panel connected';
-    pulse = false;
-    shieldStroke = 'var(--sem-notready)';
-  } else if (phase === 'triggered' || alarmState.securityState === 'VIOLATION') {
-    cls = 'cp-arm-triggered';
-    state = 'Intrusion';
-    sub = alarmState.trigger?.name ? `Triggered · ${alarmState.trigger.name}` : 'Alarm triggered';
-    shieldStroke = 'var(--sem-triggered)';
-  } else if (arm === 'armedAway') {
-    cls = 'cp-arm-away';
-    state = 'Armed · Away';
-    sub = 'Perimeter + interior armed';
-    pulse = false;
-    shieldStroke = 'var(--sem-armed-away)';
-  } else if (arm === 'armedStay') {
-    cls = 'cp-arm-stay';
-    state = 'Armed · Stay';
-    sub = 'Perimeter armed · home';
-    pulse = false;
-    shieldStroke = 'var(--sem-armed-stay)';
-  } else if (armingState === 'not_ready') {
-    cls = 'cp-arm-notready';
-    state = 'Disarmed · Not Ready';
-    const open = alarmState.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0;
-    sub = open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open · close to arm` : 'Some sensors open';
-    shieldStroke = 'var(--sem-notready)';
-    shieldPath = (
-      <>
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        <line x1="12" y1="8" x2="12" y2="13" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </>
-    );
-  }
-
-  return (
-    <div className={`cp-arming ${cls}`} title={`Alarm: ${state}`}>
-      <div className="cp-arming-shield">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={shieldStroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          {shieldPath}
-        </svg>
-      </div>
-      <div className="cp-arming-text">
-        <span className="cp-arming-state"><span className={`cp-arming-dot${pulse ? ' pulse' : ''}`} />{state}</span>
-        <span className="cp-arming-sub">{sub}</span>
-      </div>
-    </div>
-  );
-};
 
 // ── mode icons (cool / heat / auto-off) ─────────────────────────────────────
 const CoolIcon = ({ stroke }: { stroke: string }) => (
@@ -231,6 +162,7 @@ const ClimatePanel = () => {
   const heroCounts = `${summary.callingCool} calling for cool · ${summary.callingHeat} heat`;
 
   return (
+    <PanelShell kind="climate">
     <div className="cp-scope">
       {c.status === 'stale' && <div className="cp-stale">Live feed stale — reconnecting…</div>}
 
@@ -347,45 +279,9 @@ const ClimatePanel = () => {
         </div>
       </div>
 
-      <BottomSwitcher />
+      
     </div>
-  );
-};
-
-// Bottom area-switcher — links to sibling panels when present (matched by name).
-const BottomSwitcher = () => {
-  const { panels } = useDashboard();
-  const findPanel = (re: RegExp) => panels.find((p) => re.test(p.name))?.id;
-  const homeId = findPanel(/home|overview|main/i);
-  const poolId = findPanel(/pool|spa/i);
-  const securityId = findPanel(/security|alarm/i);
-  const lightsId = findPanel(/light/i);
-
-  const NavLink = ({ to, label, active, children }: { to?: string; label: string; active?: boolean; children: React.ReactNode; }) => {
-    const inner = (<><span className="cp-nav-ico">{children}</span><span className="cp-nav-label">{label}</span></>);
-    const cls = `cp-nav${active ? ' active' : ''}`;
-    return to ? <Link className={cls} to={`/dashboard/${to}`}>{inner}</Link> : <button className={cls} type="button">{inner}</button>;
-  };
-
-  return (
-    <nav className="cp-switcher">
-      <ArmingBar />
-      <NavLink to={homeId} label="Home">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-      </NavLink>
-      <NavLink to={poolId} label="Pool">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12h2c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 7 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41h.34c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 13 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41H16c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 19 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.59.41" /></svg>
-      </NavLink>
-      <NavLink label="Climate" active>
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
-      </NavLink>
-      <NavLink to={securityId} label="Security">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-      </NavLink>
-      <NavLink to={lightsId} label="Lights">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>
-      </NavLink>
-    </nav>
+    </PanelShell>
   );
 };
 
