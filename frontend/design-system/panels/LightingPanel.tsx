@@ -1,0 +1,342 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useDashboard } from '../../hooks/useDashboard';
+import { useLightingEntities, type AreaView, type ShadeView } from './useLightingEntities';
+import './lightingPanel.css';
+
+// ---------------------------------------------------------------------------
+// LightingPanel — Increment 8 "design-tiles first" whole-home Lighting hub.
+//
+// A faithful, LIVE port of the locked exemplar
+//   daily/2026-06-09/design-direction/exemplar-lighting-v14cool(-light).html
+// (the near-achromatic "platinum" Lights identity) into a real in-app panel.
+//
+// Layout (per exemplar): a wide PRIMARY card (whole-home scenes on top + a
+// by-area group-dimming grid — the core) and a RIGHT column (Shades & Covers +
+// a DISPLAY-ONLY keypad LED diagnostic card). Persistent arming bar (REAL
+// Alarmo, display-only) + bottom area-switcher.
+//
+// ── HAZARD POSTURE — LIVE but LOW-HAZARD ──
+//   • Scenes (scene.turn_on / synthetic All Off), per-area group toggle + master
+//     dim (light.turn_on/off + brightness_pct), and shades (cover.set_position)
+//     are LIVE/low-hazard — wired through useLightingEntities.actions.
+//   • The persistent arming bar reads the REAL alarm_control_panel.house via
+//     useDashboard — DISPLAY-ONLY, no arm/disarm path here.
+//   • Keypad LED state is DISPLAY-ONLY · DIAGNOSTIC. LED *control* is deferred /
+//     equipment-gated, so we render LED state only — there is NO toggle.
+//
+// Scoping: all markup lives under `.ltp-scope` and all CSS is namespaced
+// `ltp-*`, so this panel never restyles the legacy dashboard or any prior
+// panel. Mounted only for compilationKind 'lighting' (see Dashboard.tsx).
+// ---------------------------------------------------------------------------
+
+// ── scene glyphs keyed by the curated icon name ─────────────────────────────
+const SceneIcon = ({ name, active }: { name: string; active: boolean }) => {
+  const stroke = active ? 'var(--accent-lights)' : 'var(--text-secondary)';
+  const common = { className: 'ltp-scene-ico', viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: 1.6, strokeLinecap: 'round' as const };
+  switch (name) {
+    case 'sun':
+      return (<svg {...common}><circle cx="12" cy="12" r="5" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="4" y1="12" x2="2" y2="12" /><line x1="22" y1="12" x2="20" y2="12" /></svg>);
+    case 'house':
+      return (<svg {...common}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>);
+    case 'moon':
+      return (<svg {...common}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>);
+    case 'crescent':
+      return (<svg {...common}><path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9z" /></svg>);
+    case 'power':
+    default:
+      return (<svg {...common}><circle cx="12" cy="12" r="9" /><line x1="12" y1="12" x2="12" y2="4" /></svg>);
+  }
+};
+
+// ── persistent arming bar (display-only) — derives from the REAL Alarmo ──────
+// Mirrors the proven ArmingBar in Security/PrimarySuite panels: reads
+// useDashboard()'s alarmState/armingState and only colours + labels itself.
+// Offers NO control.
+const ArmingBar = () => {
+  const { alarmState, armingState } = useDashboard();
+  const phase = alarmState?.phase ?? 'idle';
+  const arm = alarmState?.armState ?? 'disarmed';
+
+  let cls = 'ltp-arm-ready';
+  let state = 'Disarmed · Ready';
+  let sub = 'All sensors clear · ready to arm';
+  let pulse = true;
+
+  if (!alarmState) {
+    cls = 'ltp-arm-notready'; state = 'Alarm · Unavailable'; sub = 'No alarm panel connected'; pulse = false;
+  } else if (phase === 'triggered' || alarmState.securityState === 'VIOLATION') {
+    cls = 'ltp-arm-triggered'; state = 'Intrusion';
+    sub = alarmState.trigger?.name ? `Triggered · ${alarmState.trigger.name}` : 'Alarm triggered';
+  } else if (phase === 'arming') {
+    cls = 'ltp-arm-pending'; state = 'Arming'; sub = 'Exit delay · leave now'; pulse = true;
+  } else if (phase === 'pending') {
+    cls = 'ltp-arm-pending'; state = 'Pending'; sub = 'Entry delay · disarm now'; pulse = true;
+  } else if (arm === 'armedAway') {
+    cls = 'ltp-arm-away'; state = 'Armed · Away'; sub = 'Perimeter + interior armed'; pulse = false;
+  } else if (arm === 'armedStay') {
+    cls = 'ltp-arm-stay'; state = 'Armed · Stay'; sub = 'Perimeter armed · home'; pulse = true;
+  } else if (armingState === 'not_ready') {
+    cls = 'ltp-arm-notready'; state = 'Disarmed · Not Ready';
+    const open = alarmState.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0;
+    sub = open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
+  }
+
+  return (
+    <div className={`ltp-arming ${cls}`} title={`Alarm: ${state}`}>
+      <div className="ltp-arming-shield">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" /></svg>
+      </div>
+      <div className="ltp-arming-text">
+        <span className="ltp-arming-state"><span className={`ltp-arming-dot${pulse ? ' pulse' : ''}`} />{state}</span>
+        <span className="ltp-arming-sub">{sub}</span>
+      </div>
+    </div>
+  );
+};
+
+// ── per-area group tile: toggle + master dim + "N of M on" (LIVE/low-hazard) ──
+const AreaTile = ({
+  area, onToggle, onDim,
+}: { area: AreaView; onToggle: (on: boolean) => void; onDim: (level: number) => void }) => {
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? area.brightness;
+  const off = area.available ? area.onCount === 0 : true;
+
+  return (
+    <div className={`ltp-area-tile${area.available ? '' : ' ltp-area-unavail'}`}>
+      <div className="ltp-area-top">
+        <span className="ltp-area-name">{area.name}</span>
+        <button
+          type="button"
+          className={`ltp-area-toggle ${area.anyOn ? 'ltp-at-on' : 'ltp-at-off'}`}
+          disabled={!area.available}
+          onClick={() => onToggle(!area.anyOn)}
+          aria-label={`${area.name} lights ${area.anyOn ? 'off' : 'on'}`}
+          title={area.available ? `Toggle ${area.name} lights` : 'No fixtures available'}
+        >
+          <span className="ltp-at-thumb" />
+        </button>
+      </div>
+      <div className="ltp-area-dim-row">
+        <div className="ltp-area-slider">
+          <div className="ltp-area-track">
+            <div className={off ? 'ltp-area-fill-off' : 'ltp-area-fill'} style={{ width: off ? 0 : `${shown}%` }} />
+          </div>
+          <input
+            className="ltp-area-range" type="range" min={0} max={100}
+            value={off ? 0 : shown}
+            disabled={!area.available}
+            onChange={(e) => setDrag(parseInt(e.target.value, 10))}
+            onMouseUp={() => { if (drag !== null) { onDim(drag); setDrag(null); } }}
+            onTouchEnd={() => { if (drag !== null) { onDim(drag); setDrag(null); } }}
+            aria-label={`${area.name} master brightness`}
+          />
+        </div>
+        <span className="ltp-area-count num" style={off ? { color: 'var(--text-dim)' } : undefined}>
+          {area.onCount}/{area.total}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// ── shade position row (LIVE) ────────────────────────────────────────────────
+const ShadeRow = ({ shade, onSet }: { shade: ShadeView; onSet: (pos: number) => void }) => {
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? shade.position;
+  return (
+    <div className="ltp-shade-row">
+      <span className="ltp-shade-name" title={shade.name}>{shade.name}</span>
+      <div className="ltp-shade-ctl">
+        <div className="ltp-shade-slider">
+          <div className="ltp-shade-track"><div className="ltp-shade-fill" style={{ width: `${shown}%` }} /></div>
+          <input
+            className="ltp-shade-range" type="range" min={0} max={100}
+            value={shown}
+            disabled={!shade.available}
+            onChange={(e) => setDrag(parseInt(e.target.value, 10))}
+            onMouseUp={() => { if (drag !== null) { onSet(drag); setDrag(null); } }}
+            onTouchEnd={() => { if (drag !== null) { onSet(drag); setDrag(null); } }}
+            aria-label={`${shade.name} position`}
+          />
+        </div>
+        <span className="ltp-shade-pct num" style={shade.available ? undefined : { color: 'var(--text-dim)' }}>
+          {shade.available ? `${shown}%` : '—'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const LightingPanel = () => {
+  const l = useLightingEntities();
+  const [firedScene, setFiredScene] = useState<string | null>(null);
+  const fireTimer = useRef<number | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => () => { if (fireTimer.current) window.clearTimeout(fireTimer.current); }, []);
+  void now;
+
+  const fireScene = (id: string) => {
+    l.actions.activateScene(id);
+    setFiredScene(id);
+    if (fireTimer.current) window.clearTimeout(fireTimer.current);
+    fireTimer.current = window.setTimeout(() => setFiredScene(null), 1400);
+  };
+
+  const heroSummary = useMemo(() => {
+    const last = l.lastScene ? `Last scene: ${l.lastScene.name} · ${l.lastScene.clock}` : 'No scene activated yet';
+    return last;
+  }, [l.lastScene]);
+
+  return (
+    <div className="ltp-scope">
+      {l.status === 'stale' && <div className="ltp-stale">Live feed stale — reconnecting…</div>}
+
+      {/* ── Hero ── */}
+      <div className="ltp-hero">
+        <div className="ltp-hero-canvas" />
+        <div className="ltp-hero-streak" />
+        <div className="ltp-hero-vignette" />
+        <div className="ltp-hero-title-block">
+          <div className="ltp-hero-left">
+            <div className="ltp-hero-eyebrow">Whole Home · Lutron QSX</div>
+            <div className="ltp-hero-title">Lighting</div>
+            <div className="ltp-hero-sub">
+              <div className="ltp-hero-pill"><span className="ltp-hero-dot" />{l.onTotal} of {l.fixtureTotal} on</div>
+              <span className="num">{l.areas.length} areas · {l.shadesCount} shades</span>
+              <span>{heroSummary}</span>
+            </div>
+          </div>
+          <div className="ltp-hero-right">
+            <div className="ltp-hero-metric"><div className="ltp-hero-metric-value num">{l.onTotal}</div><div className="ltp-hero-metric-label">On / {l.fixtureTotal}</div></div>
+            <div className="ltp-hero-metric"><div className="ltp-hero-metric-value num">{l.scenesCount}</div><div className="ltp-hero-metric-label">Scenes</div></div>
+            <div className="ltp-hero-metric"><div className="ltp-hero-metric-value num">{l.shadesCount}</div><div className="ltp-hero-metric-label">Shades</div></div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Content ── */}
+      <div className="ltp-content">
+
+        {/* PRIMARY — whole-home scenes + per-area group dimming (the core) */}
+        <div className="ltp-card ltp-primary-card">
+          <div className="ltp-card-label"><span className="ltp-card-accent">Whole-Home Scenes</span><span>scene.turn_on</span></div>
+          <div className="ltp-scene-row">
+            {l.scenes.map((s) => {
+              const justFired = firedScene === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`ltp-scene-pill${justFired ? ' ltp-scene-fired' : ''}`}
+                  disabled={!s.available}
+                  onClick={() => fireScene(s.id)}
+                  title={s.available ? `Activate ${s.name}` : `${s.name} not available`}
+                >
+                  <SceneIcon name={s.icon} active={justFired} />
+                  <div className="ltp-scene-nm">{s.name}</div>
+                  <div className="ltp-scene-hint">
+                    {justFired ? 'activated' : s.lastActivated ? `last ${s.lastActivated}` : '—'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="ltp-sub-label">By Area · group dimming</div>
+          <div className="ltp-area-grid">
+            {l.areas.map((a) => (
+              <AreaTile
+                key={a.name}
+                area={a}
+                onToggle={(on) => l.actions.toggleArea(a.name, on)}
+                onDim={(level) => l.actions.setAreaBrightness(a.name, level)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT — shades (LIVE) + keypad LED state (DISPLAY-ONLY · diagnostic) */}
+        <div className="ltp-right-col">
+          <div className="ltp-card">
+            <div className="ltp-card-label"><span>Shades &amp; Covers</span><span>cover.set_position</span></div>
+            {l.shades.map((sh) => (
+              <ShadeRow key={sh.id} shade={sh} onSet={(pos) => l.actions.setShade(sh.id, pos)} />
+            ))}
+          </div>
+
+          <div className="ltp-card ltp-keypad-card">
+            <div className="ltp-card-label"><span>Keypads · LED state</span><span title="LED control is deferred / equipment-gated — state shown only">display-only</span></div>
+            {l.keypads.map((kp) => (
+              <div className="ltp-keypad" key={kp.name}>
+                <div className="ltp-keypad-head">
+                  <span className="ltp-keypad-name">{kp.name}</span>
+                  <span className="ltp-keypad-tag">{kp.tag}</span>
+                </div>
+                {kp.buttons.map((b) => (
+                  <div className="ltp-kp-btn" key={b.id} title={`${b.label} LED · ${b.available ? (b.on ? 'lit' : 'off') : 'unavailable'} (display-only)`}>
+                    <span className={`ltp-kp-led ${b.on ? 'on' : 'off'}`} />
+                    <span className={`ltp-kp-label${b.on ? ' on' : ''}`}>{b.label}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="ltp-keypad-note">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+              Keypad LED control is deferred — state shown only (diagnostic).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bottom switcher ── */}
+      <BottomSwitcher />
+    </div>
+  );
+};
+
+// Bottom area-switcher — links to sibling panels by name when present, else
+// inert. Never breaks if a target panel does not exist in the config.
+const BottomSwitcher = () => {
+  const { panels } = useDashboard();
+  const findPanel = (re: RegExp) => panels.find((p) => re.test(p.name))?.id;
+  const homeId = findPanel(/home|overview|main/i);
+  const poolId = findPanel(/pool/i);
+  const climateId = findPanel(/climate|air/i);
+  const securityId = findPanel(/security/i);
+
+  const NavLink = ({ to, label, active, children }: { to?: string; label: string; active?: boolean; children: React.ReactNode; }) => {
+    const inner = (<><span className="ltp-nav-ico">{children}</span><span className="ltp-nav-label">{label}</span></>);
+    const cls = `ltp-nav${active ? ' active' : ''}`;
+    return to ? <Link className={cls} to={`/dashboard/${to}`}>{inner}</Link> : <button className={cls} type="button">{inner}</button>;
+  };
+
+  return (
+    <nav className="ltp-switcher">
+      <ArmingBar />
+      <NavLink to={homeId} label="Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+      </NavLink>
+      <NavLink to={poolId} label="Pool">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M2 12h2c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 7 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41h.34c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 13 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.42.41H16c.55 0 1.05-.22 1.41-.59A2 2 0 0 1 19 11c.55 0 1.05.22 1.41.59.37.36.87.41 1.59.41" /></svg>
+      </NavLink>
+      <NavLink to={climateId} label="Climate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
+      </NavLink>
+      <NavLink to={securityId} label="Security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+      </NavLink>
+      <NavLink label="Lights" active>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="1.5" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>
+      </NavLink>
+    </nav>
+  );
+};
+
+export default LightingPanel;

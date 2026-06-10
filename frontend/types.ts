@@ -243,7 +243,7 @@ export interface DashboardPanel {
   // the Kitchen room view); Increment 7 ships 'security' (the Security hub —
   // arming state is LIVE display-only off the real Alarmo; cameras/locks/glass
   // are PROPOSED/GAP, display-only, with no actuation).
-  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security';
+  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security' | 'lighting';
 }
 
 export interface ServiceConnection {
