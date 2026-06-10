@@ -97,6 +97,9 @@ import {
   MoveVertical,
   Layers,
   Loader2,
+  Upload,
+  Download,
+  Rocket,
 } from 'lucide-react';
 
 export const IconGauge = (props: React.ComponentProps<typeof Gauge>) => <Gauge {...props} />;
@@ -169,6 +172,9 @@ export const IconHistory = (props: React.ComponentProps<typeof History>) => <His
 export const IconRss = (props: React.ComponentProps<typeof Rss>) => <Rss {...props} />;
 export const IconDroplets = (props: React.ComponentProps<typeof Droplets>) => <Droplets {...props} />;
 export const IconUsers = (props: React.ComponentProps<typeof Users>) => <Users {...props} />;
+export const IconUpload = (props: React.ComponentProps<typeof Upload>) => <Upload {...props} />;
+export const IconDownload = (props: React.ComponentProps<typeof Download>) => <Download {...props} />;
+export const IconRocket = (props: React.ComponentProps<typeof Rocket>) => <Rocket {...props} />;
 export const IconCpu = (props: React.ComponentProps<typeof Cpu>) => <Cpu {...props} />;
 export const IconBlinds = (props: React.ComponentProps<typeof Blinds>) => <Blinds {...props} />;
 export const IconPanelTop = (props: React.ComponentProps<typeof PanelTop>) => <PanelTop {...props} />;

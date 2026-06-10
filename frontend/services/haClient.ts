@@ -261,6 +261,73 @@ export async function callService(
     await haCallService(conn, domain, service, data, target as any);
 }
 
+// --- Deploy / command rail (Admin Stage 4, Inc 13) ----------------------------
+// Thin wrapper around the existing `b_panels.command` service (registered in
+// custom_components/b_panels/__init__.py). The service fans a command out to
+// every connected kiosk panel over the command-channel WebSocket, or to a single
+// panel when `installation_id` is given. This is the PUSH half of "Deploy":
+// after the admin SAVES the config (config/save), firing `reload` makes the
+// connected iPads re-fetch and re-render the new config. No new backend needed.
+//
+// Allowed actions mirror COMMAND_SERVICE_SCHEMA: reload | hardReset |
+// switchPanel | screenOn | screenOff | setBrightness | tts | playSound |
+// screenshot. Deploy uses `reload` (all panels) or a targeted `reload`.
+export type BPanelsCommandAction =
+  | 'reload' | 'hardReset' | 'switchPanel' | 'screenOn' | 'screenOff'
+  | 'setBrightness' | 'tts' | 'playSound' | 'screenshot';
+
+export interface BPanelsCommandOptions {
+  /** Target a single panel by its installation id; omit = all connected panels. */
+  installationId?: string;
+  /** for switchPanel */
+  panelId?: string;
+  /** for setBrightness (0.0–1.0) */
+  value?: number;
+  /** for tts */
+  text?: string;
+  /** for playSound */
+  url?: string;
+}
+
+/**
+ * PURE: build the exact `b_panels.command` service-call shape for an action +
+ * options. No I/O — split out so the Admin UI and unit tests can assert on the
+ * shape without a live socket. Mirrors COMMAND_SERVICE_SCHEMA's field mapping.
+ */
+export function buildPanelCommand(
+  action: BPanelsCommandAction,
+  opts: BPanelsCommandOptions = {},
+): { domain: string; service: string; data: Record<string, any> } {
+  const data: Record<string, any> = { action };
+  if (opts.installationId) data.installation_id = opts.installationId;
+  if (opts.panelId) data.panel_id = opts.panelId;
+  if (typeof opts.value === 'number') data.value = opts.value;
+  if (opts.text) data.text = opts.text;
+  if (opts.url) data.url = opts.url;
+  return { domain: 'b_panels', service: 'command', data };
+}
+
+/**
+ * Fire the `b_panels.command` service. Returns the exact service-call shape sent
+ * (so the Admin UI can show/confirm it). Resolves even when no kiosk panels are
+ * connected (the service logs a warning and returns).
+ */
+export async function sendPanelCommand(
+  action: BPanelsCommandAction,
+  opts: BPanelsCommandOptions = {},
+): Promise<{ domain: string; service: string; data: Record<string, any> }> {
+  const call = buildPanelCommand(action, opts);
+  await callService(call.domain, call.service, call.data);
+  return call;
+}
+
+/** Convenience: the Deploy push — reload all panels, or a single installation. */
+export async function deployReload(
+  installationId?: string,
+): Promise<{ domain: string; service: string; data: Record<string, any> }> {
+  return sendPanelCommand('reload', installationId ? { installationId } : {});
+}
+
 // --- RSS/Atom feed proxy ------------------------------------------------------
 // Fetch a feed via the b_panels integration (server-side, CORS-safe). Returns
 // the raw feed body; the News tile parses it client-side.

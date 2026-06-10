@@ -320,6 +320,23 @@ export interface DashboardPanel {
   // arming state is LIVE display-only off the real Alarmo; cameras/locks/glass
   // are PROPOSED/GAP, display-only, with no actuation).
   compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security' | 'lighting';
+  // --- Admin Stage 4 (Inc 13): OPTIONAL per-user PIN scoping ---------------
+  // RECONCILIATION (memory: bpanels-navigation-ia + the v13 local-first nav):
+  // MOST panels are open, trusted, full-house panels with a curated per-device
+  // default (usePanelDefault) — they carry NO `visibleToUsers` and are reachable
+  // by anyone walking up, no PIN. This optional array is the convenience-grade
+  // scoping LAYER for the few panels that need it (e.g. a guest-house iPad's
+  // landing should not reach the pool controls): when present and NON-EMPTY,
+  // switching TO this panel requires unlocking a `User` (config `users[]`) whose
+  // id is listed here, via that user's PIN — UNLESS this panel is the device's
+  // own configured default (the local-first landing is always open on its own
+  // device). Absent/empty => fully open/unrestricted (the default for every
+  // existing panel — additive/non-breaking).
+  //
+  // NOT a security boundary: this is casual deterrence only (the user accepted
+  // this). A life-safety takeover ALWAYS overrides scoping — it mounts ABOVE the
+  // router (App.tsx) and is never suppressed by a PIN gate.
+  visibleToUsers?: string[];
 }
 
 // ServiceConnection — per-integration connection config.

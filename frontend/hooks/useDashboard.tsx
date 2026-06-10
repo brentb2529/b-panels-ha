@@ -931,6 +931,12 @@ interface DashboardContextType {
   // camera's sibling control/status entities into one detail view).
   entityDeviceMap: Record<string, string>;
   panels: DashboardPanel[];
+  // Admin Stage 4 (Inc 13): the full live StoredConfig + a wholesale replace,
+  // for config EXPORT (read `config`) and IMPORT (`replaceConfig`). The Admin
+  // export/import UI is the only consumer; everything else uses the granular
+  // mutators above.
+  config: StoredConfig;
+  replaceConfig: (next: StoredConfig) => void;
   connections: ServiceConnection[];
   users: User[];
   virtualDevices: Device[];
@@ -3484,6 +3490,15 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   }, [panels]);
 
 
+  // Admin Stage 4 (Inc 13): wholesale replace the config from an IMPORT. The
+  // caller (configIO.importConfig) has already validated shape, run the additive
+  // migration, stripped secrets, and respected the clobber-guard, so this just
+  // swaps state in. The normal debounced auto-save then persists it via
+  // config/save (which re-applies the server-side clobber-guard + secret strip).
+  const replaceConfig = useCallback((next: StoredConfig) => {
+    setConfig(() => next);
+  }, []);
+
   const updatePanelTiles = useCallback((panelId: string, tiles: TileConfig[]) => {
       setConfig(currentConfig => produce(currentConfig, draft => {
           const panel = draft.panels.find(p => p.id === panelId);
@@ -4295,6 +4310,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       importAreasFromHomeAssistant,
       resolveTileDevice,
       panels,
+      config,
+      replaceConfig,
       connections,
       users,
       virtualDevices: allVirtualDevices,

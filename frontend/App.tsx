@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { DashboardProvider, useDashboard } from './hooks/useDashboard';
+import { SessionUnlockProvider } from './hooks/useSessionUnlock';
+import PanelScopeGate from './components/PanelScopeGate';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useWeather } from './hooks/useWeather';
 import Header from './components/Header';
@@ -108,6 +110,18 @@ const PlaySoundAndRedirect = () => {
 };
 
 
+// Wrap the Dashboard with the OPTIONAL per-user scope gate (Inc 13). For an
+// open panel / the device default / an already-unlocked profile this is a no-op
+// passthrough; only a scoped+locked panel shows the PIN prompt instead.
+const ScopedDashboard = () => {
+  const { panelId } = useParams<{ panelId: string }>();
+  return (
+    <PanelScopeGate panelId={panelId}>
+      <Dashboard />
+    </PanelScopeGate>
+  );
+};
+
 const AppRoutes = () => {
   const { panels, loading } = useDashboard();
   
@@ -140,7 +154,7 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } 
       />
-      <Route path="/dashboard/:panelId" element={<Dashboard />} />
+      <Route path="/dashboard/:panelId" element={<ScopedDashboard />} />
       <Route path="/play/:triggerPath" element={<PlaySoundAndRedirect />} />
       <Route 
         path="/" 
@@ -496,6 +510,7 @@ function App() {
   return (
     <AuthProvider>
       <DashboardProvider>
+        <SessionUnlockProvider>
           <HashRouter>
               {/* LIFE-SAFETY TAKEOVER (Increment 10) — mounted ABOVE the scoped
                   router as a sibling to AppContent, so it renders on EVERY route/
@@ -509,6 +524,7 @@ function App() {
               <LifeSafetyTakeover onActiveChange={setTakeoverActive} />
               <AppContent />
           </HashRouter>
+        </SessionUnlockProvider>
       </DashboardProvider>
     </AuthProvider>
   );

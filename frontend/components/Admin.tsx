@@ -6,6 +6,8 @@ import { produce } from 'immer';
 import Tile from './Tile';
 import { useNavigate, useLocation } from 'react-router-dom';
 import AdminUserManager from './AdminUserManager';
+import AdminDeploy from './AdminDeploy';
+import { IconRocket } from './icons';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
 import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
@@ -2604,6 +2606,7 @@ const Admin = () => {
         { id: 'notifications', label: 'Notifications', icon: IconVolume2 },
         { id: 'access', label: 'Access Control', icon: IconUsers },
         { id: 'system', label: 'System', icon: IconServer },
+        { id: 'deploy', label: 'Deploy', icon: IconRocket },
     ];
 
     return (
@@ -2645,6 +2648,7 @@ const Admin = () => {
                     </>
                 )}
                 {activeTab === 'system' && <SystemStatusManager />}
+                {activeTab === 'deploy' && <AdminDeploy />}
             </div>
         </div>
     );
