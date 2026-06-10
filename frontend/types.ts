@@ -236,8 +236,9 @@ export interface DashboardPanel {
   // matching full-bleed design-system compilation panel (e.g. the Kitchen room
   // view) INSTEAD of the generic tile grid. Absent on every existing panel, so
   // the grid path is unchanged — additive/non-breaking. Increment 2 ships
-  // 'kitchen'; Increment 3 ships 'home' (the scene-forward landing overview).
-  compilationKind?: 'kitchen' | 'home';
+  // 'kitchen'; Increment 3 ships 'home' (the scene-forward landing overview);
+  // Increment 4 ships 'pool' (the Pool & Spa flagship compilation panel).
+  compilationKind?: 'kitchen' | 'home' | 'pool';
 }
 
 export interface ServiceConnection {
