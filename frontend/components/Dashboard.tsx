@@ -23,6 +23,7 @@ const ClimatePanel = React.lazy(() => import('../design-system/panels/ClimatePan
 const PrimarySuitePanel = React.lazy(() => import('../design-system/panels/PrimarySuitePanel'));
 const SecurityPanel = React.lazy(() => import('../design-system/panels/SecurityPanel'));
 const LightingPanel = React.lazy(() => import('../design-system/panels/LightingPanel'));
+const HouseHealthPanel = React.lazy(() => import('../design-system/panels/HouseHealthPanel'));
 
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
@@ -332,6 +333,15 @@ const Dashboard = () => {
       <div className="relative h-full">
         <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Lighting…</div>}>
           <LightingPanel />
+        </React.Suspense>
+      </div>
+    );
+  }
+  if (activePanel.compilationKind === 'house-health') {
+    return (
+      <div className="relative h-full">
+        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading House Health…</div>}>
+          <HouseHealthPanel />
         </React.Suspense>
       </div>
     );

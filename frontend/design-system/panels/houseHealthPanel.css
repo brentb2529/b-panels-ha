@@ -1,0 +1,421 @@
+/* =============================================================================
+ * House Health "system trust" surface — ECOSYSTEM #8 / §J2
+ * -----------------------------------------------------------------------------
+ * A single READ-ONLY trust surface in the locked liquid-glass language. Five
+ * status groups (Connectivity · Safety · Generator · UPS · Network), each with a
+ * clear OK / attention / critical / honest-unknown status + an ANIMATED status
+ * indicator, behind a proactive "what needs attention" hero summary.
+ *
+ * Identity accent = slate-teal "instrument" tone (sits beside the cool palette
+ * without colliding with any function accent). Status semantics reuse the LOCKED
+ * v1.2.1 family (positive / warning / critical). The `unknown` tone is a muted
+ * neutral — the honest "not configured" colour, deliberately NOT green.
+ *
+ * SAFETY: every element here is display-only (read-only surface); the CSS styles
+ * status faithfully but the panel wires no actuation.
+ *
+ * All styles scoped under `.hh-scope`, namespaced `hh-*` — distinct from
+ * .secp-scope / .kp-scope / .pp-scope etc., so the legacy dashboard and every
+ * prior panel are untouched.
+ * ===========================================================================*/
+
+.hh-scope {
+  --bg-canvas: #07090e;
+  --surface-glass: rgba(255, 255, 255, 0.066);
+  --surface-glass-raised: rgba(255, 255, 255, 0.10);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-border-bright: rgba(255, 255, 255, 0.20);
+  --text-primary: #EDF1F4;
+  --text-secondary: rgba(237, 241, 244, 0.55);
+  --text-dim: rgba(237, 241, 244, 0.28);
+
+  /* identity accent — instrument slate-teal */
+  --accent: #4FB6B0;
+  --accent-rgb: 79, 182, 176;
+
+  /* status semantics (locked v1.2.1) */
+  --st-ok: #5DC98A;        --st-ok-rgb: 93, 201, 138;
+  --st-attention: #E5A040; --st-attention-rgb: 229, 160, 64;
+  --st-critical: #E5484D;  --st-critical-rgb: 229, 72, 77;
+  --st-unknown: #8A96A3;   --st-unknown-rgb: 138, 150, 163;  /* muted neutral — NOT green */
+
+  --radius-card: 20px;
+  --radius-control: 13px;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(var(--accent-rgb), 0.10), transparent 60%),
+    var(--bg-canvas);
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  container-type: inline-size;
+  padding: 26px 30px 22px;
+}
+.hh-scope .num { font-variant-numeric: tabular-nums; }
+
+/* ── light theme — cool-light column ─────────────────────────────────────── */
+body.light-mode .hh-scope {
+  --bg-canvas: #EAEDF2;
+  --surface-glass: rgba(255, 255, 255, 0.76);
+  --surface-glass-raised: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-bright: rgba(0, 0, 0, 0.16);
+  --text-primary: #15181C;
+  --text-secondary: rgba(21, 24, 28, 0.58);
+  --text-dim: rgba(21, 24, 28, 0.34);
+  --accent: #2E8C86;        --accent-rgb: 46, 140, 134;
+  --st-ok: #2F9C66;        --st-ok-rgb: 47, 156, 102;
+  --st-attention: #B06B1A; --st-attention-rgb: 176, 107, 26;
+  --st-critical: #C6363B;  --st-critical-rgb: 198, 54, 59;
+  --st-unknown: #6E7A86;   --st-unknown-rgb: 110, 122, 134;
+}
+
+/* status colour helper — keyed off the status modifier on any element */
+.hh-dot-ok,        .hh-pill-ok        { --c: var(--st-ok);        --c-rgb: var(--st-ok-rgb); }
+.hh-dot-attention, .hh-pill-attention { --c: var(--st-attention); --c-rgb: var(--st-attention-rgb); }
+.hh-dot-critical,  .hh-pill-critical  { --c: var(--st-critical);  --c-rgb: var(--st-critical-rgb); }
+.hh-dot-unknown,   .hh-pill-unknown   { --c: var(--st-unknown);   --c-rgb: var(--st-unknown-rgb); }
+
+/* ── stale banner ─────────────────────────────────────────────────────────── */
+.hh-stale {
+  margin: -6px 0 14px;
+  padding: 8px 14px;
+  border-radius: var(--radius-control);
+  background: rgba(var(--st-attention-rgb), 0.14);
+  border: 1px solid rgba(var(--st-attention-rgb), 0.4);
+  color: var(--st-attention);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* =============================================================================
+ * Animated status dot — pulses on attention, faster + larger halo on critical
+ * ===========================================================================*/
+.hh-dot {
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--c, var(--st-unknown));
+  flex-shrink: 0;
+  position: relative;
+}
+.hh-dot-ok      { box-shadow: 0 0 0 0 rgba(var(--c-rgb), 0.5); }
+.hh-dot-attention { animation: hh-pulse 1.8s var(--c-rgb, 229, 160, 64) infinite; }
+.hh-dot-critical  { animation: hh-pulse-fast 1s var(--c-rgb, 229, 72, 77) infinite; }
+.hh-dot-unknown { background: var(--st-unknown); opacity: 0.7; }
+
+@keyframes hh-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--c-rgb), 0.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(var(--c-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--c-rgb), 0); }
+}
+@keyframes hh-pulse-fast {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--c-rgb), 0.7); transform: scale(1); }
+  60%  { box-shadow: 0 0 0 9px rgba(var(--c-rgb), 0); transform: scale(1.18); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--c-rgb), 0); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hh-dot-attention, .hh-dot-critical { animation: none; }
+}
+
+/* status pill */
+.hh-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--c, var(--text-secondary));
+  background: rgba(var(--c-rgb, 138, 150, 163), 0.13);
+  border: 1px solid rgba(var(--c-rgb, 138, 150, 163), 0.34);
+  white-space: nowrap;
+}
+
+/* =============================================================================
+ * Hero — proactive "what needs attention"
+ * ===========================================================================*/
+.hh-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 26px;
+  align-items: center;
+  padding: 24px 28px;
+  border-radius: var(--radius-card);
+  background: var(--surface-glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.hh-hero-aura {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(520px 240px at 4% 120%, rgba(var(--accent-rgb), 0.16), transparent 70%);
+}
+.hh-hero-ok        .hh-hero-aura { background: radial-gradient(520px 240px at 4% 120%, rgba(var(--st-ok-rgb), 0.16), transparent 70%); }
+.hh-hero-attention .hh-hero-aura { background: radial-gradient(520px 240px at 4% 120%, rgba(var(--st-attention-rgb), 0.18), transparent 70%); }
+.hh-hero-critical  .hh-hero-aura { background: radial-gradient(560px 260px at 4% 120%, rgba(var(--st-critical-rgb), 0.22), transparent 70%); animation: hh-aura-breathe 2.4s ease-in-out infinite; }
+.hh-hero-unknown   .hh-hero-aura { background: radial-gradient(520px 240px at 4% 120%, rgba(var(--st-unknown-rgb), 0.12), transparent 70%); }
+@keyframes hh-aura-breathe { 0%,100% { opacity: 0.7; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hh-hero-critical .hh-hero-aura { animation: none; } }
+
+.hh-hero-left { position: relative; z-index: 1; }
+.hh-hero-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.hh-hero-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(34px, 4.4cqw, 52px);
+  line-height: 1.02;
+  font-weight: 600;
+  margin: 6px 0 14px;
+  letter-spacing: -0.01em;
+}
+.hh-hero-verdict { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hh-hero-verdict-word { font-size: 16px; font-weight: 700; }
+.hh-hero-ok .hh-hero-verdict-word { color: var(--st-ok); }
+.hh-hero-attention .hh-hero-verdict-word { color: var(--st-attention); }
+.hh-hero-critical .hh-hero-verdict-word { color: var(--st-critical); }
+.hh-hero-unknown .hh-hero-verdict-word { color: var(--st-unknown); }
+.hh-hero-verdict-sub { font-size: 13px; color: var(--text-secondary); }
+
+.hh-hero-feed {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.hh-feed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-radius: var(--radius-control);
+  background: var(--surface-glass-raised);
+  border: 1px solid var(--glass-border);
+  font-size: 13.5px;
+}
+.hh-feed-row.hh-feed-critical  { border-color: rgba(var(--st-critical-rgb), 0.45); }
+.hh-feed-row.hh-feed-attention { border-color: rgba(var(--st-attention-rgb), 0.4); }
+.hh-feed-text { font-weight: 500; }
+.hh-feed-unknown .hh-feed-text { color: var(--text-secondary); }
+
+/* =============================================================================
+ * Group grid + cards
+ * ===========================================================================*/
+.hh-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+@container (max-width: 1100px) { .hh-grid { grid-template-columns: repeat(2, 1fr); } }
+@container (max-width: 720px)  { .hh-grid { grid-template-columns: 1fr; } .hh-hero { grid-template-columns: 1fr; } }
+
+.hh-card {
+  position: relative;
+  border-radius: var(--radius-card);
+  background: var(--surface-glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 188px;
+}
+/* status accent rail on the left edge */
+.hh-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--st-unknown);
+  opacity: 0.85;
+}
+.hh-card-ok::before        { background: var(--st-ok); }
+.hh-card-attention::before { background: var(--st-attention); }
+.hh-card-critical::before  { background: var(--st-critical); }
+.hh-card-unknown::before   { background: var(--st-unknown); }
+
+.hh-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.hh-card-titles { display: flex; flex-direction: column; gap: 2px; }
+.hh-card-eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.hh-card-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.hh-card-headright { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.hh-tag {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.hh-card-body { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+
+/* note line */
+.hh-note {
+  margin-top: auto;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+}
+.hh-note-ok { color: var(--text-secondary); }
+.hh-note-attention { color: var(--st-attention); }
+.hh-note-critical { color: var(--st-critical); font-weight: 600; }
+.hh-note-unknown { color: var(--text-dim); }
+
+/* ── Connectivity rollup ──────────────────────────────────────────────────── */
+.hh-rollup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px 10px;
+}
+.hh-rollup-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+.hh-rollup-num { font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.hh-rollup-num.attention { color: var(--st-attention); }
+.hh-rollup-num.critical { color: var(--st-critical); }
+.hh-rollup-lab { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+.hh-rollup-divider { width: 1px; align-self: stretch; background: var(--glass-border); margin: 4px 0; }
+
+.hh-list { display: flex; flex-direction: column; gap: 5px; }
+.hh-list-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.hh-list-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--surface-glass-raised);
+  font-size: 12.5px;
+}
+.hh-list-name { font-weight: 600; flex-shrink: 0; }
+.hh-list-id { color: var(--text-dim); font-size: 11px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hh-list-more { font-size: 11.5px; color: var(--text-secondary); padding-left: 10px; }
+.hh-allclear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--st-ok);
+  font-weight: 500;
+}
+
+/* ── Safety rows ──────────────────────────────────────────────────────────── */
+.hh-safety-rows { display: flex; flex-direction: column; gap: 9px; }
+.hh-srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.hh-srow-key { color: var(--text-secondary); }
+.hh-srow-val { display: flex; align-items: center; gap: 7px; font-weight: 600; text-align: right; }
+.hh-srow-muted { color: var(--text-secondary); font-weight: 500; }
+.hh-srow-aside { color: var(--text-dim); font-weight: 400; font-size: 11.5px; }
+
+/* ── Generator ────────────────────────────────────────────────────────────── */
+.hh-gen-hero { display: flex; align-items: center; gap: 16px; }
+.hh-gen-ring {
+  width: 78px; height: 78px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid rgba(var(--st-ok-rgb), 0.4);
+  background: radial-gradient(circle at 50% 40%, rgba(var(--st-ok-rgb), 0.14), transparent 70%);
+  flex-shrink: 0;
+}
+.hh-gen-ring-attention { border-color: rgba(var(--st-attention-rgb), 0.55); background: radial-gradient(circle at 50% 40%, rgba(var(--st-attention-rgb), 0.18), transparent 70%); animation: hh-spin-glow 3s linear infinite; }
+.hh-gen-ring-critical  { border-color: rgba(var(--st-critical-rgb), 0.6); background: radial-gradient(circle at 50% 40%, rgba(var(--st-critical-rgb), 0.2), transparent 70%); }
+@keyframes hh-spin-glow { 0%,100% { box-shadow: 0 0 14px rgba(var(--st-attention-rgb), 0.3); } 50% { box-shadow: 0 0 24px rgba(var(--st-attention-rgb), 0.55); } }
+@media (prefers-reduced-motion: reduce) { .hh-gen-ring-attention { animation: none; } }
+.hh-gen-run { font-size: 13.5px; font-weight: 700; text-align: center; padding: 0 4px; }
+.hh-gen-source { display: flex; flex-direction: column; gap: 3px; }
+.hh-gen-source-lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.hh-gen-source-val { font-size: 20px; font-weight: 700; }
+.hh-gen-source-val.on-gen { color: var(--st-attention); }
+
+/* ── UPS / WAN state lines ────────────────────────────────────────────────── */
+.hh-ups-state, .hh-wan-state { display: flex; align-items: center; gap: 10px; }
+.hh-ups-state-word, .hh-wan-word { font-size: 20px; font-weight: 700; }
+.hh-wan-isp { font-size: 12.5px; color: var(--text-secondary); margin-left: auto; }
+
+/* ── metric grid (shared by generator/ups/wan) ───────────────────────────── */
+.hh-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.hh-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--surface-glass-raised);
+  border: 1px solid var(--glass-border);
+}
+.hh-metric-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.hh-metric-value { font-size: 15px; font-weight: 600; }
+.hh-metric-absent .hh-metric-value { color: var(--text-dim); font-weight: 500; }
+
+/* ── honest "not configured" empty state ──────────────────────────────────── */
+.hh-absent {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 14px;
+  border-radius: var(--radius-control);
+  background: rgba(var(--st-unknown-rgb), 0.07);
+  border: 1px dashed rgba(var(--st-unknown-rgb), 0.4);
+  color: var(--text-secondary);
+  flex: 1;
+}
+.hh-absent svg { color: var(--st-unknown); flex-shrink: 0; }
+.hh-absent-text { display: flex; flex-direction: column; gap: 2px; }
+.hh-absent-title { font-size: 14px; font-weight: 700; color: var(--st-unknown); }
+.hh-absent-note { font-size: 12px; color: var(--text-secondary); }
+
+/* ── footer ───────────────────────────────────────────────────────────────── */
+.hh-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.hh-foot svg { flex-shrink: 0; }

@@ -319,7 +319,7 @@ export interface DashboardPanel {
   // the Kitchen room view); Increment 7 ships 'security' (the Security hub —
   // arming state is LIVE display-only off the real Alarmo; cameras/locks/glass
   // are PROPOSED/GAP, display-only, with no actuation).
-  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security' | 'lighting';
+  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security' | 'lighting' | 'house-health';
   // --- Admin Stage 4 (Inc 13): OPTIONAL per-user PIN scoping ---------------
   // RECONCILIATION (memory: bpanels-navigation-ia + the v13 local-first nav):
   // MOST panels are open, trusted, full-house panels with a curated per-device

@@ -29,6 +29,7 @@
   --bps-accent-climate: #7A9BBF;  --bps-accent-climate-rgb: 122,155,191;
   --bps-accent-security: #5B6CC9; --bps-accent-security-rgb: 91,108,201;
   --bps-accent-lights: #C7D2DA;   --bps-accent-lights-rgb: 199,210,218;
+  --bps-accent-health: #4FB6B0;   --bps-accent-health-rgb: 79,182,176;
   /* arming semantics (locked v1.2.1) */
   --sem-armed-away: #3FA776; --sem-armed-away-rgb: 63,167,118;
   --sem-armed-stay: #3FA9C9; --sem-armed-stay-rgb: 63,169,201;
@@ -51,6 +52,7 @@ body.light-mode .bps-shell {
   --bps-accent-climate: #4A78A8;  --bps-accent-climate-rgb: 74,120,168;
   --bps-accent-security: #4A55B0; --bps-accent-security-rgb: 74,85,176;
   --bps-accent-lights: #6E7C88;   --bps-accent-lights-rgb: 110,124,136;
+  --bps-accent-health: #2E8C86;   --bps-accent-health-rgb: 46,140,134;
 }
 
 /* The panel body fills the shell; the bottom chrome floats over it (the panels

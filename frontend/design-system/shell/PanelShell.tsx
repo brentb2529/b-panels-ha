@@ -59,13 +59,13 @@ const useSecurityNotReady = (): NotReadyView => {
 
 export type ShellKind =
   | 'home' | 'kitchen' | 'primary-suite'
-  | 'pool' | 'climate' | 'security' | 'lighting';
+  | 'pool' | 'climate' | 'security' | 'lighting' | 'house-health';
 
 // Which kinds are ROOM views vs whole-home FUNCTION panels (the two orthogonal
 // nav axes in the model). Home is the all-house landing — neither a room nor a
 // function tab, it's the "Home" entry.
 const ROOM_KINDS: ShellKind[] = ['kitchen', 'primary-suite'];
-const FUNCTION_KINDS: ShellKind[] = ['pool', 'climate', 'security', 'lighting'];
+const FUNCTION_KINDS: ShellKind[] = ['pool', 'climate', 'security', 'lighting', 'house-health'];
 
 // Accent per kind for the active-tab underline + function-card glyph (cool palette).
 const KIND_ACCENT: Record<string, { color: string; rgb: string }> = {
@@ -74,11 +74,13 @@ const KIND_ACCENT: Record<string, { color: string; rgb: string }> = {
   climate: { color: 'var(--bps-accent-climate)', rgb: 'var(--bps-accent-climate-rgb)' },
   security: { color: 'var(--bps-accent-security)', rgb: 'var(--bps-accent-security-rgb)' },
   lighting: { color: 'var(--bps-accent-lights)', rgb: 'var(--bps-accent-lights-rgb)' },
+  'house-health': { color: 'var(--bps-accent-health)', rgb: 'var(--bps-accent-health-rgb)' },
 };
 
 // Display label per kind (room labels come from the panel name; functions fixed).
 const KIND_LABEL: Record<string, string> = {
   pool: 'Pool & Spa', climate: 'Climate', security: 'Security', lighting: 'Lighting',
+  'house-health': 'House Health',
 };
 
 // The canonical Rooms grid from the v1.3 model. Rooms WITHOUT a curated panel
@@ -97,9 +99,11 @@ const Glyph = {
   climate: (s: string) => (<svg viewBox="0 0 24 24" fill="none" stroke={s} strokeWidth="1.5" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>),
   security: (s: string) => (<svg viewBox="0 0 24 24" fill="none" stroke={s} strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>),
   lighting: (s: string) => (<svg viewBox="0 0 24 24" fill="none" stroke={s} strokeWidth="1.5" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>),
+  'house-health': (s: string) => (<svg viewBox="0 0 24 24" fill="none" stroke={s} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>),
 };
 const FN_GLYPH: Record<string, (s: string) => React.ReactNode> = {
   pool: Glyph.pool, climate: Glyph.climate, security: Glyph.security, lighting: Glyph.lighting,
+  'house-health': Glyph['house-health'],
 };
 
 // ── Persistent arming indicator (display-only — derives from REAL Alarmo) ────
