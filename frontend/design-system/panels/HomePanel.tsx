@@ -4,6 +4,7 @@ import { useDashboard } from '../../hooks/useDashboard';
 import { useHomeEntities, SIGNATURE_SCENES, type SceneExperience } from './useHomeEntities';
 import PanelShell from '../shell/PanelShell';
 import { WeatherSafetyCard } from '../weather-safety/WeatherSafetyBanner';
+import HomeNewsTicker from './HomeNewsTicker';
 import './homePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -262,6 +263,14 @@ const HomePanel = () => {
             );
           })}
         </div>
+
+        {/* ── RSS newsfeed (feat/home-rss) — the homeowner wanted it back on the
+            front page, tastefully. A quiet morning-paper headline ticker,
+            SECONDARY to the scenes + area cards. Display-only; every headline is
+            sanitized (M-2 allow-list) before render; renders nothing when no feed
+            is present. Binds GENERICALLY to a feedreader-backed sensor (entries
+            attribute) — no real feed URL is hardcoded (stays HA/config side). ── */}
+        <HomeNewsTicker />
 
         {/* ── Freeze + storm protective card (feat/freeze-storm) — renders only
             when a freeze and/or severe-weather alert is active AND no life-safety
