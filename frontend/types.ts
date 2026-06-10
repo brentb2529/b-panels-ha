@@ -563,18 +563,31 @@ export interface LitterRobotState {
   // LR4-specific
   isLR4: boolean;
   litterLevel?: number;
+  // The Whisker `litter_level_state` ENUM sensor (e.g. "optimal" / "low" /
+  // "empty"); when present it is the authoritative litter word, otherwise the
+  // tile derives a word from `litterLevel`.
+  litterLevelState?: string;
   petWeight?: number;
   catWeight?: number;
   isCatDetected?: boolean;
   catDetectionCount?: number;
   brightnessLevel?: number;
   weightSensor?: number;
+  // Whisker gap sensors surfaced by the standalone integration (Inc 1/2):
+  //   `scoops_saved_count` (total scoops saved) and `hopper_status` enum.
+  scoopsSaved?: number;
+  hopperStatus?: string;
+  isHopperRemoved?: boolean;
+  // ISO timestamp of the last completed clean cycle, when the source exposes it.
+  lastCycleTime?: string;
 
   // LR3-specific
   isLR3: boolean;
   didNotifyOffline?: boolean;
-  // HA-only: entity_ids backing the modal's quick-action commands.
-  haEntities?: { vacuum?: string; nightLight?: string; panelLock?: string; reset?: string };
+  // HA-only: entity_ids backing the modal's quick-action commands. `startCycle`
+  // is the Whisker `button.*_start_cycle`; `nightLight`/`panelLock` are the
+  // switches; `reset` the reset button; `vacuum` the LR vacuum entity.
+  haEntities?: { vacuum?: string; nightLight?: string; panelLock?: string; reset?: string; startCycle?: string };
 }
 
 export interface ForecastDay {

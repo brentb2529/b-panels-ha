@@ -20,6 +20,7 @@ import GlassMediaTile from '../design-system/tiles/GlassMediaTile';
 import GlassCameraTile from '../design-system/tiles/GlassCameraTile';
 import GlassLightGroupTile from '../design-system/tiles/GlassLightGroupTile';
 import GlassArmingStatusTile from '../design-system/tiles/GlassArmingStatusTile';
+import GlassLitterRobotTile from '../design-system/tiles/GlassLitterRobotTile';
 import { Device, DeviceType, DeviceService, TileConfig } from '../types';
 
 // Minimal real Device fixtures. `id === entity_id` for HA-sourced devices.
@@ -49,6 +50,7 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
       'dimmer',
       'garage-cover',
       'light-group',
+      'litter-robot',
       'lock',
       'media-player',
       'scene',
@@ -66,6 +68,7 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
     expect(tileTypeCatalog['light-group'].component).toBe(GlassLightGroupTile);
     expect(tileTypeCatalog.alarm.component).toBe(GlassArmingStatusTile);
     expect(tileTypeCatalog['arming-status'].component).toBe(GlassArmingStatusTile);
+    expect(tileTypeCatalog['litter-robot'].component).toBe(GlassLitterRobotTile);
   });
 
   it('no longer points the catalog at the legacy tile components', () => {
@@ -86,7 +89,7 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
       expect(tileTypeCatalog[key].contractStatus).toBe('GATED');
     }
     // The plain control/display tiles must NOT be gated.
-    for (const key of ['switch', 'dimmer', 'scene', 'sensor', 'cover', 'climate', 'media-player', 'camera', 'light-group']) {
+    for (const key of ['switch', 'dimmer', 'scene', 'sensor', 'cover', 'climate', 'media-player', 'camera', 'light-group', 'litter-robot']) {
       expect(tileTypeCatalog[key].alwaysEquipmentGated).toBe(false);
       expect(tileTypeCatalog[key].contractStatus).toBe('LOCKED');
     }
@@ -118,9 +121,14 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
     expect(getCompatibleTileTypes('lock.front').map(d => d.key)).toEqual(['lock']);
   });
 
+  it('suggests the litter-robot tile for a vacuum-backed robot', () => {
+    expect(suggestTileType('vacuum.litter_robot')?.key).toBe('litter-robot');
+    expect(getCompatibleTileTypes('vacuum.litter_robot').map(d => d.key)).toEqual(['litter-robot']);
+  });
+
   it('returns no suggestion for a domain the catalog does not accept', () => {
-    expect(suggestTileType('vacuum.roomba')).toBeUndefined();
-    expect(getCompatibleTileTypes('vacuum.roomba')).toEqual([]);
+    expect(suggestTileType('weather.home')).toBeUndefined();
+    expect(getCompatibleTileTypes('weather.home')).toEqual([]);
   });
 });
 

@@ -1195,7 +1195,6 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // vacuum-based device.)
   const { robotComposites, robotMemberIds } = useMemo(() => {
     const empty = { robotComposites: [] as Device[], robotMemberIds: new Set<string>() };
-    if (!entityDeviceMap || Object.keys(entityDeviceMap).length === 0) return empty;
 
     const byDevice = new Map<string, Device[]>();
     for (const d of serviceDevices) {
@@ -1203,6 +1202,39 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       if (!did) continue;
       const arr = byDevice.get(did);
       if (arr) arr.push(d); else byDevice.set(did, [d]);
+    }
+
+    // FALLBACK grouping (no registry device_id — e.g. dev demos, helper-based
+    // robots, or a non-admin token without the registry): group a robot's
+    // entities by the vacuum's entity-id STEM. For each `vacuum.<stem>`, any
+    // `<domain>.<stem>_<suffix>` sibling that is NOT already grouped under a
+    // real device joins a synthetic group keyed `stem:<stem>`. This keeps the
+    // composite forming when the production device grouping is unavailable;
+    // when the registry DOES group them, those entities are already in
+    // `byDevice` and are skipped here (no double-counting).
+    for (const v of serviceDevices) {
+      if (v.type !== DeviceType.Vacuum) continue;
+      const m = v.id.match(/^vacuum\.(.+)$/);
+      if (!m) continue;
+      const stem = m[1];
+      // Skip stem-grouping ONLY when the registry already groups this vacuum
+      // with MORE THAN ONE member (a real device-per-robot). A vacuum that is
+      // alone under its own device (e.g. dev template helpers each get a solo
+      // device) still falls through to stem-grouping.
+      const regDid = entityDeviceMap[v.id];
+      if (regDid && (byDevice.get(regDid) || []).length > 1) continue;
+      const sibs = serviceDevices.filter(d =>
+        d.id === v.id || d.id.includes(`.${stem}_`) || d.id.endsWith(`.${stem}`));
+      if (sibs.length <= 1) continue;
+      const key = `stem:${stem}`;
+      if (byDevice.has(key)) continue;
+      // Remove any solo registry groups for these members so they aren't also
+      // processed as their own (empty) composite — the stem group is authoritative.
+      const sibIds = new Set(sibs.map(d => d.id));
+      byDevice.forEach((grp, did) => {
+        if (grp.length <= 1 && grp.every(d => sibIds.has(d.id))) byDevice.delete(did);
+      });
+      byDevice.set(key, sibs);
     }
 
     const numOf = (d?: Device): number | undefined => {
@@ -1243,30 +1275,48 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       if (!vac) return;
       const find = (re: RegExp) => grp.find(d => d.id !== vac.id && re.test(d.id));
       const wasteS = find(/waste/i);
-      const litterS = find(/litter[_ ]?level/i)
-        || grp.find(d => d.id !== vac.id && /litter/i.test(d.id) && (d.capabilityData as any)?.unit === '%');
+      // The numeric litter-level sensor — NOT the `litter_level_state` enum.
+      const litterS = grp.find(d => d.id !== vac.id && /litter[_ ]?level/i.test(d.id) && !/state/i.test(d.id))
+        || grp.find(d => d.id !== vac.id && /litter/i.test(d.id) && !/state/i.test(d.id) && (d.capabilityData as any)?.unit === '%');
       // Only Litter-Robots become composite cards; generic vacuums stay as VacuumTile.
       const isLitter = /litter|whisker/i.test(`${vac.name} ${vac.id}`) || !!wasteS || !!litterS;
       if (!isLitter) return;
 
-      const statusS = find(/status[_ ]?code|_status\b/i) || find(/status/i);
+      // Robot status — the `status_code` sensor. Exclude `hopper_status` (its
+      // own enum) so it isn't mistaken for the robot status on either path.
+      const statusS = find(/status[_ ]?code/i)
+        || grp.find(d => d.id !== vac.id && /_status\b/i.test(d.id) && !/hopper/i.test(d.id))
+        || grp.find(d => d.id !== vac.id && /status/i.test(d.id) && !/hopper/i.test(d.id));
       const sleepStartS = find(/sleep.*start/i);
       const sleepEndS = find(/sleep.*end/i);
       const petS = find(/pet[_ ]?weight/i);
       const lastSeenS = find(/last[_ ]?seen/i);
       const waitSel = find(/clean[_ ]?cycle[_ ]?wait/i);
+      // Whisker gap sensors (standalone integration, Inc 1/2): scoops-saved,
+      // litter-level-state enum, hopper status/removed, last-cycle timestamp.
+      const scoopsS = find(/scoops[_ ]?saved/i);
+      const litterStateS = find(/litter[_ ]?level[_ ]?state/i);
+      const hopperS = find(/hopper[_ ]?status/i);
+      const hopperRemovedS = find(/hopper[_ ]?removed/i);
+      const lastCycleS = find(/last[_ ]?cycle/i);
       const lightCtl = grp.find(d => d.id !== vac.id && /night[_ ]?light/i.test(d.id))
         || grp.find(d => d.id !== vac.id && /globe[_ ]?light/i.test(d.id));
       const lockSw = grp.find(d => d.id !== vac.id && /panel[_ ]?lock|lockout/i.test(d.id));
       const resetBtn = grp.find(d => /reset/i.test(d.id));
+      const startCycleBtn = grp.find(d => /start[_ ]?cycle/i.test(d.id));
 
       const vacState = String(vac.state ?? '').toLowerCase();
       const statusCode = statusS ? String(statusS.state ?? '') : '';
-      const online = vac.isOnline !== false && vacState !== 'unavailable' && statusCode.toLowerCase() !== 'offline';
-      const normalizedStatus = normalizeLitterStatus(statusCode || vacState, vacState, online);
+      const onlineByVac = vac.isOnline !== false && vacState !== 'unavailable' && statusCode.toLowerCase() !== 'offline';
+      const normalizedStatus = normalizeLitterStatus(statusCode || vacState, vacState, onlineByVac);
+      // A 'pwrd'/'off'/'offline' status_code is itself an offline signal even if
+      // the vacuum entity hasn't dropped to `unavailable`.
+      const online = onlineByVac && normalizedStatus !== 'OFFLINE';
       const waste = numOf(wasteS) ?? 0;
       const litter = numOf(litterS);
-      const lightOn = lightCtl ? String(lightCtl.state).toLowerCase() !== 'off' : undefined;
+      // A switch device's `state` is a boolean (truthy/falsey), not 'on'/'off';
+      // read it honestly so the projection mirrors the real switch.
+      const lightOn = lightCtl ? truthy(lightCtl) : undefined;
       // The vacuum entity is named "<robot> Litter box"; show just the robot name.
       const name = vac.name.replace(/\s*litter\s*box\s*$/i, '').trim() || vac.name;
 
@@ -1286,8 +1336,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         sleepModeEndTime: sleepEndS ? String(sleepEndS.state) : undefined,
         lastSeen: lastSeenS ? String(lastSeenS.state) : undefined,
         isLR4: litter !== undefined, litterLevel: litter, petWeight: numOf(petS),
+        litterLevelState: litterStateS && !['unknown', 'unavailable'].includes(String(litterStateS.state).toLowerCase())
+          ? String(litterStateS.state) : undefined,
+        scoopsSaved: numOf(scoopsS),
+        hopperStatus: hopperS && !['unknown', 'unavailable'].includes(String(hopperS.state).toLowerCase())
+          ? String(hopperS.state) : undefined,
+        isHopperRemoved: hopperRemovedS ? truthy(hopperRemovedS) : undefined,
+        lastCycleTime: lastCycleS && !['unknown', 'unavailable'].includes(String(lastCycleS.state).toLowerCase())
+          ? String(lastCycleS.state) : undefined,
         isLR3: litter === undefined,
-        haEntities: { vacuum: vac.id, nightLight: lightCtl?.id, panelLock: lockSw?.id, reset: resetBtn?.id },
+        haEntities: { vacuum: vac.id, nightLight: lightCtl?.id, panelLock: lockSw?.id, reset: resetBtn?.id, startCycle: startCycleBtn?.id },
       };
 
       composites.push({

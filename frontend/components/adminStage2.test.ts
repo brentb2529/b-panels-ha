@@ -141,8 +141,12 @@ describe('tile-type picker candidates (single / multi / none)', () => {
   });
 
   it('no candidates → empty (caller offers generic)', () => {
-    expect(getCompatibleTileTypes('vacuum.roomba')).toEqual([]);
-    expect(getCompatibleTileTypesForDevice('vacuum.roomba')).toEqual([]);
+    expect(getCompatibleTileTypes('weather.home')).toEqual([]);
+    expect(getCompatibleTileTypesForDevice('weather.home')).toEqual([]);
+  });
+
+  it('a vacuum-backed robot offers the litter-robot tile', () => {
+    expect(getCompatibleTileTypes('vacuum.litter_robot').map(c => c.key)).toEqual(['litter-robot']);
   });
 
   it('a lone GATED candidate is not auto-suggested (routes to picker)', () => {

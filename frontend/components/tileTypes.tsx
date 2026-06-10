@@ -20,6 +20,7 @@ import GlassMediaTile from '../design-system/tiles/GlassMediaTile';
 import GlassCameraTile from '../design-system/tiles/GlassCameraTile';
 import GlassLightGroupTile from '../design-system/tiles/GlassLightGroupTile';
 import GlassArmingStatusTile from '../design-system/tiles/GlassArmingStatusTile';
+import GlassLitterRobotTile from '../design-system/tiles/GlassLitterRobotTile';
 
 export type ContractStatus = 'LOCKED' | 'PROPOSED' | 'GATED';
 
@@ -185,6 +186,17 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassSensorTile,
+  },
+  'litter-robot': {
+    key: 'litter-robot',
+    label: 'Litter-Robot',
+    description: 'Rich Whisker / Litter-Robot tile: animated litter-level + waste-drawer visualizers, status pill, scoops-saved, hopper + last-cycle, with press-and-hold Cycle / Night-light / Panel-lock controls. Low-hazard appliance — confirm-gated, not equipment-gated.',
+    // Binds to the robot composite (which surfaces as a vacuum-backed device);
+    // the composite folds the Whisker sensors/switches/buttons into one state.
+    acceptsDomains: ['vacuum'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassLitterRobotTile,
   },
 
   // ── Equipment-gated / life-safety surfaces ─────────────────────────────
