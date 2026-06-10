@@ -1,0 +1,835 @@
+# =============================================================================
+# Signature whole-house scenes — dev package (coordinator-owned)
+# =============================================================================
+# Provides, for the b-panels "Signature scenes" experience layer:
+#
+#   1. SIX server-side orchestration SCRIPTS (script.scene_goodnight, etc.).
+#      These fire ONLY the LOW-HAZARD actors — Lutron lights/brightness, shades/
+#      covers position, HVAC setpoint+mode (comfort), Sonos, and pool/landscape
+#      LIGHTS + effects. They are GENERIC: every target entity is a script
+#      `field` with a dev-default, so a production deployment passes its own
+#      Lutron/Sonos/IntelliCenter entity ids with no code change and no site
+#      hardcoding. They call only generic HA domain services.
+#
+#      They contain NO gated actor (no arm/disarm, no lock/gate, no AKVO floor,
+#      no pool BODY/pump/heater, no CLiC glass, no garage). Those stay on the
+#      existing confirm-gated path in the b-panels UI and issue NO live actuation.
+#
+#   2. Real, locally-backed DEMO entities (template lights/covers/climate +
+#      a Sonos-shaped media_player) so the generic service calls demonstrably
+#      MOVE STATE in dev. In production these are replaced by the real Lutron /
+#      cover / Airzone / Sonos entities — the scripts don't change.
+#
+#   3. GATED-ACTOR demo entities (alarm panel, door lock, garage, CLiC glass,
+#      pool body) provisioned as inert input_booleans so the forced-check proof
+#      can assert that triggering a scene leaves every one of them UNTOUCHED.
+#
+# Safety contract (CLAUDE.md + ECOSYSTEM §H1): equipment-gated / security /
+# AKVO actors are NEVER auto-actuated inside a scene. This file enforces that by
+# construction — grep it: no scene_* script references any gated entity.
+# =============================================================================
+
+# ── helper state behind the dev-demo template entities ───────────────────────
+input_boolean:
+  # low-hazard demo light backings (template lights below read/drive these)
+  sig_light_great_room: { name: "Great Room", icon: mdi:light-recessed }
+  sig_light_master: { name: "Master", icon: mdi:light-recessed }
+  sig_light_kitchen_house: { name: "Kitchen", icon: mdi:light-recessed }
+  sig_light_foyer: { name: "Foyer", icon: mdi:light-recessed }
+  sig_light_office: { name: "Office", icon: mdi:light-recessed }
+  sig_light_patio: { name: "Patio", icon: mdi:light-recessed }
+  sig_light_gym: { name: "Gym", icon: mdi:light-recessed }
+  sig_light_theater: { name: "Theater", icon: mdi:light-recessed }
+  sig_pool_light: { name: "Pool Light", icon: mdi:pool }
+  sig_landscape_light: { name: "Landscape Light", icon: mdi:outdoor-lamp }
+  # inert demo "AC relay" booleans backing the generic_thermostat zones (no real
+  # HVAC hardware in dev); they only flip as the dummy thermostat regulates.
+  sig_hvac_kitchen: { name: "Kitchen AC relay (demo)", icon: mdi:hvac }
+  sig_hvac_living: { name: "Living AC relay (demo)", icon: mdi:hvac }
+  sig_hvac_primary: { name: "Primary AC relay (demo)", icon: mdi:hvac }
+
+  # ── GATED ACTORS — display/confirm-only; scenes must NEVER drive these ──
+  # Provisioned inert so the forced-check can prove zero scene-driven changes.
+  gated_alarm_armed: { name: "[GATED] Alarm Armed", icon: mdi:shield }
+  gated_front_door_locked: { name: "[GATED] Front Door Lock", icon: mdi:lock }
+  gated_garage_open: { name: "[GATED] Garage Door", icon: mdi:garage }
+  gated_clic_privacy: { name: "[GATED] CLiC Privacy Glass", icon: mdi:blinds }
+  gated_pool_body: { name: "[GATED] Pool Body / Pump", icon: mdi:pump }
+  gated_akvo_floor_move: { name: "[GATED] AKVO Floor Move", icon: mdi:elevator }
+
+input_number:
+  sig_bright_great_room: { name: "Great Room brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_master: { name: "Master brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_kitchen_house: { name: "Kitchen brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_foyer: { name: "Foyer brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_office: { name: "Office brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_patio: { name: "Patio brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_gym: { name: "Gym brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_theater: { name: "Theater brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_pool_light: { name: "Pool light brightness", min: 0, max: 255, step: 1, mode: box }
+  sig_bright_landscape_light: { name: "Landscape brightness", min: 0, max: 255, step: 1, mode: box }
+  # shade positions (0 closed .. 100 open)
+  sig_cover_great_room: { name: "Great Room shade", min: 0, max: 100, step: 1, mode: box, initial: 80 }
+  sig_cover_master: { name: "Master shade", min: 0, max: 100, step: 1, mode: box, initial: 80 }
+  sig_cover_theater: { name: "Theater shade", min: 0, max: 100, step: 1, mode: box, initial: 80 }
+  sig_cover_patio: { name: "Patio shade", min: 0, max: 100, step: 1, mode: box, initial: 80 }
+  # climate setpoints + current temp
+  sig_climate_kitchen_set: { name: "Kitchen setpoint", min: 60, max: 85, step: 0.5, mode: box, initial: 72 }
+  sig_climate_living_set: { name: "Living setpoint", min: 60, max: 85, step: 0.5, mode: box, initial: 72 }
+  sig_climate_primary_set: { name: "Primary setpoint", min: 60, max: 85, step: 0.5, mode: box, initial: 72 }
+  sig_climate_kitchen_cur: { name: "Kitchen temp", min: 50, max: 95, step: 0.1, mode: box, initial: 73 }
+  sig_climate_living_cur: { name: "Living temp", min: 50, max: 95, step: 0.1, mode: box, initial: 72 }
+  sig_climate_primary_cur: { name: "Primary temp", min: 50, max: 95, step: 0.1, mode: box, initial: 71 }
+
+input_select:
+  sig_climate_kitchen_mode:
+    name: "Kitchen mode"
+    options: [off, cool, heat, heat_cool]
+    initial: cool
+  sig_climate_living_mode:
+    name: "Living mode"
+    options: [off, cool, heat, heat_cool]
+    initial: cool
+  sig_climate_primary_mode:
+    name: "Primary mode"
+    options: [off, cool, heat, heat_cool]
+    initial: cool
+  sig_media_state:
+    name: "Sonos state"
+    options: [idle, playing, paused]
+    initial: idle
+  sig_media_source:
+    name: "Sonos source"
+    options: ["—", "Morning Acoustic", "Dinner Jazz", "Party Mix", "Sleep Sounds"]
+    initial: "—"
+
+input_text:
+  sig_last_scene:
+    name: "Last signature scene"
+    initial: "—"
+    max: 64
+
+# ── Template entities the b-panels demo binds to (REAL, locally driven) ──────
+# These give the generic light.* / cover.* / climate.* / media_player.* service
+# calls something real to actuate in dev. Their entity_ids match the ids the
+# HomePanel + panels already reference.
+template:
+  - sensor:
+      - name: "Kitchen Zone Temp"
+        unique_id: sig_temp_kitchen
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state: "{{ states('input_number.sig_climate_kitchen_cur') | float(73) }}"
+      - name: "Living Zone Temp"
+        unique_id: sig_temp_living
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state: "{{ states('input_number.sig_climate_living_cur') | float(72) }}"
+      - name: "Primary Zone Temp"
+        unique_id: sig_temp_primary
+        unit_of_measurement: "°F"
+        device_class: temperature
+        state: "{{ states('input_number.sig_climate_primary_cur') | float(71) }}"
+
+# Real, core climate entities (generic_thermostat) — respond natively to
+# climate.set_temperature / climate.set_hvac_mode, so the scene scripts'
+# generic climate.* calls demonstrably move them in dev. Heater target is an
+# inert demo input_boolean (no real HVAC hardware in dev). entity_ids resolve
+# to climate.kitchen_zone / climate.living_zone / climate.primary_zone.
+
+  # ── Template lights (modern template: integration, HA 2026). `name` is
+  #    chosen so the slug == the entity_id the b-panels demo binds to. Backed
+  #    by input_boolean (on/off) + input_number (brightness 0-255) so generic
+  #    light.turn_on/off + brightness_pct calls demonstrably actuate in dev. ──
+  - light:
+      - name: "Great Room Lights"
+        unique_id: sig_great_room_lights
+        state: "{{ is_state('input_boolean.sig_light_great_room','on') }}"
+        level: "{{ states('input_number.sig_bright_great_room') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_great_room }
+          - if: "{{ (states('input_number.sig_bright_great_room') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_great_room }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_great_room }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_great_room }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_great_room }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_great_room }
+      - name: "Master Lights"
+        unique_id: sig_master_lights
+        state: "{{ is_state('input_boolean.sig_light_master','on') }}"
+        level: "{{ states('input_number.sig_bright_master') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_master }
+          - if: "{{ (states('input_number.sig_bright_master') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_master }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_master }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_master }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_master }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_master }
+      - name: "Kitchen House Lights"
+        unique_id: sig_kitchen_house_lights
+        state: "{{ is_state('input_boolean.sig_light_kitchen_house','on') }}"
+        level: "{{ states('input_number.sig_bright_kitchen_house') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_kitchen_house }
+          - if: "{{ (states('input_number.sig_bright_kitchen_house') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_kitchen_house }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_kitchen_house }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_kitchen_house }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_kitchen_house }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_kitchen_house }
+      - name: "Foyer Lights"
+        unique_id: sig_foyer_lights
+        state: "{{ is_state('input_boolean.sig_light_foyer','on') }}"
+        level: "{{ states('input_number.sig_bright_foyer') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_foyer }
+          - if: "{{ (states('input_number.sig_bright_foyer') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_foyer }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_foyer }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_foyer }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_foyer }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_foyer }
+      - name: "Office Lights"
+        unique_id: sig_office_lights
+        state: "{{ is_state('input_boolean.sig_light_office','on') }}"
+        level: "{{ states('input_number.sig_bright_office') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_office }
+          - if: "{{ (states('input_number.sig_bright_office') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_office }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_office }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_office }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_office }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_office }
+      - name: "Patio Lights"
+        unique_id: sig_patio_lights
+        state: "{{ is_state('input_boolean.sig_light_patio','on') }}"
+        level: "{{ states('input_number.sig_bright_patio') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_patio }
+          - if: "{{ (states('input_number.sig_bright_patio') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_patio }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_patio }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_patio }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_patio }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_patio }
+      - name: "Gym Lights"
+        unique_id: sig_gym_lights
+        state: "{{ is_state('input_boolean.sig_light_gym','on') }}"
+        level: "{{ states('input_number.sig_bright_gym') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_gym }
+          - if: "{{ (states('input_number.sig_bright_gym') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_gym }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_gym }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_gym }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_gym }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_gym }
+      - name: "Theater Lights"
+        unique_id: sig_theater_lights
+        state: "{{ is_state('input_boolean.sig_light_theater','on') }}"
+        level: "{{ states('input_number.sig_bright_theater') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_light_theater }
+          - if: "{{ (states('input_number.sig_bright_theater') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_theater }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_light_theater }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_theater }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_theater }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_light_theater }
+      - name: "Pool Lights"
+        unique_id: sig_pool_lights
+        state: "{{ is_state('input_boolean.sig_pool_light','on') }}"
+        level: "{{ states('input_number.sig_bright_pool_light') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_pool_light }
+          - if: "{{ (states('input_number.sig_bright_pool_light') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_pool_light }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_pool_light }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_pool_light }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_pool_light }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_pool_light }
+      - name: "Landscape Lights"
+        unique_id: sig_landscape_lights
+        state: "{{ is_state('input_boolean.sig_landscape_light','on') }}"
+        level: "{{ states('input_number.sig_bright_landscape_light') | int(0) }}"
+        turn_on:
+          - service: input_boolean.turn_on
+            target: { entity_id: input_boolean.sig_landscape_light }
+          - if: "{{ (states('input_number.sig_bright_landscape_light') | int(0)) == 0 }}"
+            then:
+              - service: input_number.set_value
+                target: { entity_id: input_number.sig_bright_landscape_light }
+                data: { value: 255 }
+        turn_off:
+          - service: input_boolean.turn_off
+            target: { entity_id: input_boolean.sig_landscape_light }
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_landscape_light }
+            data: { value: 0 }
+        set_level:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_bright_landscape_light }
+            data: { value: "{{ brightness }}" }
+          - service: "input_boolean.turn_{{ 'on' if (brightness | int) > 0 else 'off' }}"
+            target: { entity_id: input_boolean.sig_landscape_light }
+  # ── Template covers/shades (position 0=closed..100=open) ──
+  - cover:
+      - name: "Great Room Shade"
+        unique_id: sig_great_room_shade
+        device_class: shade
+        position: "{{ states('input_number.sig_cover_great_room') | int(0) }}"
+        open_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_great_room }
+            data: { value: 100 }
+        close_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_great_room }
+            data: { value: 0 }
+        set_cover_position:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_great_room }
+            data: { value: "{{ position }}" }
+      - name: "Master Shade"
+        unique_id: sig_master_shade
+        device_class: shade
+        position: "{{ states('input_number.sig_cover_master') | int(0) }}"
+        open_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_master }
+            data: { value: 100 }
+        close_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_master }
+            data: { value: 0 }
+        set_cover_position:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_master }
+            data: { value: "{{ position }}" }
+      - name: "Theater Shade"
+        unique_id: sig_theater_shade
+        device_class: shade
+        position: "{{ states('input_number.sig_cover_theater') | int(0) }}"
+        open_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_theater }
+            data: { value: 100 }
+        close_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_theater }
+            data: { value: 0 }
+        set_cover_position:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_theater }
+            data: { value: "{{ position }}" }
+      - name: "Patio Shade"
+        unique_id: sig_patio_shade
+        device_class: shade
+        position: "{{ states('input_number.sig_cover_patio') | int(0) }}"
+        open_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_patio }
+            data: { value: 100 }
+        close_cover:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_patio }
+            data: { value: 0 }
+        set_cover_position:
+          - service: input_number.set_value
+            target: { entity_id: input_number.sig_cover_patio }
+            data: { value: "{{ position }}" }
+
+climate:
+  - platform: generic_thermostat
+    name: Kitchen Zone
+    unique_id: sig_climate_kitchen
+    heater: input_boolean.sig_hvac_kitchen
+    target_sensor: sensor.kitchen_zone_temp
+    ac_mode: true
+    min_temp: 60
+    max_temp: 85
+    target_temp: 72
+  - platform: generic_thermostat
+    name: Living Zone
+    unique_id: sig_climate_living
+    heater: input_boolean.sig_hvac_living
+    target_sensor: sensor.living_zone_temp
+    ac_mode: true
+    min_temp: 60
+    max_temp: 85
+    target_temp: 72
+  - platform: generic_thermostat
+    name: Primary Zone
+    unique_id: sig_climate_primary
+    heater: input_boolean.sig_hvac_primary
+    target_sensor: sensor.primary_zone_temp
+    ac_mode: true
+    min_temp: 60
+    max_temp: 85
+    target_temp: 72
+
+# Sonos in dev: scenes call media_player.* against the real Sonos id in prod.
+# In dev (no Sonos hardware) the scene mirrors the intended Sonos state onto
+# input_select.sig_media_state so the round-trip is observable. This is the only
+# spot a scene targets a non-core demo helper; in prod the media_player.* lines
+# fire against the real Sonos and these helper writes are simply harmless.
+
+# =============================================================================
+# THE SIX SIGNATURE SCENE SCRIPTS — low-hazard orchestration ONLY
+# =============================================================================
+# Each is GENERIC: target entities are `fields` with dev defaults, so a prod
+# deployment passes its own Lutron/cover/Airzone/Sonos ids with no edit. They
+# call ONLY generic domain services on low-hazard actors:
+#   light.turn_on/off · cover.set_cover_position · climate.set_temperature +
+#   set_hvac_mode · media_player.* (Sonos).
+# They contain NO arm/disarm, NO lock/gate, NO AKVO floor move, NO pool BODY/
+# pump/heater, NO CLiC glass, NO garage. The gated finishing step for each is
+# surfaced in the b-panels UI behind an explicit confirm — never here.
+#
+# `sonos_player` defaults to the dev demo Sonos id; set to "" to skip audio.
+# All scripts mirror the intended Sonos state onto input_select.sig_media_state
+# (dev observability) AND fire media_player.* against `sonos_player` (prod).
+# =============================================================================
+script:
+
+  # ── 1. GOODNIGHT — wind the house down (lights low/off, shades down, HVAC
+  #      setback, quiet audio). Gated finishing step (UI): "Arm Night + lock up?"
+  scene_goodnight:
+    alias: "Scene · Goodnight"
+    icon: mdi:weather-night
+    mode: restart
+    fields:
+      interior_lights:
+        description: Interior lights to turn off
+        default: [light.great_room_lights, light.kitchen_house_lights, light.office_lights, light.foyer_lights, light.gym_lights]
+      bedside_lights:
+        description: Lights to leave low for navigation
+        default: [light.master_lights]
+      shades:
+        description: Shades to lower for the night
+        default: [cover.master_shade, cover.great_room_shade, cover.theater_shade]
+      climate_zones:
+        default: [climate.kitchen_zone, climate.living_zone, climate.primary_zone]
+      night_setpoint:
+        default: 68
+      sonos_player:
+        default: media_player.great_room_sonos
+    # Resolve every field to its default when called bare (script.turn_on does
+    # not auto-apply field defaults). Prod callers may override any of these.
+    variables:
+      interior_lights: "{{ interior_lights | default(['light.great_room_lights','light.kitchen_house_lights','light.office_lights','light.foyer_lights','light.gym_lights']) }}"
+      bedside_lights: "{{ bedside_lights | default(['light.master_lights']) }}"
+      shades: "{{ shades | default(['cover.master_shade','cover.great_room_shade','cover.theater_shade']) }}"
+      climate_zones: "{{ climate_zones | default(['climate.kitchen_zone','climate.living_zone','climate.primary_zone']) }}"
+      night_setpoint: "{{ night_setpoint | default(68) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+    sequence:
+      - service: light.turn_off
+        target: { entity_id: "{{ interior_lights }}" }
+      - service: light.turn_on
+        target: { entity_id: "{{ bedside_lights }}" }
+        data: { brightness_pct: 8 }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 0 }
+      - service: climate.set_temperature
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { temperature: "{{ night_setpoint }}" }
+      - service: light.turn_off
+        target: { entity_id: [light.patio_lights, light.landscape_lights] }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_state }
+        data: { option: idle }
+      - if: "{{ sonos_player | length > 0 }}"
+        then:
+          - service: media_player.turn_off
+            target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Goodnight" }
+
+  # ── 2. WAKE — gentle morning ramp (warm light up, shades up, HVAC to comfort,
+  #      optional Sonos). Time-aware: typically fired by a morning trigger.
+  scene_wake:
+    alias: "Scene · Wake"
+    icon: mdi:weather-sunset-up
+    mode: restart
+    fields:
+      wake_lights:
+        default: [light.master_lights, light.kitchen_house_lights, light.foyer_lights]
+      shades:
+        default: [cover.master_shade, cover.great_room_shade]
+      climate_zones:
+        default: [climate.kitchen_zone, climate.living_zone, climate.primary_zone]
+      comfort_setpoint:
+        default: 72
+      sonos_player:
+        default: media_player.great_room_sonos
+      play_audio:
+        default: true
+    variables:
+      wake_lights: "{{ wake_lights | default(['light.master_lights','light.kitchen_house_lights','light.foyer_lights']) }}"
+      shades: "{{ shades | default(['cover.master_shade','cover.great_room_shade']) }}"
+      climate_zones: "{{ climate_zones | default(['climate.kitchen_zone','climate.living_zone','climate.primary_zone']) }}"
+      comfort_setpoint: "{{ comfort_setpoint | default(72) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+      play_audio: "{{ play_audio | default(true) }}"
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: "{{ wake_lights }}" }
+        data: { brightness_pct: 60 }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 100 }
+      - service: climate.set_hvac_mode
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { hvac_mode: cool }
+      - service: climate.set_temperature
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { temperature: "{{ comfort_setpoint }}" }
+      - if: "{{ play_audio }}"
+        then:
+          - service: input_select.select_option
+            target: { entity_id: input_select.sig_media_state }
+            data: { option: playing }
+          - service: input_select.select_option
+            target: { entity_id: input_select.sig_media_source }
+            data: { option: "Morning Acoustic" }
+          - if: "{{ sonos_player | length > 0 }}"
+            then:
+              - service: media_player.turn_on
+                target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Wake" }
+
+  # ── 3. MOVIE — theater/family-room dim, shades down for the room, comfort hold.
+  #      Gated finishing step (UI): "CLiC privacy glass to opaque?" (display-only).
+  scene_movie:
+    alias: "Scene · Movie"
+    icon: mdi:movie-open
+    mode: restart
+    fields:
+      theater_lights:
+        default: [light.theater_lights]
+      dim_lights:
+        default: [light.great_room_lights]
+      off_lights:
+        default: [light.kitchen_house_lights, light.foyer_lights, light.office_lights]
+      shades:
+        default: [cover.theater_shade, cover.great_room_shade]
+      sonos_player:
+        default: media_player.great_room_sonos
+    variables:
+      theater_lights: "{{ theater_lights | default(['light.theater_lights']) }}"
+      dim_lights: "{{ dim_lights | default(['light.great_room_lights']) }}"
+      off_lights: "{{ off_lights | default(['light.kitchen_house_lights','light.foyer_lights','light.office_lights']) }}"
+      shades: "{{ shades | default(['cover.theater_shade','cover.great_room_shade']) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: "{{ theater_lights }}" }
+        data: { brightness_pct: 5 }
+      - service: light.turn_on
+        target: { entity_id: "{{ dim_lights }}" }
+        data: { brightness_pct: 15 }
+      - service: light.turn_off
+        target: { entity_id: "{{ off_lights }}" }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 0 }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_state }
+        data: { option: paused }
+      - if: "{{ sonos_player | length > 0 }}"
+        then:
+          - service: media_player.media_pause
+            target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Movie" }
+
+  # ── 4. ENTERTAIN — pool/deck/landscape lights up, music zones on, exterior
+  #      shading for sun. Pool BODY/heater stays gated (NOT here).
+  scene_entertain:
+    alias: "Scene · Entertain"
+    icon: mdi:party-popper
+    mode: restart
+    fields:
+      ambiance_lights:
+        default: [light.great_room_lights, light.kitchen_house_lights, light.patio_lights]
+      exterior_lights:
+        description: Pool + landscape LIGHTS (low-hazard) — never pool body/pump
+        default: [light.pool_lights, light.landscape_lights]
+      shades:
+        default: [cover.patio_shade, cover.great_room_shade]
+      sonos_player:
+        default: media_player.great_room_sonos
+    variables:
+      ambiance_lights: "{{ ambiance_lights | default(['light.great_room_lights','light.kitchen_house_lights','light.patio_lights']) }}"
+      exterior_lights: "{{ exterior_lights | default(['light.pool_lights','light.landscape_lights']) }}"
+      shades: "{{ shades | default(['cover.patio_shade','cover.great_room_shade']) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: "{{ ambiance_lights }}" }
+        data: { brightness_pct: 70 }
+      - service: light.turn_on
+        target: { entity_id: "{{ exterior_lights }}" }
+        data: { brightness_pct: 85 }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 60 }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_state }
+        data: { option: playing }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_source }
+        data: { option: "Party Mix" }
+      - if: "{{ sonos_player | length > 0 }}"
+        then:
+          - service: media_player.turn_on
+            target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Entertain" }
+
+  # ── 5. VACATION — eco HVAC, presence-sim baseline, audio off. Gated finishing
+  #      step (UI): "Arm Away + (optional) water main shutoff?" (display-only).
+  scene_vacation:
+    alias: "Scene · Vacation"
+    icon: mdi:bag-suitcase
+    mode: restart
+    fields:
+      all_lights:
+        default: [light.great_room_lights, light.master_lights, light.kitchen_house_lights, light.foyer_lights, light.office_lights, light.gym_lights, light.theater_lights, light.patio_lights]
+      presence_sim_lights:
+        description: A small set left on as a deterrent baseline
+        default: [light.foyer_lights]
+      shades:
+        default: [cover.great_room_shade, cover.master_shade, cover.theater_shade, cover.patio_shade]
+      climate_zones:
+        default: [climate.kitchen_zone, climate.living_zone, climate.primary_zone]
+      eco_setpoint:
+        default: 78
+      sonos_player:
+        default: media_player.great_room_sonos
+    variables:
+      all_lights: "{{ all_lights | default(['light.great_room_lights','light.master_lights','light.kitchen_house_lights','light.foyer_lights','light.office_lights','light.gym_lights','light.theater_lights','light.patio_lights']) }}"
+      presence_sim_lights: "{{ presence_sim_lights | default(['light.foyer_lights']) }}"
+      shades: "{{ shades | default(['cover.great_room_shade','cover.master_shade','cover.theater_shade','cover.patio_shade']) }}"
+      climate_zones: "{{ climate_zones | default(['climate.kitchen_zone','climate.living_zone','climate.primary_zone']) }}"
+      eco_setpoint: "{{ eco_setpoint | default(78) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+    sequence:
+      - service: light.turn_off
+        target: { entity_id: "{{ all_lights }}" }
+      - service: light.turn_on
+        target: { entity_id: "{{ presence_sim_lights }}" }
+        data: { brightness_pct: 40 }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 30 }
+      - service: climate.set_hvac_mode
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { hvac_mode: cool }
+      - service: climate.set_temperature
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { temperature: "{{ eco_setpoint }}" }
+      - service: light.turn_off
+        target: { entity_id: [light.pool_lights, light.landscape_lights] }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_state }
+        data: { option: idle }
+      - if: "{{ sonos_player | length > 0 }}"
+        then:
+          - service: media_player.turn_off
+            target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Vacation" }
+
+  # ── 6. AWAY-ARRIVAL — coming home (entry lights, HVAC recover, light music).
+  #      Gated finishing step (UI): "Disarm to Home + unlock front door?"
+  #      (display-only). Designed to be fired by a geofence/gate trigger later.
+  scene_away_arrival:
+    alias: "Scene · Away-Arrival"
+    icon: mdi:home-import-outline
+    mode: restart
+    fields:
+      entry_lights:
+        default: [light.foyer_lights, light.great_room_lights, light.kitchen_house_lights]
+      exterior_lights:
+        default: [light.landscape_lights]
+      shades:
+        default: [cover.great_room_shade]
+      climate_zones:
+        default: [climate.kitchen_zone, climate.living_zone, climate.primary_zone]
+      comfort_setpoint:
+        default: 72
+      sonos_player:
+        default: media_player.great_room_sonos
+    variables:
+      entry_lights: "{{ entry_lights | default(['light.foyer_lights','light.great_room_lights','light.kitchen_house_lights']) }}"
+      exterior_lights: "{{ exterior_lights | default(['light.landscape_lights']) }}"
+      shades: "{{ shades | default(['cover.great_room_shade']) }}"
+      climate_zones: "{{ climate_zones | default(['climate.kitchen_zone','climate.living_zone','climate.primary_zone']) }}"
+      comfort_setpoint: "{{ comfort_setpoint | default(72) }}"
+      sonos_player: "{{ sonos_player | default('media_player.great_room_sonos') }}"
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: "{{ entry_lights }}" }
+        data: { brightness_pct: 75 }
+      - service: light.turn_on
+        target: { entity_id: "{{ exterior_lights }}" }
+        data: { brightness_pct: 60 }
+      - repeat:
+          for_each: "{{ shades }}"
+          sequence:
+            - service: cover.set_cover_position
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { position: 80 }
+      - service: climate.set_hvac_mode
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { hvac_mode: cool }
+      - service: climate.set_temperature
+        target: { entity_id: "{{ climate_zones }}" }
+        data: { temperature: "{{ comfort_setpoint }}" }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_state }
+        data: { option: playing }
+      - service: input_select.select_option
+        target: { entity_id: input_select.sig_media_source }
+        data: { option: "Dinner Jazz" }
+      - if: "{{ sonos_player | length > 0 }}"
+        then:
+          - service: media_player.turn_on
+            target: { entity_id: "{{ sonos_player }}" }
+      - service: input_text.set_value
+        target: { entity_id: input_text.sig_last_scene }
+        data: { value: "Away-Arrival" }

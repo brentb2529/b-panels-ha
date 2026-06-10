@@ -159,26 +159,64 @@ describe('projectHome', () => {
     expect(v.weather.isDaytime).toBe(true);
   });
 
-  it('picks the most-recently-changed scene as active (no fake active)', () => {
+  it('picks the most-recently-run signature scene as active (no fake active)', () => {
     const ents = {
-      'scene.home_morning': ent('2026-06-09T06:00:00+00:00', {}, '2026-06-09T06:00:00+00:00'),
-      'scene.home_evening': ent('2026-06-09T19:42:00+00:00', {}, '2026-06-09T19:42:00+00:00'),
-      'scene.home_night': ent('unknown', {}, ''),
+      'script.scene_goodnight': ent('off', {}, '2026-06-09T22:00:00+00:00'),
+      'script.scene_entertain': ent('off', {}, '2026-06-09T19:42:00+00:00'),
+      'script.scene_wake': ent('off', {}, ''),
     } as unknown as HassEntities;
     const v = projectHome(ents);
-    expect(v.activeScene).toBe('scene.home_evening');
+    expect(v.activeScene).toBe('script.scene_goodnight');
     const byName = Object.fromEntries(v.scenes.map((s) => [s.name, s.available]));
-    expect(byName['Morning']).toBe(true);
-    expect(byName['Evening']).toBe(true);
-    expect(byName['Guest']).toBe(false);
+    expect(byName['Goodnight']).toBe(true);
+    expect(byName['Entertain']).toBe(true);
+    expect(byName['Vacation']).toBe(false);
+  });
+
+  it('uses attributes.last_triggered when it is the more recent signal', () => {
+    const ents = {
+      'script.scene_movie': ent('off', { last_triggered: '2026-06-09T20:30:00+00:00' }, '2026-06-09T06:00:00+00:00'),
+      'script.scene_wake': ent('off', {}, '2026-06-09T07:00:00+00:00'),
+    } as unknown as HassEntities;
+    const v = projectHome(ents);
+    expect(v.activeScene).toBe('script.scene_movie');
   });
 
   it('returns null activeScene when no scene has a real timestamp', () => {
     const ents = {
-      'scene.home_morning': ent('unknown', {}, ''),
+      'script.scene_goodnight': ent('off', {}, ''),
     } as unknown as HassEntities;
     const v = projectHome(ents);
     expect(v.activeScene).toBeNull();
+  });
+});
+
+// ── Signature scenes (H1): the six experiences are server-side SCRIPTS and the
+// activation is low-hazard; the gated finishing step is confirm-only. ────────
+describe('Signature scenes are scripts; gated steps are display-only metadata', () => {
+  it('binds the six experiences to script.scene_* ids', () => {
+    const ids = HOME_ENTITIES.scenes.map((s) => s.id);
+    expect(ids).toEqual([
+      'script.scene_goodnight', 'script.scene_wake', 'script.scene_movie',
+      'script.scene_entertain', 'script.scene_vacation', 'script.scene_away_arrival',
+    ]);
+    expect(ids.every((id) => id.startsWith('script.scene_'))).toBe(true);
+  });
+
+  it('every scene has experience copy; gated steps are metadata only (no service)', async () => {
+    const { SIGNATURE_SCENES } = await import('./useHomeEntities');
+    for (const s of HOME_ENTITIES.scenes) {
+      const exp = SIGNATURE_SCENES[s.id];
+      expect(exp, `experience copy for ${s.id}`).toBeTruthy();
+      expect(exp.low.length).toBeGreaterThan(0);
+      // A gated step (when present) is pure copy — label + detail strings, never
+      // an entity id or a service call.
+      if (exp.gated) {
+        expect(typeof exp.gated.label).toBe('string');
+        expect(typeof exp.gated.detail).toBe('string');
+        expect(exp.gated.detail.toLowerCase()).toContain('gated');
+      }
+    }
   });
 });
 
@@ -204,13 +242,22 @@ describe('F-1: Home pool-body control issues NO actuation', () => {
   it('exposes NO pool-body actuation action (only low-hazard scenes)', () => {
     // The HomeActions surface must not carry any body toggle.
     expect(hookSrc).not.toMatch(/togglePoolBody/);
-    // The only callService in the hook is the low-hazard scene activation.
+    // The only callService calls in the hook are the low-hazard scene
+    // activation (script.turn_on for signature scenes, scene.turn_on fallback).
     const calls = hookSrc.match(/callService\([^)]*\)/g) ?? [];
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatch(/'scene',\s*'turn_on'/);
+    expect(calls).toHaveLength(2);
+    expect(calls.some((c) => /'script',\s*'turn_on'/.test(c))).toBe(true);
+    expect(calls.some((c) => /'scene',\s*'turn_on'/.test(c))).toBe(true);
     // No switch service is ever issued from the Home hook.
     expect(hookSrc).not.toMatch(/callService\(\s*'switch'/);
     expect(hookSrc).not.toMatch(/'switch',\s*(on\s*\?|'turn_on'|'turn_off')/);
+    // No gated-actor service is EVER issued from the Home hook: no arm/disarm,
+    // lock/unlock, cover, or AKVO move. (The gated finishing step is a separate,
+    // confirm-only UI affordance that issues no live actuation.)
+    expect(hookSrc).not.toMatch(/callService\(\s*'alarm_control_panel'/);
+    expect(hookSrc).not.toMatch(/callService\(\s*'lock'/);
+    expect(hookSrc).not.toMatch(/callService\(\s*'cover'/);
+    expect(hookSrc).not.toMatch(/callService\(\s*'akvo/);
   });
 
   it('the Home panel renders the pool body as gated/display-only (no live toggle)', () => {

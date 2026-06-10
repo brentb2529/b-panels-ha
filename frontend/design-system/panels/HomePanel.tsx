@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../../hooks/useDashboard';
-import { useHomeEntities } from './useHomeEntities';
+import { useHomeEntities, SIGNATURE_SCENES, type SceneExperience } from './useHomeEntities';
 import PanelShell from '../shell/PanelShell';
 import './homePanel.css';
 
@@ -31,12 +31,84 @@ const chevron = (
 );
 
 const SceneIcons: Record<string, React.ReactNode> = {
-  Morning: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></svg>,
-  Away: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>,
-  Evening: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>,
-  Night: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round"><path d="M12 3a6.364 6.364 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>,
-  Guest: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
+  Wake: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></svg>,
+  'Away-Arrival': <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>,
+  Entertain: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="2" strokeLinecap="round"><path d="M5.8 11.3 2 22l10.7-3.79" /><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01" /><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10" /><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17" /></svg>,
+  Vacation: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="2" strokeLinecap="round"><path d="M2 18h20" /><path d="M2 22h20" /><path d="m6 18 1.5-9 9 .5L18 18" /><path d="M9.5 9 8 4l5 1.5" /></svg>,
+  Goodnight: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round"><path d="M12 3a6.364 6.364 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>,
   Movie: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>,
+};
+
+// ── Scene experience modal — the richer affordance. Shows what the scene
+// actuates (low-hazard, fires live) + the explicit gated finishing step. The
+// gated step is CONFIRM-ONLY: it routes through the standard confirm path but
+// issues NO live actuation (display/confirm-only until human-enabled). ───────
+const SceneExperienceModal = ({
+  exp, onActivate, onClose,
+}: { exp: SceneExperience; onActivate: () => void; onClose: () => void }) => {
+  const [confirming, setConfirming] = useState(false);
+  const [acked, setAcked] = useState(false);
+  return (
+    <div className="hp-scene-modal-backdrop" onClick={onClose}>
+      <div className="hp-scene-modal" role="dialog" aria-label={`${exp.name} scene`} onClick={(e) => e.stopPropagation()}>
+        <div className="hp-scene-modal-head">
+          <div className="hp-scene-modal-ico">{SceneIcons[exp.name]}</div>
+          <div>
+            <div className="hp-scene-modal-title">{exp.name}</div>
+            <div className="hp-scene-modal-tag">{exp.tagline}</div>
+          </div>
+          <button className="hp-scene-modal-x" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div className="hp-scene-modal-section">
+          <div className="hp-scene-modal-label">
+            <span className="hp-scene-dot live" /> Fires now · low-hazard
+          </div>
+          <ul className="hp-scene-list">
+            {exp.low.map((l) => <li key={l}>{l}</li>)}
+          </ul>
+        </div>
+
+        {exp.gated && (
+          <div className="hp-scene-modal-section gated">
+            <div className="hp-scene-modal-label">
+              <span className="hp-scene-dot gated" /> Finishing step · gated
+            </div>
+            {!confirming ? (
+              <button className="hp-scene-gated-cta" onClick={() => setConfirming(true)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                {exp.gated.label}
+              </button>
+            ) : (
+              <div className="hp-scene-gated-confirm">
+                <p className="hp-scene-gated-detail">{exp.gated.detail}</p>
+                {!acked ? (
+                  <div className="hp-scene-gated-row">
+                    <button className="hp-scene-btn ghost" onClick={() => setConfirming(false)}>Back</button>
+                    <button className="hp-scene-btn danger" onClick={() => setAcked(true)}>Confirm step</button>
+                  </div>
+                ) : (
+                  <div className="hp-scene-gated-ack">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sem-ready)" strokeWidth="2.2" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
+                    Confirmed — but this actor is <strong>not yet enabled</strong>. No live actuation was sent; pending Brent's sign-off.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {exp.presence && <div className="hp-scene-presence">{exp.presence}</div>}
+
+        <div className="hp-scene-modal-foot">
+          <button className="hp-scene-btn ghost" onClick={onClose}>Cancel</button>
+          <button className="hp-scene-btn primary" onClick={() => { onActivate(); onClose(); }}>
+            Activate {exp.name}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const weatherEmoji = (cond: string, day: boolean | null): string => {
@@ -59,6 +131,7 @@ const HomePanel = () => {
   const { panels } = useDashboard();
   const [now, setNow] = useState(() => new Date());
   const [firedScene, setFiredScene] = useState<string | null>(null);
+  const [openScene, setOpenScene] = useState<string | null>(null);
   const fireTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -153,22 +226,38 @@ const HomePanel = () => {
           </div>
         </div>
 
-        {/* ── Scene row ── */}
+        {/* ── Scene row — tap fires the server-side scene script (low-hazard
+            orchestration); the info dot opens the richer experience + the gated
+            finishing step (confirm-only, no live actuation). ── */}
         <div className="hp-scenes">
           <span className="hp-scene-label">Scenes</span>
           {h.scenes.map((s) => {
             const active = h.activeScene === s.id;
+            const hasGated = !!SIGNATURE_SCENES[s.id]?.gated;
             return (
-              <button
-                key={s.id}
-                className={`hp-pill${active ? ' active' : ''}${firedScene === s.id ? ' just-fired' : ''}`}
-                disabled={!s.available}
-                onClick={() => fireScene(s.id)}
-                title={s.available ? `Activate ${s.name}` : `${s.name} (unavailable)`}
-              >
-                {SceneIcons[s.name]}
-                <span className="hp-pill-lbl">{s.name}</span>
-              </button>
+              <div key={s.id} className={`hp-pill-group${!s.available ? ' off' : ''}`}>
+                <button
+                  className={`hp-pill${active ? ' active' : ''}${firedScene === s.id ? ' just-fired' : ''}`}
+                  disabled={!s.available}
+                  onClick={() => fireScene(s.id)}
+                  title={s.available ? `Activate ${s.name}` : `${s.name} (unavailable)`}
+                >
+                  {SceneIcons[s.name]}
+                  <span className="hp-pill-lbl">{s.name}</span>
+                  {hasGated && <span className="hp-pill-gated-dot" title="Has a gated finishing step" />}
+                </button>
+                {SIGNATURE_SCENES[s.id] && (
+                  <button
+                    className="hp-pill-info"
+                    disabled={!s.available}
+                    onClick={(e) => { e.stopPropagation(); setOpenScene(s.id); }}
+                    title={`What ${s.name} does`}
+                    aria-label={`What ${s.name} does`}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -323,6 +412,14 @@ const HomePanel = () => {
 
         </div>
       </div>
+
+      {openScene && SIGNATURE_SCENES[openScene] && (
+        <SceneExperienceModal
+          exp={SIGNATURE_SCENES[openScene]}
+          onActivate={() => fireScene(openScene)}
+          onClose={() => setOpenScene(null)}
+        />
+      )}
 
     </div>
     </PanelShell>

@@ -61,15 +61,129 @@ export const HOME_ENTITIES = {
   },
   weather: 'weather.forecast_home',
   sun: 'sun.sun',
+  // ── Signature whole-house experiences (H1) ──
+  // Each pill triggers a SERVER-SIDE HA script (script.scene_*) that orchestrates
+  // ONLY low-hazard actors (lights/brightness, shades, HVAC comfort, Sonos,
+  // pool/landscape LIGHTS). The gated finishing step (arm/lock/AKVO/pool-body/
+  // CLiC/garage) is NEVER in the script — it is surfaced in the UI as an explicit
+  // confirm step and stays display/confirm-only (no live actuation) until human-
+  // enabled. See SIGNATURE_SCENES (below) for the per-scene experience copy.
   scenes: [
-    { id: 'scene.home_morning', name: 'Morning' },
-    { id: 'scene.home_away', name: 'Away' },
-    { id: 'scene.home_evening', name: 'Evening' },
-    { id: 'scene.home_night', name: 'Night' },
-    { id: 'scene.home_guest', name: 'Guest' },
-    { id: 'scene.home_movie', name: 'Movie' },
+    { id: 'script.scene_goodnight', name: 'Goodnight' },
+    { id: 'script.scene_wake', name: 'Wake' },
+    { id: 'script.scene_movie', name: 'Movie' },
+    { id: 'script.scene_entertain', name: 'Entertain' },
+    { id: 'script.scene_vacation', name: 'Vacation' },
+    { id: 'script.scene_away_arrival', name: 'Away-Arrival' },
   ] as const,
 } as const;
+
+// Per-scene experience copy for the richer scene affordance. `low` = the
+// low-hazard steps that fire LIVE (server-side script). `gated` = the explicit
+// confirm-gated finishing step, which is DISPLAY/CONFIRM-ONLY and issues NO live
+// actuation until Brent enables the real actor. `presence` documents the
+// presence/time hook the scene is designed for (no mmWave dependency today).
+export interface SceneExperience {
+  id: string;
+  name: string;
+  tagline: string;
+  low: string[];
+  gated: { label: string; detail: string } | null;
+  presence?: string;
+}
+export const SIGNATURE_SCENES: Record<string, SceneExperience> = {
+  'script.scene_goodnight': {
+    id: 'script.scene_goodnight',
+    name: 'Goodnight',
+    tagline: 'Wind the house down for the night.',
+    low: [
+      'Interior lights off; one bedside light dimmed to 8%',
+      'Bedroom, great-room & theater shades lowered',
+      'HVAC set back to 68°F across zones',
+      'Patio & landscape lights off · audio stopped',
+    ],
+    gated: {
+      label: 'Arm Night + lock up?',
+      detail: 'Arm the alarm to Night and lock the doors/gate. Security + equipment gated — confirm-only, no live actuation until enabled.',
+    },
+    presence: 'Designed to also fire on a nightly time trigger or last-person-to-bed presence.',
+  },
+  'script.scene_wake': {
+    id: 'script.scene_wake',
+    name: 'Wake',
+    tagline: 'A gentle morning ramp.',
+    low: [
+      'Bedroom, kitchen & foyer lights up to 60%',
+      'Bedroom & great-room shades raised',
+      'HVAC to comfort cool, 72°F',
+      'Optional Sonos — Morning Acoustic',
+    ],
+    gated: null,
+    presence: 'Designed to fire on a morning time trigger (or first-motion presence) — set the time in HA.',
+  },
+  'script.scene_movie': {
+    id: 'script.scene_movie',
+    name: 'Movie',
+    tagline: 'Dim down for the screen.',
+    low: [
+      'Theater lights to 5%, great-room to 15%',
+      'Kitchen, foyer & office lights off',
+      'Theater & great-room shades lowered',
+      'Audio paused for the room',
+    ],
+    gated: {
+      label: 'CLiC privacy glass to opaque?',
+      detail: 'Switch the CLiC electrochromic glass to private. Equipment gated — confirm-only, no live actuation until enabled.',
+    },
+  },
+  'script.scene_entertain': {
+    id: 'script.scene_entertain',
+    name: 'Entertain',
+    tagline: 'Open the house up for guests.',
+    low: [
+      'Great-room, kitchen & patio lights to 70%',
+      'Pool & landscape LIGHTS up to 85%',
+      'Patio & great-room shades to 60% for the sun',
+      'Sonos — Party Mix across zones',
+    ],
+    gated: {
+      label: 'Pool body / heater?',
+      detail: 'Run the pool body and heater for guests. Equipment gated (drives the pump) — IntelliCenter-mediated, confirm-only, no live actuation here.',
+    },
+  },
+  'script.scene_vacation': {
+    id: 'script.scene_vacation',
+    name: 'Vacation',
+    tagline: 'Eco + away, with presence simulation.',
+    low: [
+      'All interior lights off; foyer left at 40% as a deterrent baseline',
+      'Shades to 30% · pool & landscape lights off',
+      'HVAC to eco cool, 78°F',
+      'Audio stopped',
+    ],
+    gated: {
+      label: 'Arm Away + water main shutoff?',
+      detail: 'Arm to Away and (optionally) close the water main. Security + equipment gated — confirm-only, no live actuation until enabled.',
+    },
+    presence: 'Presence simulation patterns can be expanded once mmWave/away-mode lands.',
+  },
+  'script.scene_away_arrival': {
+    id: 'script.scene_away_arrival',
+    name: 'Away-Arrival',
+    tagline: 'Welcome home.',
+    low: [
+      'Foyer, great-room & kitchen entry lights to 75%',
+      'Landscape lights to 60% · great-room shade raised',
+      'HVAC recovers to comfort cool, 72°F',
+      'Sonos — Dinner Jazz',
+    ],
+    gated: {
+      label: 'Disarm to Home + unlock front door?',
+      detail: 'Disarm to Home and unlock the front door. Security + equipment gated — confirm-only, no live actuation until enabled.',
+    },
+    presence: 'Designed to fire on a geofence/gate arrival trigger (stubbed; wire to a person/zone or UniFi Access event).',
+  },
+};
 
 const UNAVAILABLE = new Set(['unavailable', 'unknown', '', '—']);
 const isAvail = (e?: HassEntity) => !!e && !UNAVAILABLE.has(String(e.state).toLowerCase());
@@ -290,15 +404,23 @@ export const projectHome = (ents: HassEntities): Omit<HomeView, 'status'> => {
   };
 
   // ── scenes + real last-activated ──
+  // Each signature scene is a script.scene_* entity. A script stamps
+  // last_changed when it runs (and attributes.last_triggered); we use whichever
+  // is the more recent real timestamp to mark the active scene.
+  const sceneChanged = (e?: HassEntity): number => {
+    if (!e) return 0;
+    const lc = e.last_changed ? Date.parse(e.last_changed) : 0;
+    const lt = e.attributes?.last_triggered ? Date.parse(String(e.attributes.last_triggered)) : 0;
+    return Math.max(Number.isFinite(lc) ? lc : 0, Number.isFinite(lt) ? lt : 0);
+  };
   const sceneStates = HOME_ENTITIES.scenes.map((s) => ({
     id: s.id,
     name: s.name,
     available: !!ents[s.id],
-    changed: ents[s.id]?.last_changed ? Date.parse(ents[s.id].last_changed) : 0,
+    changed: sceneChanged(ents[s.id]),
   }));
-  // Active = the scene with the most recent last_changed (a scene.* state stamps
-  // last_changed each time it is activated). Only if at least one has a real
-  // (non-epoch) timestamp; otherwise null (no fake active).
+  // Active = the scene whose script most recently ran. Only if at least one has
+  // a real (non-epoch) timestamp; otherwise null (no fake active).
   const activated = sceneStates.filter((s) => s.available && s.changed > 0).sort((a, b) => b.changed - a.changed);
   const activeScene = activated.length ? activated[0].id : null;
 
@@ -316,6 +438,9 @@ export const projectHome = (ents: HassEntities): Omit<HomeView, 'status'> => {
 };
 
 export interface HomeActions {
+  // Fires the server-side signature-scene SCRIPT (low-hazard orchestration only).
+  // The script NEVER actuates a gated actor; the gated finishing step is a
+  // separate, explicit, confirm-only UI affordance (no live actuation).
   activateScene: (id: string) => void;
   // NOTE: there is intentionally NO pool-body actuation here. The pool body
   // (OBJTYPE=BODY) drives the pool pump = equipment-gated hardware (CLAUDE.md:
@@ -358,7 +483,11 @@ export function useHomeEntities(): HomeView & { actions: HomeActions } {
   }, []);
 
   const activateScene = useCallback((id: string) => {
-    callService('scene', 'turn_on', { entity_id: id });
+    // Signature scenes are server-side scripts (script.scene_*). A plain
+    // scene.* id still works via scene.turn_on for backward compatibility.
+    const [domain] = id.split('.');
+    if (domain === 'script') callService('script', 'turn_on', { entity_id: id });
+    else callService('scene', 'turn_on', { entity_id: id });
   }, []);
 
   return { status, ...view, actions: { activateScene } };
