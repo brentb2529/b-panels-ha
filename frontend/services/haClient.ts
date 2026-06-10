@@ -227,6 +227,30 @@ export async function subscribeEntities(
     return haSubscribeEntities(conn, cb);
 }
 
+// Connection liveness for the life-safety takeover's three-state freshness
+// (known-good / stale / signal-lost). The takeover MUST be able to tell "live"
+// from "I have no idea" — a frozen/disconnected panel must never read clear.
+// We surface the WS `ready`/`disconnected`/`reconnect-error` events plus the
+// current `connected` getter; the takeover combines this with state-age.
+export async function subscribeConnectionState(
+    cb: (connected: boolean) => void
+): Promise<() => void> {
+    const conn = await getConnection();
+    const onReady = () => cb(true);
+    const onDown = () => cb(false);
+    conn.addEventListener('ready', onReady);
+    conn.addEventListener('disconnected', onDown);
+    conn.addEventListener('reconnect-error', onDown);
+    // Emit the current state immediately so the consumer doesn't sit at a stale
+    // default until the next transition.
+    try { cb((conn as any).connected !== false); } catch { cb(true); }
+    return () => {
+        conn.removeEventListener('ready', onReady);
+        conn.removeEventListener('disconnected', onDown);
+        conn.removeEventListener('reconnect-error', onDown);
+    };
+}
+
 export async function callService(
     domain: string,
     service: string,

@@ -17,6 +17,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { apiValidateDeviceToken, bootstrapDeviceToken } from './services/api';
 import { IconRefreshCw } from './components/icons';
 import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
+import LifeSafetyTakeover from './design-system/takeover/LifeSafetyTakeover';
+import { setTakeoverActive } from './design-system/takeover/takeoverSignal';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -495,6 +497,16 @@ function App() {
     <AuthProvider>
       <DashboardProvider>
           <HashRouter>
+              {/* LIFE-SAFETY TAKEOVER (Increment 10) — mounted ABOVE the scoped
+                  router as a sibling to AppContent, so it renders on EVERY route/
+                  panel/device including PIN-locked + pool-only/guest scoped panels,
+                  AND survives every AppContent early-return (loading session,
+                  access-denied, verifying-access). Global, non-dismissible,
+                  overrides scoping/PIN. Driven PURELY by the REAL
+                  alarm_control_panel.house state (+ open_sensors). DISPLAY +
+                  ANNUNCIATION ONLY — issues ZERO service calls. Publishes its
+                  active flag so the shell idle-return is suppressed mid-takeover. */}
+              <LifeSafetyTakeover onActiveChange={setTakeoverActive} />
               <AppContent />
           </HashRouter>
       </DashboardProvider>

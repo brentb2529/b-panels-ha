@@ -1,9 +1,41 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDashboard } from '../../hooks/useDashboard';
 import { usePanelDefault } from './usePanelDefault';
+import { useTakeoverActive } from '../takeover/takeoverSignal';
+import { subscribeEntities } from '../../services/haClient';
 import type { DashboardPanel } from '../../types';
 import './shell.css';
+
+// ── binary_sensor.security_not_ready — the NEW readiness helper (Inc10) ──────
+// Display-only read of the coordinator-authored template (OR of open door/
+// window/opening contacts, device_class:problem, with an `open_list` attr). It
+// drives the shell arming pill's "Disarmed · Not Ready" sub + open-zone list
+// when the panel is otherwise disarmed-and-ready. Read-only — no actuation.
+const NOT_READY_ENTITY = 'binary_sensor.security_not_ready';
+interface NotReadyView { notReady: boolean; openList: string | null; openCount: number; }
+const useSecurityNotReady = (): NotReadyView => {
+  const [view, setView] = useState<NotReadyView>({ notReady: false, openList: null, openCount: 0 });
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        unsub = await subscribeEntities((ents) => {
+          if (cancelled) return;
+          const e = ents[NOT_READY_ENTITY];
+          if (!e) { setView({ notReady: false, openList: null, openCount: 0 }); return; }
+          const attrs = (e.attributes ?? {}) as Record<string, any>;
+          const list = typeof attrs.open_list === 'string' && attrs.open_list.trim() ? attrs.open_list.trim() : null;
+          const count = typeof attrs.open_count === 'number' ? attrs.open_count : (list ? list.split(',').length : 0);
+          setView({ notReady: e.state === 'on', openList: list, openCount: count });
+        });
+      } catch { /* helper not present → ready (no false "not ready") */ }
+    })();
+    return () => { cancelled = true; if (unsub) unsub(); };
+  }, []);
+  return view;
+};
 
 // ---------------------------------------------------------------------------
 // PanelShell — the app-wide navigation shell (Increment 9).
@@ -76,6 +108,7 @@ const FN_GLYPH: Record<string, (s: string) => React.ReactNode> = {
 // Offers NO control (arm/disarm stays in the gated Security panel).
 const ArmingBar = () => {
   const { alarmState, armingState } = useDashboard();
+  const notReady = useSecurityNotReady();
   const phase = alarmState?.phase ?? 'idle';
   const arm = alarmState?.armState ?? 'disarmed';
 
@@ -83,6 +116,16 @@ const ArmingBar = () => {
   let state = 'Disarmed · Ready';
   let sub = 'All sensors clear · ready to arm';
   let pulse = true;
+
+  // The system is "not ready" when the readiness helper says so, OR the legacy
+  // armingState fallback. The helper's open_list is the authoritative open-zone
+  // readout (binary_sensor.security_not_ready — Inc10).
+  const isNotReady = notReady.notReady || armingState === 'not_ready';
+  const openSub = (): string => {
+    if (notReady.openList) return `${notReady.openList} open`;
+    const open = notReady.openCount || (alarmState?.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0);
+    return open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
+  };
 
   if (!alarmState) {
     cls = 'bps-arm-notready'; state = 'Alarm · Unavailable'; sub = 'No alarm panel connected'; pulse = false;
@@ -97,10 +140,9 @@ const ArmingBar = () => {
     cls = 'bps-arm-away'; state = 'Armed · Away'; sub = 'Perimeter + interior armed'; pulse = false;
   } else if (arm === 'armedStay') {
     cls = 'bps-arm-stay'; state = 'Armed · Stay'; sub = 'Perimeter armed · home'; pulse = true;
-  } else if (armingState === 'not_ready') {
+  } else if (isNotReady) {
     cls = 'bps-arm-notready'; state = 'Disarmed · Not Ready';
-    const open = alarmState.haOpenSensors ? Object.keys(alarmState.haOpenSensors).length : 0;
-    sub = open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
+    sub = openSub();
   }
 
   return (
@@ -144,9 +186,17 @@ const PanelShell = ({ kind, children, suppressIdleReturn = false }: ShellProps) 
   const resolver = usePanelResolver();
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  // LIFE-SAFETY (Increment 10): the global takeover overlay (mounted above this
+  // router) publishes whether a non-dismissible annunciation is active. Idle-
+  // return must NEVER navigate away from an active life-safety takeover, so we
+  // OR the global flag into suppressIdleReturn for EVERY panel (no per-panel prop
+  // wiring needed). The explicit prop still works for callers that want it.
+  const takeoverActive = useTakeoverActive();
+  const suppressIdle = suppressIdleReturn || takeoverActive;
+
   // Per-device default + idle-return for THIS rendered panel.
   const { isThisPanelHome, setThisPanelAsHome, deviceDefaultPanelId } =
-    usePanelDefault(activePanelId, suppressIdleReturn);
+    usePanelDefault(activePanelId, suppressIdle);
 
   const isRoom = ROOM_KINDS.includes(kind);
   const navAccent = KIND_ACCENT[isRoom ? 'room' : kind] ?? KIND_ACCENT.room;
