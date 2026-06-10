@@ -346,10 +346,30 @@ body.light-mode .bp-scene-pill {
   50%      { opacity: 0.8;  transform: scale(1.04); }
 }
 
+/* =============================================================================
+ * Rachio irrigation surface — live "watering" animation on a running zone
+ * ===========================================================================*/
+/* A rising spray/ripple inside the zone puck while the zone is watering. The
+ * element is a soft radial that pulses + drifts upward to read as flowing water.
+ * Scoped to .bp-glass-scope via the keyframe usage on .bp-rachio-spray only. */
+@keyframes bpRachioSpray {
+  0%   { opacity: 0.15; transform: translateY(35%) scale(0.85); }
+  50%  { opacity: 0.55; transform: translateY(-10%) scale(1.05); }
+  100% { opacity: 0.15; transform: translateY(35%) scale(0.85); }
+}
+.bp-glass-scope .bp-rachio-spray {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 70%, rgba(56,189,248,0.65), rgba(56,189,248,0) 65%);
+  animation: bpRachioSpray 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* Honor reduced-motion (mirrors index.html). */
 @media (prefers-reduced-motion: reduce) {
   .bp-glass-card, .bp-glass-card.bp-fade-in, .bp-status-dot.is-pulsing,
-  .bp-toggle, .bp-toggle-thumb, .bp-scene-pill {
+  .bp-toggle, .bp-toggle-thumb, .bp-scene-pill, .bp-rachio-spray {
     animation: none !important;
     transition-duration: 0.001ms !important;
   }

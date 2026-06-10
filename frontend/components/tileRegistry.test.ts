@@ -57,6 +57,7 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
       'litter-robot',
       'lock',
       'media-player',
+      'rachio-irrigation',
       'scene',
       'sensor',
       'subzero-fridge',

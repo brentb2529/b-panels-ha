@@ -24,6 +24,7 @@ import GlassLitterRobotTile from '../design-system/tiles/GlassLitterRobotTile';
 import GlassFridgeTile from '../design-system/tiles/GlassFridgeTile';
 import GlassOvenTile from '../design-system/tiles/GlassOvenTile';
 import GlassDishwasherTile from '../design-system/tiles/GlassDishwasherTile';
+import GlassIrrigationTile from '../design-system/tiles/GlassIrrigationTile';
 
 export type ContractStatus = 'LOCKED' | 'PROPOSED' | 'GATED';
 
@@ -238,6 +239,34 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassDishwasherTile,
+  },
+  // ── Rachio irrigation surface (rachio_pro integration) ─────────────────
+  // A self-discovering surface tile: bind it to ANY rachio_pro zone switch as
+  // an anchor; the tile then discovers ALL zones from the live store (a zone =
+  // a `switch.*` carrying a `zone_number` attr — integration shape, not a site
+  // id), groups them by their homeowner `location` attr, pairs soil-moisture /
+  // last-watered sensors, and surfaces the controller standby / rain-delay,
+  // rain-sensor + forecast, and sprinkler scenes (rachio_pro.run_scene). No
+  // site ids hardcoded; no area-registry read.
+  //
+  // SAFETY: every zone-run / scene-run / rain-delay / standby actuates a real
+  // valve = water (LOW-to-MODERATE hazard). EVERY actuating control is
+  // press-and-hold confirm-gated — a bare tap fires nothing. This is the
+  // low-hazard appliance confirm (like Whisker), NOT the pool/HVAC/AKVO
+  // equipment-gate, so `alwaysEquipmentGated` is false and the type stays out of
+  // the server-side equipment-gated list.
+  'rachio-irrigation': {
+    key: 'rachio-irrigation',
+    label: 'Irrigation (Rachio)',
+    description: 'Rich Rachio irrigation surface: zone rows grouped by homeowner location with idle/running + remaining time, soil-moisture, an animated watering indicator and last-run; pick-a-duration zone start, sprinkler-scene launcher (rachio_pro.run_scene), rain-delay / standby toggle, rain-sensor + forecast + weather-skip status. Every actuating control (water) is press-and-hold confirm-gated — a bare tap fires nothing. Low-hazard appliance confirm, not equipment-gated.',
+    // SELF-DISCOVERING surface: bind it to any rachio_pro zone switch as an
+    // anchor, then it reads ALL zones from the live store. Deliberately offers
+    // NO auto-suggest domain (empty `acceptsDomains`) so a plain switch's picker
+    // is not polluted — this rich surface is always an explicit admin placement.
+    acceptsDomains: [],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassIrrigationTile,
   },
 
   // ── Equipment-gated / life-safety surfaces ─────────────────────────────
