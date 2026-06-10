@@ -13,6 +13,11 @@ import ExitDelayModal from './ExitDelayModal';
 import TileErrorBoundary from './TileErrorBoundary';
 import { startSiren, stopSiren } from '../services/alarmTones';
 
+// Bespoke design-system compilation panels (Increment 2+). Lazy so they never
+// weigh on the generic-grid first paint. Rendered only for panels carrying a
+// matching `compilationKind` — every existing grid panel is untouched.
+const KitchenPanel = React.lazy(() => import('../design-system/panels/KitchenPanel'));
+
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -207,6 +212,19 @@ const Dashboard = () => {
     return styles;
   }, [activePanel?.tiles, activePanel?.highlights]);
 
+  // Stable identity so React.memo'd tiles aren't re-rendered by a new callback
+  // on every parent render. Declared above the early returns (with cornerStyles)
+  // so the hook order is invariant across panel kinds (rules-of-hooks).
+  const handleEnlarge = useCallback((device: Device) => {
+      if (device.type === DeviceType.Camera) {
+        setEnlargedCamera(device);
+      } else if (device.type === DeviceType.CameraGroup) {
+        setEnlargedCameraGroup(device);
+      } else if (device.type === DeviceType.SonosPlayer) {
+        setEnlargedSonosPlayer(device);
+      }
+  }, []);
+
   if (configLoadError) {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-center p-8">
@@ -241,17 +259,23 @@ const Dashboard = () => {
       );
   }
   
-  // Stable identity so React.memo'd tiles aren't re-rendered by a new callback
-  // on every parent render.
-  const handleEnlarge = useCallback((device: Device) => {
-      if (device.type === DeviceType.Camera) {
-        setEnlargedCamera(device);
-      } else if (device.type === DeviceType.CameraGroup) {
-        setEnlargedCameraGroup(device);
-      } else if (device.type === DeviceType.SonosPlayer) {
-        setEnlargedSonosPlayer(device);
-      }
-  }, []);
+  // Bespoke compilation panel kinds render their own full-bleed design-system
+  // surface instead of the tile grid. Additive: only fires when the panel
+  // explicitly opts in via `compilationKind` (no existing panel does). The alarm
+  // flow modals above still apply on every panel; the compilation surface owns
+  // the rest of the viewport. NOTE: this early return is placed AFTER every
+  // hook in this component (handleEnlarge was hoisted above the guards) so the
+  // hook count is identical whether or not the active panel is a compilation
+  // panel — navigating grid<->compilation must not change hook order.
+  if (activePanel.compilationKind === 'kitchen') {
+    return (
+      <div className="relative h-full">
+        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Kitchen…</div>}>
+          <KitchenPanel />
+        </React.Suspense>
+      </div>
+    );
+  }
 
   if (activePanel.tiles.length === 0 && !parentPanel) {
     return (

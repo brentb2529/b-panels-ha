@@ -232,6 +232,12 @@ export interface DashboardPanel {
   themeMode?: ThemeMode;
   showTileBorders?: boolean;
   idleConfig?: PanelIdleConfig;
+  // OPTIONAL bespoke "compilation" panel kind. When set, Dashboard renders the
+  // matching full-bleed design-system compilation panel (e.g. the Kitchen room
+  // view) INSTEAD of the generic tile grid. Absent on every existing panel, so
+  // the grid path is unchanged — additive/non-breaking. Increment 2 ships
+  // 'kitchen'.
+  compilationKind?: 'kitchen';
 }
 
 export interface ServiceConnection {

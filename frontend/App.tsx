@@ -283,7 +283,7 @@ const ThemeManager = ({ activePanelId }: { activePanelId: string | null }) => {
 };
 
 const AppContent = () => {
-  const { isAudioUnlocked, unlockAudio, ipFilterEnabled, allowedIPs, activePanelId } = useDashboard();
+  const { isAudioUnlocked, unlockAudio, ipFilterEnabled, allowedIPs, activePanelId, panels } = useDashboard();
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthorized, setAuthorized] = useState<boolean | null>(null);
@@ -455,7 +455,16 @@ const AppContent = () => {
   // (News, etc.) stay constrained and scroll internally instead of ballooning.
   const chromeClass = "flex flex-col h-screen antialiased";
 
-  const mainContainerClass = fillScreen
+  // Bespoke compilation panels (e.g. the Kitchen room view) are full-bleed
+  // surfaces that carry their OWN hero + bottom nav, so the global Header would
+  // double up the chrome. Suppress it (and the grid padding) for those panels.
+  // Additive: every other panel keeps the standard Header + padded main.
+  const activePanel = panels.find(p => p.id === activePanelId);
+  const isCompilationPanel = isDashboardRoute && !!activePanel?.compilationKind;
+
+  const mainContainerClass = isCompilationPanel
+    ? "flex-1 overflow-hidden" // full-bleed; the compilation panel owns the viewport
+    : fillScreen
     ? "flex-1 overflow-hidden p-2" // fill the viewport; grid stretches, no scroll
     : (isNativeShell
         ? "flex-1 overflow-y-auto p-2" // native iPad kiosk: native scaling handles fit
@@ -471,7 +480,7 @@ const AppContent = () => {
           (z-100) and silently swallow the first click on every control. */}
       {!isAudioUnlocked && isDashboardRoute && <AudioUnlockModal onUnlock={unlockAudio} />}
        <div className={chromeClass}>
-          <Header />
+          {!isCompilationPanel && <Header />}
           <main className={mainContainerClass}>
               <AppRoutes />
           </main>
