@@ -34,7 +34,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 
 const Dashboard = () => {
-  const { panels, deviceMap, loading, isDeviceLoading, devices, alarmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider, entryDelaySound } = useDashboard();
+  const { panels, deviceMap, resolveTileDevice, loading, isDeviceLoading, devices, alarmState, setActivePanelId, configLoadError, retryConfigLoad, serviceError, requestPin, setAlarmStatus, dismissServiceError, addNotification, users, connectionState, connectionRetryCountdown, retryConnection, activeDevicePanel, closeDevicePanel, haWsState, lastHaEventAt, primaryAlarmProvider, entryDelaySound } = useDashboard();
   const { panelId } = useParams<{ panelId: string }>();
   const location = useLocation();
   const [enlargedCamera, setEnlargedCamera] = useState<Device | null>(null);
@@ -520,7 +520,10 @@ const Dashboard = () => {
         
         {/* Render Tiles */}
         {activePanel.tiles.map((tile) => {
-          let device: Device | undefined = deviceMap.get(tile.deviceId);
+          // Bind-by-selection (Inc 12): resolve via the binding (direct id or a
+          // runtime selector) when present, falling back to the legacy deviceId
+          // lookup for every existing tile. Runtime-safe: no registry read.
+          let device: Device | undefined = resolveTileDevice(tile);
 
           // Special handling for the STHM tile, which is not a regular device
           if (tile.deviceId === 'hometile-sthm-panel') {

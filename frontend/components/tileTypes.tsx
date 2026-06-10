@@ -259,6 +259,26 @@ export function getCompatibleTileTypes(entityId: string): TileTypeDefinition[] {
   return Object.values(tileTypeCatalog).filter(def => def.acceptsDomains?.includes(domain));
 }
 
+// Catalog entries compatible with an entity given BOTH its domain and (when
+// known) its device_class. A type with `acceptsDeviceClasses` only matches when
+// the entity's device_class is in that list; a type without the field matches
+// any device_class in its accepted domains. Used by the editor's in-app picker
+// so e.g. a `cover` with device_class 'garage' offers the Garage Door type but
+// a plain shade cover does not. Falls back to domain-only when deviceClass is
+// undefined.
+export function getCompatibleTileTypesForDevice(
+  entityId: string,
+  deviceClass?: string,
+): TileTypeDefinition[] {
+  const byDomain = getCompatibleTileTypes(entityId);
+  if (!deviceClass) return byDomain;
+  const dc = deviceClass.toLowerCase();
+  return byDomain.filter(def => {
+    if (!def.acceptsDeviceClasses || def.acceptsDeviceClasses.length === 0) return true;
+    return def.acceptsDeviceClasses.map(c => c.toLowerCase()).includes(dc);
+  });
+}
+
 // The single best-guess tile type for an entity (first compatible NON-gated
 // match), or `undefined` when nothing in the catalog accepts the domain. We
 // never auto-suggest an equipment-gated type — gated placement is always an

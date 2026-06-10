@@ -136,9 +136,57 @@ export interface TileAnimationConfig {
     color?: string;
 }
 
+// --- Admin Stage 2 (Increment 12): bind-by-selection -----------------------
+// A runtime entity selector. Instead of pinning a tile to a literal entity_id
+// (which breaks when an integration renames its entities), a tile may carry a
+// `selector` that is resolved against the LIVE states snapshot at render time.
+// This is how IntelliCenter / Airzone module tiles self-resolve and survive
+// renames (ENTITY_CONTRACT Surface 1/2). All fields beyond `domain` narrow the
+// match; the FIRST entity (by sorted entity_id, for determinism) that matches
+// every provided constraint wins.
+export interface EntitySelector {
+  // HA domain (required), e.g. 'climate', 'switch', 'sensor'.
+  domain: string;
+  // Optional device_class refinement (matched against attributes.device_class).
+  deviceClass?: string;
+  // Optional IntelliCenter OBJTYPE refinement (matched against an `objtype`/
+  // `OBJTYP` attribute the integration exposes; case-insensitive).
+  objType?: string;
+  // Optional attribute equality map — every key must match the entity's
+  // attribute value (string-compared, case-insensitive). Lets Airzone tiles
+  // pin a master zone by e.g. { zone_role: 'master' } without a literal id.
+  attrMatch?: Record<string, string>;
+}
+
+// How a tile resolves the entity (or entities) it renders. EITHER a direct
+// `primary` entity_id (the simple homeowner case — a Lutron switch the admin
+// picked) OR a `selector` resolved at runtime (the module-integration case).
+// `secondary` carries optional auxiliary bindings declared by the tile type
+// (e.g. a climate tile's humidity sensor); each is itself a direct id or a
+// selector. Purely additive: when `bindings` is absent, the tile resolves via
+// `deviceId` exactly as before.
+export interface EntityBindingRef {
+  primary?: string;            // a literal entity_id
+  selector?: EntitySelector;   // OR a runtime selector
+}
+
+export interface EntityBindings {
+  primary?: string;            // a literal entity_id (homeowner direct add)
+  selector?: EntitySelector;   // OR a runtime selector (module self-resolve)
+  // Auxiliary bindings keyed by the tile type's SecondaryBindingDef.key.
+  secondary?: Record<string, EntityBindingRef>;
+}
+
 export interface TileConfig {
   id: string;
   deviceId: string;
+  // --- Admin Stage 2 binding (additive/optional) ---
+  // When present, supersedes the literal `entityId`/`deviceId` for resolving
+  // which Device the tile renders: a direct `primary` id, or a `selector`
+  // resolved at runtime against the live states. `secondary` holds the tile
+  // type's optional aux bindings (e.g. climate humidity sensor). Absent on
+  // every legacy/Slice-0/Stage-1 tile -> resolution is unchanged.
+  bindings?: EntityBindings;
   // --- Admin tile-registry binding (Vertical Slice 0, additive/optional) ---
   // When set, `tileType` selects a component from the `tileTypes.tsx` catalog
   // (the explicit, admin-chosen path). When ABSENT, resolution falls back to
@@ -185,6 +233,21 @@ export interface HighlightSectionConfig {
   height: number;
   backgroundStyle?: 'default' | 'glow';
   glowColor?: string;
+}
+
+// --- Admin Stage 2 (Increment 12): curated areas --------------------------
+// A homeowner-curated area/room. This is the SOLE source of area membership at
+// runtime — the rendered dashboard NEVER reads HA's area_registry (the kiosk
+// uses a non-admin LLAT). The admin Areas manager may OPTIONALLY pre-seed this
+// map ONCE from HA's registry (an admin-authenticated, editor-only import), but
+// thereafter it is plain config. `entityIds` are HA entity_ids assigned to the
+// area; the editor's entity browser groups by these, with everything else in an
+// "Unassigned" bucket.
+export interface AreaConfig {
+  id: string;
+  name: string;
+  order: number;
+  entityIds: string[];
 }
 
 export type ThemeMode = 'dark' | 'light' | 'auto';

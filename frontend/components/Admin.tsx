@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDashboard } from '../hooks/useDashboard';
-import { Device, DeviceService, DashboardPanel, TileConfig, DeviceType, MediaItem, AllowedIP, ServiceConnection, TileDisplayOverride, TileAnimationConfig, HighlightSectionConfig, SonosNotification, SonosNotificationEventType, IdleMode } from '../types';
-import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves } from './icons';
+import { Device, DeviceService, DashboardPanel, TileConfig, DeviceType, MediaItem, AllowedIP, ServiceConnection, TileDisplayOverride, TileAnimationConfig, HighlightSectionConfig, SonosNotification, SonosNotificationEventType, IdleMode, ThemeMode, EntityBindings } from '../types';
+import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves, IconLayers } from './icons';
 import { produce } from 'immer';
 import Tile from './Tile';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -9,7 +9,8 @@ import AdminUserManager from './AdminUserManager';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
 import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
-import { suggestTileType, isAlwaysEquipmentGated, getTileTypeDefinition } from './tileTypes';
+import { suggestTileType, isAlwaysEquipmentGated, getTileTypeDefinition, getCompatibleTileTypes, getCompatibleTileTypesForDevice, type TileTypeDefinition } from './tileTypes';
+import Modal from './Modal';
 import yaml from 'js-yaml';
 import { playTextToSpeech } from '../services/audioPlayer';
 
@@ -669,18 +670,218 @@ const NotificationsSettings = () => {
 
 // #endregion
 
-// #region Panel Management
+// #region Areas Manager (Admin Stage 2 — Inc 12)
 
-const PanelManager: React.FC<{ onEditPanel: (panelId: string) => void }> = ({ onEditPanel }) => {
-    const { panels, addPanel, removePanel, requestInput, renamePanel, clonePanel } = useDashboard();
+// Curated areas/rooms manager. Create / rename / reorder / delete areas, assign
+// HA entities into them, and OPTIONALLY pre-seed the map ONCE from Home
+// Assistant's area + entity registries. CRITICAL: the import is the ONLY
+// registry read in the whole app, and it is editor-only (admin-authenticated).
+// The rendered kiosk dashboard reads only the curated `areas` from config.
+const AreasManager: React.FC = () => {
+    const { areas, devices, addArea, renameArea, removeArea, reorderArea, assignEntityToArea, importAreasFromHomeAssistant, requestInput, requestConfirmation, addNotification } = useDashboard();
 
-    const handleAddPanel = async () => {
-        const name = await requestInput("Enter new panel name:");
-        if (name) {
-            const newPanelId = addPanel(name);
-            onEditPanel(newPanelId);
+    const [importing, setImporting] = useState(false);
+    const [entityFilter, setEntityFilter] = useState('');
+
+    const sortedAreas = useMemo(() => [...areas].sort((a, b) => a.order - b.order), [areas]);
+
+    // entity_id -> areaId map for fast lookup of an entity's current assignment.
+    const entityArea = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const a of areas) for (const eid of a.entityIds) m.set(eid, a.id);
+        return m;
+    }, [areas]);
+
+    // Only HA entities (id === entity_id, contains a dot) are assignable; virtual
+    // / synthetic devices have no entity_id and are not area-curated.
+    const assignableDevices = useMemo(() => {
+        const f = entityFilter.toLowerCase().trim();
+        return devices
+            .filter(d => typeof d.id === 'string' && d.id.includes('.'))
+            .filter(d => !f || d.name.toLowerCase().includes(f) || d.id.toLowerCase().includes(f))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [devices, entityFilter]);
+
+    const handleImport = async () => {
+        const ok = await requestConfirmation(
+            'Import areas from Home Assistant?\n\n' +
+            'This reads your HA area + entity registries ONCE (admin-only) to pre-seed ' +
+            'the curated areas below. It merges into your existing areas without ' +
+            'overwriting your edits. The rendered dashboard never reads the registry — ' +
+            'it uses only these curated areas.'
+        );
+        if (!ok) return;
+        setImporting(true);
+        try {
+            const res = await importAreasFromHomeAssistant();
+            addNotification(`Imported ${res.areas} areas (${res.entities} entities assigned).`, 'success');
+        } catch (e) {
+            addNotification('Area import failed (are you signed in as an admin?).', 'error');
+        } finally {
+            setImporting(false);
         }
     };
+
+    const handleAdd = async () => {
+        const name = await requestInput('New area name:');
+        if (name) addArea(name);
+    };
+
+    const handleRename = async (id: string, current: string) => {
+        const name = await requestInput('Rename area:', current);
+        if (name && name !== current) renameArea(id, name);
+    };
+
+    const handleDelete = async (id: string, name: string) => {
+        const ok = await requestConfirmation(`Delete area "${name}"? Its entities become Unassigned. This does not delete any tiles or HA entities.`);
+        if (ok) removeArea(id);
+    };
+
+    return (
+        <AdminSection
+            title="Areas"
+            description="Curate the rooms/areas your dashboard groups entities by. This map is config-only — the rendered dashboard never reads Home Assistant's area registry. Optionally seed it once from HA below, then edit freely."
+        >
+            <div className="flex flex-wrap gap-2 mb-4">
+                <AdminButton onClick={handleAdd}>
+                    <IconPlus className="inline w-4 h-4 mr-2" /> Add Area
+                </AdminButton>
+                <AdminButton onClick={handleImport} variant="secondary" disabled={importing}>
+                    <IconRefreshCw className={`inline w-4 h-4 mr-2 ${importing ? 'animate-spin' : ''}`} />
+                    {importing ? 'Importing…' : 'Import from Home Assistant areas'}
+                </AdminButton>
+            </div>
+
+            {sortedAreas.length === 0 && (
+                <p className="text-sm text-gray-500 mb-4">No areas yet. Add one, or import from Home Assistant.</p>
+            )}
+
+            <div className="space-y-3">
+                {sortedAreas.map((area, idx) => (
+                    <div key={area.id} className="bg-gray-700/60 rounded-md border border-gray-600">
+                        <div className="flex items-center gap-2 p-3 border-b border-gray-600/60">
+                            <IconLayers className="w-5 h-5 text-cyan-400 shrink-0" />
+                            <span className="font-medium text-white flex-1 truncate">{area.name}</span>
+                            <span className="text-xs text-gray-400 mr-2">{area.entityIds.length} entities</span>
+                            <button onClick={() => reorderArea(area.id, 'up')} disabled={idx === 0} title="Move up" className="p-1.5 rounded hover:bg-gray-600 disabled:opacity-30">
+                                <IconChevronDown className="w-4 h-4 rotate-180" />
+                            </button>
+                            <button onClick={() => reorderArea(area.id, 'down')} disabled={idx === sortedAreas.length - 1} title="Move down" className="p-1.5 rounded hover:bg-gray-600 disabled:opacity-30">
+                                <IconChevronDown className="w-4 h-4" />
+                            </button>
+                            <AdminButton onClick={() => handleRename(area.id, area.name)} variant="secondary" className="!px-2 !py-1 text-xs">Rename</AdminButton>
+                            <AdminButton onClick={() => handleDelete(area.id, area.name)} variant="danger" className="!px-2 !py-1 text-xs"><IconTrash2 className="w-3.5 h-3.5" /></AdminButton>
+                        </div>
+                        {area.entityIds.length > 0 && (
+                            <div className="p-3 flex flex-wrap gap-1.5">
+                                {area.entityIds.map(eid => {
+                                    const d = devices.find(x => x.id === eid);
+                                    return (
+                                        <span key={eid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 text-xs text-gray-200 border border-gray-600" title={eid}>
+                                            {d?.name || eid}
+                                            <button onClick={() => assignEntityToArea(eid, null)} className="text-gray-500 hover:text-red-400" title="Unassign">
+                                                <IconX className="w-3 h-3" />
+                                            </button>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Assign entities */}
+            <div className="mt-6 border-t border-gray-700 pt-4">
+                <h4 className="font-semibold text-white mb-2">Assign Entities</h4>
+                <p className="text-xs text-gray-400 mb-3">Pick an area for each entity. Each entity lives in exactly one area; the rest are Unassigned.</p>
+                <input
+                    type="text"
+                    placeholder="Filter entities by name or id…"
+                    value={entityFilter}
+                    onChange={e => setEntityFilter(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-white focus:ring-brand-blue focus:border-brand-blue mb-3"
+                />
+                <div className="space-y-1 max-h-96 overflow-y-auto bg-gray-900 p-3 rounded-md border border-gray-700">
+                    {assignableDevices.length === 0 && <p className="text-sm text-gray-500 p-2">No matching entities.</p>}
+                    {assignableDevices.map(d => (
+                        <div key={d.id} className="flex items-center gap-3 py-1">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm text-white truncate" title={d.name}>{d.name}</p>
+                                <p className="text-xs text-gray-500 truncate">{d.id}</p>
+                            </div>
+                            <select
+                                value={entityArea.get(d.id) || ''}
+                                onChange={e => assignEntityToArea(d.id, e.target.value || null)}
+                                className="bg-gray-700 border border-gray-600 rounded-md p-1.5 text-sm text-white focus:ring-brand-blue focus:border-brand-blue"
+                                aria-label={`Assign ${d.name} to an area`}
+                            >
+                                <option value="">Unassigned</option>
+                                {sortedAreas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </AdminSection>
+    );
+};
+
+// #endregion
+
+// #region Panel Management
+
+// New Panel modal (Admin Stage 2 — Inc 12): captures name / columns / rowHeight
+// / theme / optional parent, then calls the extended addPanel.
+const NewPanelModal: React.FC<{ onClose: () => void; onCreated: (panelId: string) => void }> = ({ onClose, onCreated }) => {
+    const { panels, addPanel } = useDashboard();
+    const [name, setName] = useState('');
+    const [columns, setColumns] = useState(8);
+    const [rowHeight, setRowHeight] = useState(120);
+    const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+    const [parentId, setParentId] = useState<string>('');
+
+    const create = () => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const id = addPanel(trimmed, {
+            columns,
+            rowHeight,
+            themeMode,
+            parentId: parentId || undefined,
+        });
+        onCreated(id);
+    };
+
+    return (
+        <Modal onClose={onClose} title="New Panel" size="md">
+            <div className="space-y-4">
+                <AdminInput label="Panel name" id="np-name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Guest Suite" autoFocus />
+                <div className="grid grid-cols-2 gap-3">
+                    <AdminInput label="Columns" id="np-cols" type="number" min="1" max="24" value={columns} onChange={e => setColumns(parseInt(e.target.value) || 8)} />
+                    <AdminInput label="Row height (px)" id="np-rh" type="number" min="40" max="400" value={rowHeight} onChange={e => setRowHeight(parseInt(e.target.value) || 120)} />
+                </div>
+                <AdminSelect label="Theme" id="np-theme" value={themeMode} onChange={e => setThemeMode(e.target.value as ThemeMode)}>
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                    <option value="auto">Auto (day/night)</option>
+                </AdminSelect>
+                <AdminSelect label="Parent (optional — nests as a sub-panel)" id="np-parent" value={parentId} onChange={e => setParentId(e.target.value)}>
+                    <option value="">None (top-level)</option>
+                    {panels.filter(p => !p.parentId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </AdminSelect>
+                <div className="flex justify-end gap-2 pt-2">
+                    <AdminButton onClick={onClose} variant="secondary">Cancel</AdminButton>
+                    <AdminButton onClick={create} disabled={!name.trim()}>Create Panel</AdminButton>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
+const PanelManager: React.FC<{ onEditPanel: (panelId: string) => void }> = ({ onEditPanel }) => {
+    const { panels, removePanel, requestInput, renamePanel, clonePanel } = useDashboard();
+    const [showNewPanel, setShowNewPanel] = useState(false);
 
     const handleRenamePanel = async (panelId: string, currentName: string) => {
         const newName = await requestInput("Enter new panel name:", currentName);
@@ -739,9 +940,15 @@ const PanelManager: React.FC<{ onEditPanel: (panelId: string) => void }> = ({ on
                     </div>
                 ))}
             </div>
-            <AdminButton onClick={handleAddPanel} className="mt-4">
+            <AdminButton onClick={() => setShowNewPanel(true)} className="mt-4">
                 <IconPlus className="inline w-4 h-4 mr-2" /> Add Panel
             </AdminButton>
+            {showNewPanel && (
+                <NewPanelModal
+                    onClose={() => setShowNewPanel(false)}
+                    onCreated={(id) => { setShowNewPanel(false); onEditPanel(id); }}
+                />
+            )}
         </AdminSection>
     );
 };
@@ -895,12 +1102,56 @@ const availableIcons = [
     'ShadeOpen', 'ShadeClosed', 'Cat'
 ];
 
+// A contract-status badge for a tile type (LOCKED / PROPOSED / GATED).
+const ContractBadge: React.FC<{ status?: TileTypeDefinition['contractStatus'] }> = ({ status }) => {
+    if (!status) return null;
+    const cls = status === 'GATED'
+        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        : status === 'PROPOSED'
+            ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+    return <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>{status}</span>;
+};
+
+// In-app tile-type picker (Admin Stage 2 — Inc 12). Replaces the blocking
+// window.confirm with a card grid so a real kiosk webview never freezes on a
+// JS dialog. Shows the candidate tile types for the chosen entity; selecting one
+// adds the tile with the explicit binding. Gated types are clearly marked and
+// are never auto-selected — placing one is always a deliberate click.
+const TileTypePickerModal: React.FC<{
+    device: Device;
+    candidates: TileTypeDefinition[];
+    onPick: (def: TileTypeDefinition) => void;
+    onClose: () => void;
+}> = ({ device, candidates, onPick, onClose }) => (
+    <Modal onClose={onClose} title={`Add "${device.name}"`} size="lg">
+        <p className="text-sm text-gray-400 mb-1">Multiple tile types fit <span className="text-gray-200 font-mono text-xs">{device.id}</span>. Choose one.</p>
+        <p className="text-xs text-gray-500 mb-4">Gated types are display-only and enforce safety gating; they are never chosen automatically.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+            {candidates.map(def => (
+                <button
+                    key={def.key}
+                    onClick={() => onPick(def)}
+                    className="text-left p-3 rounded-lg bg-gray-700/70 border border-gray-600 hover:border-brand-blue hover:bg-gray-700 transition-colors"
+                >
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-white">{def.label}</span>
+                        {def.alwaysEquipmentGated && <IconLock className="w-3.5 h-3.5 text-amber-400" />}
+                        <span className="ml-auto"><ContractBadge status={def.contractStatus} /></span>
+                    </div>
+                    <p className="text-xs text-gray-400">{def.description}</p>
+                </button>
+            ))}
+        </div>
+    </Modal>
+);
+
 const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelId, onBack }) => {
     const {
-        panels, devices, deviceMap, addTileToPanel, removeTileFromPanel,
+        panels, devices, deviceMap, areas, addTileToPanel, removeTileFromPanel,
         updateTileConfig, addFolder, requestInput, updatePanelLayoutConfig,
         updatePanelConfig, updatePanelTiles, updatePanelHighlights, alarmState, connections,
-        addHighlightToPanel, removeHighlightFromPanel, updateHighlightConfig,
+        addHighlightToPanel, removeHighlightFromPanel, updateHighlightConfig, addNotification,
     } = useDashboard();
     const navigate = useNavigate();
     const gridRef = useRef<HTMLDivElement>(null);
@@ -912,6 +1163,10 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
     const [draggedItem, setDraggedItem] = useState<DraggedItem | null>(null);
     const [ghostPosition, setGhostPosition] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
     const [copied, setCopied] = useState(false);
+    // Admin Stage 2 (Inc 12): in-app tile-type picker state. When a clicked
+    // entity has multiple compatible tile types we open this card-grid picker
+    // (NOT a blocking window.confirm).
+    const [pickerState, setPickerState] = useState<{ device: Device; candidates: TileTypeDefinition[]; position?: { x: number; y: number } } | null>(null);
 
     const panel = useMemo(() => panels.find(p => p.id === panelId), [panels, panelId]);
     const selectedTile = useMemo(() => panel?.tiles.find(t => t.id === selectedTileId), [panel, selectedTileId]);
@@ -939,6 +1194,34 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
         }
         return filteredDevices;
     }, [devices, panel, deviceFilter, deviceTypeFilter]);
+
+    // Admin Stage 2 (Inc 12): group the available devices by CURATED area (config
+    // only — no registry read), with everything not assigned to an area in an
+    // "Unassigned" bucket. Areas with no matching available devices are dropped
+    // so the browser stays tight. The free-text/type filters above still apply
+    // (availableDevices is already filtered).
+    const groupedDevices = useMemo(() => {
+        const sortedAreas = [...areas].sort((a, b) => a.order - b.order);
+        const entityToArea = new Map<string, string>();
+        for (const a of areas) for (const eid of a.entityIds) entityToArea.set(eid, a.id);
+
+        const buckets = new Map<string, Device[]>();
+        for (const a of sortedAreas) buckets.set(a.id, []);
+        const unassigned: Device[] = [];
+        for (const d of availableDevices) {
+            const areaId = entityToArea.get(d.id);
+            if (areaId && buckets.has(areaId)) buckets.get(areaId)!.push(d);
+            else unassigned.push(d);
+        }
+
+        const groups: { id: string; name: string; devices: Device[] }[] = [];
+        for (const a of sortedAreas) {
+            const ds = buckets.get(a.id)!;
+            if (ds.length) groups.push({ id: a.id, name: a.name, devices: ds });
+        }
+        if (unassigned.length) groups.push({ id: '__unassigned__', name: 'Unassigned', devices: unassigned });
+        return groups;
+    }, [areas, availableDevices]);
 
     // Calculate dynamic column spans for the editor layout to better represent the final dashboard
     const panelColumns = panel?.columns || 8;
@@ -1017,36 +1300,62 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
         e.dataTransfer.setDragImage(img, 0, 0);
     };
 
-    // Slice 0 — compute the explicit tile-registry binding for a device the
-    // admin is adding. For HA devices `device.id === entity_id`, so the HA
-    // domain (and thus the auto-suggested tile type) comes straight from the id.
-    // Returns `undefined` when nothing in the catalog matches, leaving the add
-    // on the legacy inferred path. Pure / no side effects.
-    const bindingForDevice = (deviceId: string): { tileType?: string, entityId?: string, label?: string } | undefined => {
-        const suggestion = suggestTileType(deviceId);
-        if (!suggestion) return undefined;
-        // Inc 1 label fix: seed the new tile's label with the entity's friendly
-        // name so it isn't nameless on the grid.
-        const label = devices.find(d => d.id === deviceId)?.name;
-        return { tileType: suggestion.key, entityId: deviceId, label };
+    // Inc 12 — build the persisted binding for a chosen entity + tile type. The
+    // editor authors a DIRECT binding (`bindings.primary = entity_id`) for these
+    // simple homeowner adds (a Lutron switch, a light). Module-integration tiles
+    // (selector-based) are authored from their tile-type def in a later stage;
+    // here every add is a direct id. We keep `tileType`/`entityId` too for
+    // dual-path / Slice-0 back-compat. `label` seeds a non-empty tile label.
+    const buildBinding = (device: Device, def: TileTypeDefinition): { tileType: string, entityId: string, label: string, bindings: EntityBindings } => ({
+        tileType: def.key,
+        entityId: device.id,
+        label: device.name,
+        bindings: { primary: device.id },
+    });
+
+    // Add a tile for a chosen tile-type def at an optional grid position.
+    const addWithType = (device: Device, def: TileTypeDefinition, position?: { x: number; y: number }) => {
+        addTileToPanel(panelId, device.id, position, buildBinding(device, def));
     };
 
-    // Slice 0 — click-to-add an entity from the browser. Shows the
-    // auto-suggested tile type for confirmation (a simple confirm; the
-    // multi-match picker is Stage 2), then adds with the explicit binding.
-    const handleAddDeviceClick = (device: Device) => {
-        const suggestion = suggestTileType(device.id);
-        if (suggestion) {
-            const ok = window.confirm(
-                `Add "${device.name}" as a "${suggestion.label}" tile?\n\n` +
-                `Bound to entity: ${device.id}`,
-            );
-            if (!ok) return;
-            addTileToPanel(panelId, device.id, undefined, { tileType: suggestion.key, entityId: device.id, label: device.name });
-        } else {
-            // No catalog match — fall back to the legacy inferred add.
-            addTileToPanel(panelId, device.id, undefined);
+    // Inc 12 — the candidate tile types for an entity, refined by device_class.
+    const candidatesFor = (device: Device): TileTypeDefinition[] => {
+        const dc = (device.capabilityData as any)?.deviceClass as string | undefined;
+        return getCompatibleTileTypesForDevice(device.id, dc);
+    };
+
+    // Inc 12 — IN-APP add flow (replaces the blocking window.confirm). On a click:
+    //   • exactly one compatible type  → add it directly
+    //   • multiple                     → open the in-app card-grid picker
+    //   • none                         → add a `generic` tile with a note (never
+    //                                     auto-pick a gated type — picker only).
+    // A gated type is never auto-added even when it is the sole candidate; if the
+    // only candidate is gated we still route through the picker so placing it is
+    // an explicit click.
+    const handleAddDeviceClick = (device: Device, position?: { x: number; y: number }) => {
+        const candidates = candidatesFor(device);
+        const nonGated = candidates.filter(c => !c.alwaysEquipmentGated);
+
+        if (candidates.length === 0) {
+            // No catalog match — offer a generic tile so the entity is still
+            // placeable, and note it. Legacy inferred resolution still applies.
+            addTileToPanel(panelId, device.id, position, { entityId: device.id, label: device.name, bindings: { primary: device.id } });
+            addNotification(`No specialized tile for "${device.name}" — added a generic tile.`, 'info');
+            return;
         }
+        if (candidates.length === 1 && nonGated.length === 1) {
+            addWithType(device, candidates[0], position);
+            return;
+        }
+        // Multiple matches (or the sole match is gated) → in-app picker.
+        setPickerState({ device, candidates, position });
+    };
+
+    // The picker's pick handler — add the chosen type at the remembered position.
+    const handlePickType = (def: TileTypeDefinition) => {
+        if (!pickerState) return;
+        addWithType(pickerState.device, def, pickerState.position);
+        setPickerState(null);
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -1071,11 +1380,13 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
     
         if (draggedItem.type === 'device') {
             const finalPos = findNextFreeSpot(pos.x, pos.y, 1, 1, panel.tiles, panel.columns || 8);
-            // Slice 0: auto-suggest a tile type from the entity's HA domain and
-            // persist the explicit binding when one matches. No match -> add as
-            // before (legacy inferred path), so this never blocks an add.
-            const binding = bindingForDevice(draggedItem.id);
-            addTileToPanel(panelId, draggedItem.id, finalPos, binding);
+            // Inc 12: route the drop through the same in-app add flow as a click
+            // (single → add directly, multi/gated → in-app picker remembering the
+            // drop position, none → generic). Never a blocking JS confirm.
+            const dropDevice = devices.find(d => d.id === draggedItem.id);
+            if (dropDevice) {
+                handleAddDeviceClick(dropDevice, finalPos);
+            }
         } else if (draggedItem.type === 'tile') {
             const updatedTiles = shiftTilesOnDrop(panel.tiles, draggedItem.id, pos.x, pos.y, panel.columns || 8);
             updatePanelTiles(panelId, updatedTiles);
@@ -1130,6 +1441,21 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
         if (!selectedTile) return;
         const newOverrides = { ...(selectedTile.displayOverride || {}), [field]: value };
         updateTileConfig(panelId, selectedTile.id, { displayOverride: newOverrides });
+    };
+
+    // Inc 12 — set/clear a tile's SECONDARY binding (e.g. a climate tile's
+    // humidity sensor) as a DIRECT entity_id. Stored under bindings.secondary
+    // keyed by the tile type's SecondaryBindingDef.key. Authoring a direct id
+    // here; module tiles author selectors elsewhere.
+    const updateSecondaryBinding = (key: string, entityId: string | null) => {
+        if (!selectedTile) return;
+        const current = selectedTile.bindings || {};
+        const secondary = { ...(current.secondary || {}) };
+        if (entityId) secondary[key] = { primary: entityId };
+        else delete secondary[key];
+        updateTileConfig(panelId, selectedTile.id, {
+            bindings: { ...current, secondary: Object.keys(secondary).length ? secondary : undefined },
+        });
     };
 
     const updateAnimationConfig = (field: keyof TileAnimationConfig, value: any) => {
@@ -1216,33 +1542,51 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                 <p className="text-xs text-gray-400">Visually group tiles</p>
                             </div>
                         </button>
-                        {availableDevices.map(device => {
-                            const suggested = suggestTileType(device.id);
-                            return (
-                            <div
-                                key={device.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, 'device', device.id)}
-                                onClick={() => handleAddDeviceClick(device)}
-                                title={suggested ? `Click to add as "${suggested.label}" tile (or drag)` : 'Click to add (or drag)'}
-                                className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab"
-                            >
-                                <TilePreviewIcon type={device.type} />
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-semibold truncate" title={device.name}>{device.name}</p>
-                                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                                        <ServiceSourceIcon service={device.service} />
-                                        <span className="truncate" title={device.location || device.service}>{device.location || device.service}</span>
-                                    </div>
+                        {/* Inc 12: entities grouped by CURATED area (+ Unassigned).
+                            Area membership is config-only — no registry read here. */}
+                        {areas.length === 0 && availableDevices.length > 0 && (
+                            <p className="text-[11px] text-gray-500 px-1">
+                                Tip: curate rooms in the <span className="text-cyan-400">Areas</span> tab to group these.
+                            </p>
+                        )}
+                        {groupedDevices.map(group => (
+                            <div key={group.id} className="space-y-1">
+                                <div className="flex items-center gap-1.5 px-1 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    <IconLayers className="w-3.5 h-3.5" />
+                                    <span>{group.name}</span>
+                                    <span className="text-gray-600">· {group.devices.length}</span>
                                 </div>
-                                {suggested && (
-                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-blue/20 text-brand-blue border border-brand-blue/40" title={`Auto-suggested tile type: ${suggested.label}`}>
-                                        {suggested.label}
-                                    </span>
-                                )}
+                                {group.devices.map(device => {
+                                    const dc = (device.capabilityData as any)?.deviceClass as string | undefined;
+                                    const cands = getCompatibleTileTypesForDevice(device.id, dc);
+                                    const suggested = cands.find(c => !c.alwaysEquipmentGated);
+                                    return (
+                                    <div
+                                        key={device.id}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, 'device', device.id)}
+                                        onClick={() => handleAddDeviceClick(device)}
+                                        title={suggested ? `Click to add as "${suggested.label}" tile (or drag)` : 'Click to add (or drag)'}
+                                        className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab"
+                                    >
+                                        <TilePreviewIcon type={device.type} />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold truncate" title={device.name}>{device.name}</p>
+                                            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                                                <ServiceSourceIcon service={device.service} />
+                                                <span className="truncate" title={device.id}>{device.id}</span>
+                                            </div>
+                                        </div>
+                                        {suggested && (
+                                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-blue/20 text-brand-blue border border-brand-blue/40" title={cands.length > 1 ? `Click to choose a tile type (${cands.length} options)` : `Tile type: ${suggested.label}`}>
+                                                {suggested.label}{cands.length > 1 ? ' +' : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                    );
+                                })}
                             </div>
-                            );
-                        })}
+                        ))}
                     </div>
                 </div>
 
@@ -1412,6 +1756,40 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Inc 12 — secondary bindings. Tile types may
+                                        declare optional aux entities (e.g. a climate
+                                        tile's humidity sensor). Each is a direct id
+                                        chosen from the compatible entities. */}
+                                    {(() => {
+                                        const def = selectedTile.tileType ? getTileTypeDefinition(selectedTile.tileType) : undefined;
+                                        const sbs = def?.secondaryBindings;
+                                        if (!sbs || sbs.length === 0) return null;
+                                        return (
+                                            <div className="pt-3 mt-3 border-t border-gray-700 space-y-3">
+                                                <h5 className="font-medium text-gray-200">Secondary Bindings</h5>
+                                                {sbs.map(sb => {
+                                                    const opts = devices.filter(d =>
+                                                        typeof d.id === 'string' && d.id.includes('.') &&
+                                                        (!sb.acceptsDomains || sb.acceptsDomains.includes(d.id.split('.')[0]))
+                                                    ).sort((a, b) => a.name.localeCompare(b.name));
+                                                    const cur = selectedTile.bindings?.secondary?.[sb.key]?.primary || '';
+                                                    return (
+                                                        <AdminSelect
+                                                            key={sb.key}
+                                                            label={`${sb.label}${sb.optional ? ' (optional)' : ''}`}
+                                                            id={`sec-${selectedTile.id}-${sb.key}`}
+                                                            value={cur}
+                                                            onChange={e => updateSecondaryBinding(sb.key, e.target.value || null)}
+                                                        >
+                                                            <option value="">None</option>
+                                                            {opts.map(d => <option key={d.id} value={d.id}>{d.name} ({d.id})</option>)}
+                                                        </AdminSelect>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {selectedTile.deviceId !== 'hometile-sthm-panel' && (
                                         <>
@@ -1714,6 +2092,16 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                     </div>
                 </div>
             </div>
+
+            {/* Inc 12 — in-app tile-type picker (multi-match). NOT a window.confirm. */}
+            {pickerState && (
+                <TileTypePickerModal
+                    device={pickerState.device}
+                    candidates={pickerState.candidates}
+                    onPick={handlePickType}
+                    onClose={() => setPickerState(null)}
+                />
+            )}
         </div>
     );
 };
@@ -2209,6 +2597,7 @@ const Admin = () => {
     const tabs = [
         { id: 'general', label: 'General', icon: IconSettings },
         { id: 'panels', label: 'Panels', icon: IconLayoutGrid },
+        { id: 'areas', label: 'Areas', icon: IconLayers },
         { id: 'devices', label: 'Virtual Devices', icon: IconCpu },
         { id: 'discovered', label: 'Discovered Devices', icon: IconRss },
         { id: 'security', label: 'Security', icon: IconShield },
@@ -2244,6 +2633,7 @@ const Admin = () => {
             <div className="flex-1 min-w-0">
                 {activeTab === 'general' && <GeneralSettings />}
                 {activeTab === 'panels' && <PanelManager onEditPanel={handleEditPanel} />}
+                {activeTab === 'areas' && <AreasManager />}
                 {activeTab === 'devices' && <VirtualDeviceManager />}
                 {activeTab === 'discovered' && <DiscoveredDevicesManager />}
                 {activeTab === 'security' && <SecuritySettings />}

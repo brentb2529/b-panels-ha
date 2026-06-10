@@ -334,6 +334,54 @@ export async function getEntityDeviceMap(): Promise<Record<string, string>> {
     return map;
 }
 
+// --- Areas (Admin Stage 2 — EDITOR-ONLY one-time import) ----------------------
+// IMPORTANT (least-privilege): these read HA's area_registry + entity_registry,
+// which are ADMIN-ONLY. They exist SOLELY to let the admin Areas manager
+// PRE-SEED the curated `areas` map in the b_panels config. The rendered kiosk
+// dashboard (non-admin LLAT) must NEVER call these — it reads only the curated
+// `areas` from config. Each returns [] on failure so the import degrades
+// gracefully (the admin can still build areas by hand).
+
+export interface HaArea { area_id: string; name: string }
+export interface HaEntityArea { entity_id: string; area_id: string | null; device_id: string | null }
+
+// HA's area_registry/list (admin-only). Returns the list of areas, or [].
+export async function fetchAreaRegistry(): Promise<HaArea[]> {
+    try {
+        const conn = await getConnection();
+        const res: any = await conn.sendMessagePromise({ type: 'config/area_registry/list' });
+        const areas: any[] = Array.isArray(res) ? res : Array.isArray(res?.areas) ? res.areas : [];
+        return areas
+            .filter(a => a && a.area_id)
+            .map(a => ({ area_id: a.area_id, name: a.name || a.area_id }));
+    } catch (e) {
+        console.warn('[B-Panels] area_registry/list unavailable (non-admin?):', e);
+        return [];
+    }
+}
+
+// HA's entity_registry/list (admin-only) projected to entity→area assignments.
+// Note an entity's effective area is its own `area_id` if set, else the area of
+// its device (`device_id`); we surface both so the caller can resolve via the
+// entity→device map when needed. Returns [].
+export async function fetchEntityAreaRegistry(): Promise<HaEntityArea[]> {
+    try {
+        const conn = await getConnection();
+        const res: any = await conn.sendMessagePromise({ type: 'config/entity_registry/list' });
+        const ents: any[] = Array.isArray(res?.entities) ? res.entities : Array.isArray(res) ? res : [];
+        return ents
+            .filter(e => e && (e.entity_id || e.ei))
+            .map(e => ({
+                entity_id: e.entity_id ?? e.ei,
+                area_id: e.area_id ?? null,
+                device_id: e.device_id ?? e.di ?? null,
+            }));
+    } catch (e) {
+        console.warn('[B-Panels] entity_registry/list unavailable (non-admin?):', e);
+        return [];
+    }
+}
+
 // --- Camera streams -----------------------------------------------------------
 // Resolve a live HLS stream URL for a Home Assistant `camera` entity via HA's
 // stream component (the `camera/stream` WS command). HA replies with a

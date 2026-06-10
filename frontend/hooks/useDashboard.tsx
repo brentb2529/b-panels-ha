@@ -1,6 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, AreaConfig, ThemeMode } from '../types';
+import { resolveTileEntityId, type SelectableEntity } from '../services/entitySelector';
+import { buildAreasFromRegistry, mergeImportedAreas } from './areaSeed';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -106,6 +108,11 @@ export interface StoredConfig {
     // Persisted schema version (absent on pre-Inc-11 configs => treated as v1).
     schema_version?: number;
     panels: DashboardPanel[];
+    // Admin Stage 2 (Inc 12): curated areas/rooms. The SOLE source of area
+    // membership at runtime — the rendered dashboard never reads HA's
+    // area_registry. Optionally pre-seeded once via the editor's import button;
+    // thereafter plain config. Additive: absent on every pre-Inc-12 config.
+    areas?: AreaConfig[];
     connections: ServiceConnection[];
     useDemoMode: boolean;
     users: User[];
@@ -907,6 +914,19 @@ export interface SonosSources {
 interface DashboardContextType {
   devices: Device[];
   deviceMap: Map<string, Device>;
+  // Admin Stage 2 (Inc 12): curated areas + bind-by-selection.
+  areas: AreaConfig[];
+  addArea: (name: string) => string;
+  renameArea: (areaId: string, name: string) => void;
+  removeArea: (areaId: string) => void;
+  reorderArea: (areaId: string, direction: 'up' | 'down') => void;
+  assignEntityToArea: (entityId: string, areaId: string | null) => void;
+  importAreasFromHomeAssistant: () => Promise<{ areas: number; entities: number }>;
+  // Resolve the Device a tile renders, honoring bind-by-selection. Runtime-safe
+  // (no registry read); the rendered dashboard uses this instead of a raw
+  // deviceMap.get(tile.deviceId) so selector-bound tiles resolve + survive
+  // renames.
+  resolveTileDevice: (tile: TileConfig) => Device | undefined;
   // entity_id -> HA device_id (registry-based grouping; used to assemble a
   // camera's sibling control/status entities into one detail view).
   entityDeviceMap: Record<string, string>;
@@ -949,7 +969,7 @@ interface DashboardContextType {
   requestPin: (onConfirm: (pin: string) => void, opts?: { validate?: boolean }) => void;
   requestConfirmation: (message: string) => Promise<boolean>;
   requestInput: (message: string, initialValue?: string, type?: 'text' | 'password' | 'number') => Promise<string | null>;
-  addPanel: (name: string) => string;
+  addPanel: (name: string, opts?: { columns?: number; rowHeight?: number; themeMode?: ThemeMode; parentId?: string }) => string;
   removePanel: (panelId: string) => Promise<boolean>;
   renamePanel: (panelId: string, newName: string) => void;
   clonePanel: (panelId: string, newName: string) => void;
@@ -957,7 +977,7 @@ interface DashboardContextType {
   updatePanelHighlights: (panelId: string, highlights: HighlightSectionConfig[]) => void;
   updatePanelConfig: (panelId: string, updates: Partial<Omit<DashboardPanel, 'id'>>) => void;
   updateTileConfig: (panelId: string, tileId: string, newConfig: Partial<Omit<TileConfig, 'id' | 'deviceId'>>) => void;
-  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string }) => void;
+  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string, bindings?: import('../types').EntityBindings }) => void;
   removeTileFromPanel: (panelId: string, tileId: string) => void;
   addHighlightToPanel: (panelId: string) => void;
   removeHighlightFromPanel: (panelId: string, highlightId: string) => void;
@@ -1073,6 +1093,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [config, setConfig] = useState<StoredConfig>(getDefaultConfig);
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const { panels, connections, users, virtualDevices: storedVirtualDevices, mediaItems, dashboardTitle, ipFilterEnabled, allowedIPs, notifyingSensorIds, sensorAliases, sonosNotifications, armingStatusDeviceId, weatherZipCode, weatherEntityId, monitoringEnabled, monitoringWebhookUrl, mediamtxConfig, alarmHistory, internetMonitorConfig, fishingReportConfig } = config;
+  // Admin Stage 2 (Inc 12): curated areas (config-only; never a registry read).
+  const areas = useMemo(() => config.areas ?? [], [config.areas]);
   // HA-only: demo mode is never used. Force it off regardless of any stale
   // saved config (older builds persisted useDemoMode:true, which routed device
   // control to a no-op demo service so toggles never reached Home Assistant).
@@ -1392,6 +1414,38 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // useState + effect) so it updates in the same render as `devices` — no extra
   // render pass, and no transient window where the map lags the device list.
   const deviceMap = useMemo(() => new Map(devices.map(d => [d.id, d])), [devices]);
+
+  // Admin Stage 2 (Inc 12) — live raw HA states snapshot for bind-by-selection.
+  // The subscribeEntities callback owns the full entity collection; we mirror it
+  // here so selector resolution (resolveTileDevice) can read entity attributes
+  // (device_class / objtype / attrMatch). A version counter bumps only when the
+  // SET of entity_ids changes (an add/remove/rename) — NOT on every value tick —
+  // so a selector re-resolves on a rename without re-rendering on each push.
+  const liveEntitiesRef = useRef<Record<string, any>>({});
+  const liveEntityIdSigRef = useRef<string>('');
+  const [liveEntitiesVersion, setLiveEntitiesVersion] = useState(0);
+
+  // Admin Stage 2 (Inc 12) — the selectable-entity list for bind-by-selection,
+  // assembled from the live raw HA snapshot (entity_id + attributes). Recomputed
+  // only when the entity-id SET changes (liveEntitiesVersion), which is exactly
+  // when a selector could re-resolve to a different entity (add/remove/rename).
+  const selectableEntities = useMemo<SelectableEntity[]>(() => {
+    const snap = liveEntitiesRef.current || {};
+    return Object.keys(snap).map(eid => ({ entity_id: eid, attributes: snap[eid]?.attributes }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveEntitiesVersion]);
+
+  // Resolve the Device a tile should render. Honors bind-by-selection
+  // (bindings.primary | bindings.selector) then the legacy entityId/deviceId,
+  // and looks the resolved id up in the live deviceMap. A selector that resolves
+  // to nothing yields `undefined` (a deliberate "not found"), so a broken module
+  // binding is visible rather than silently mis-rendering. Pure read — safe on
+  // the render path; the runtime NEVER consults the area/entity registry here.
+  const resolveTileDevice = useCallback((tile: TileConfig): Device | undefined => {
+    const eid = resolveTileEntityId(tile, selectableEntities);
+    if (!eid) return undefined;
+    return deviceMap.get(eid);
+  }, [deviceMap, selectableEntities]);
 
   // Diagnostic: report composite grouping so issues are visible in the console.
   useEffect(() => {
@@ -2990,6 +3044,16 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             let prevEntities: Record<string, any> = {};
             const UNREAL = new Set(['unavailable', 'unknown', '', undefined, null]);
             const unsubEntities = await haClient.subscribeEntities((entities: any) => {
+                // Mirror the live snapshot for selector resolution. Only bump the
+                // reactive version when the entity-id SET changes (add/remove/
+                // rename) so selector-bound tiles re-resolve on a rename without a
+                // provider re-render on every value tick.
+                liveEntitiesRef.current = entities;
+                const sig = Object.keys(entities).sort().join('|');
+                if (sig !== liveEntityIdSigRef.current) {
+                    liveEntityIdSigRef.current = sig;
+                    setLiveEntitiesVersion(v => v + 1);
+                }
                 for (const entityId of Object.keys(entities)) {
                     const newEnt = entities[entityId];
                     const oldEnt = prevEntities[entityId];
@@ -3233,13 +3297,108 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }
   }, [inputRequest]);
 
-  const addPanel = useCallback((name: string) => {
+  // Admin Stage 2 (Inc 12): the New Panel modal passes columns/rowHeight/theme/
+  // parentId; older callers (the legacy "Add Panel" path) pass only a name and
+  // get the same defaults as before — additive/back-compatible.
+  const addPanel = useCallback((name: string, opts?: { columns?: number; rowHeight?: number; themeMode?: ThemeMode; parentId?: string }) => {
     const newPanelId = `panel-${Date.now()}`;
-    const newPanel: DashboardPanel = { id: newPanelId, name, tiles: [], highlights: [], columns: 8, rowHeight: 120, showAlarmAlerts: false, showArmingStatus: false, themeMode: 'dark' };
+    const newPanel: DashboardPanel = {
+      id: newPanelId,
+      name,
+      tiles: [],
+      highlights: [],
+      columns: opts?.columns ?? 8,
+      rowHeight: opts?.rowHeight ?? 120,
+      showAlarmAlerts: false,
+      showArmingStatus: false,
+      themeMode: opts?.themeMode ?? 'dark',
+      ...(opts?.parentId ? { parentId: opts.parentId } : {}),
+    };
     setConfig(current => produce(current, draft => {
         draft.panels.push(newPanel);
     }));
     return newPanelId;
+  }, []);
+
+  // ── Admin Stage 2 (Inc 12): curated-areas CRUD + one-time HA import ────────
+  const addArea = useCallback((name: string): string => {
+    const id = `area-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setConfig(current => produce(current, draft => {
+      if (!draft.areas) draft.areas = [];
+      const order = draft.areas.reduce((m, a) => Math.max(m, a.order), -1) + 1;
+      draft.areas.push({ id, name, order, entityIds: [] });
+    }));
+    return id;
+  }, []);
+
+  const renameArea = useCallback((areaId: string, name: string) => {
+    setConfig(current => produce(current, draft => {
+      const a = draft.areas?.find(x => x.id === areaId);
+      if (a) a.name = name;
+    }));
+  }, []);
+
+  const removeArea = useCallback((areaId: string) => {
+    setConfig(current => produce(current, draft => {
+      if (draft.areas) draft.areas = draft.areas.filter(a => a.id !== areaId);
+    }));
+  }, []);
+
+  // Move an area up/down in display order (swaps order with its neighbor).
+  const reorderArea = useCallback((areaId: string, direction: 'up' | 'down') => {
+    setConfig(current => produce(current, draft => {
+      if (!draft.areas) return;
+      const sorted = [...draft.areas].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex(a => a.id === areaId);
+      if (idx < 0) return;
+      const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= sorted.length) return;
+      const tmp = sorted[idx].order;
+      const aRef = draft.areas.find(a => a.id === sorted[idx].id)!;
+      const bRef = draft.areas.find(a => a.id === sorted[swapIdx].id)!;
+      aRef.order = bRef.order;
+      bRef.order = tmp;
+    }));
+  }, []);
+
+  // Assign an entity to an area (removing it from any other area first, so an
+  // entity lives in exactly one curated area). Passing areaId === null just
+  // unassigns it (it lands in the editor's "Unassigned" bucket).
+  const assignEntityToArea = useCallback((entityId: string, areaId: string | null) => {
+    setConfig(current => produce(current, draft => {
+      if (!draft.areas) draft.areas = [];
+      for (const a of draft.areas) {
+        a.entityIds = a.entityIds.filter(e => e !== entityId);
+      }
+      if (areaId) {
+        const target = draft.areas.find(a => a.id === areaId);
+        if (target && !target.entityIds.includes(entityId)) target.entityIds.push(entityId);
+      }
+    }));
+  }, []);
+
+  // EDITOR-ONLY one-time import: read HA's area + entity registries (admin-auth)
+  // and merge them into the curated areas WITHOUT clobbering hand edits. This is
+  // the ONLY place a registry is read; the rendered dashboard never calls it.
+  const importAreasFromHomeAssistant = useCallback(async (): Promise<{ areas: number; entities: number }> => {
+    const [haAreas, entityAreas] = await Promise.all([
+      haClient.fetchAreaRegistry(),
+      haClient.fetchEntityAreaRegistry(),
+    ]);
+    // Build a device_id -> area_id map from the entity registry rows that carry
+    // an explicit area on their device, so device-inherited areas bucket too.
+    const deviceAreaMap: Record<string, string> = {};
+    for (const e of entityAreas) {
+      if (e.device_id && e.area_id) deviceAreaMap[e.device_id] = e.area_id;
+    }
+    const imported = buildAreasFromRegistry(haAreas, entityAreas, deviceAreaMap);
+    let entityCount = 0;
+    setConfig(current => produce(current, draft => {
+      const merged = mergeImportedAreas(draft.areas ?? [], imported);
+      draft.areas = merged;
+      entityCount = merged.reduce((n, a) => n + a.entityIds.length, 0);
+    }));
+    return { areas: imported.length, entities: entityCount };
   }, []);
 
   const removePanel = useCallback(async (panelId: string): Promise<boolean> => {
@@ -3377,7 +3536,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }));
   }, []);
 
-  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string }) => {
+  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string, bindings?: import('../types').EntityBindings }) => {
       setConfig(currentConfig => produce(currentConfig, draft => {
           const panel = draft.panels.find(p => p.id === panelId);
           if (panel) {
@@ -3426,6 +3585,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
               // behave exactly as before.
               if (binding?.tileType !== undefined) newTile.tileType = binding.tileType;
               if (binding?.entityId !== undefined) newTile.entityId = binding.entityId;
+              // Admin Stage 2 (Inc 12): persist the structured binding (direct
+              // primary id OR a runtime selector + secondary bindings) when the
+              // editor supplies it. Selector-bound (module) tiles self-resolve at
+              // runtime and survive entity renames; direct adds keep the simple
+              // entityId path. Only set when provided — additive.
+              if (binding?.bindings !== undefined) newTile.bindings = binding.bindings;
               // Slice-0 fix (Inc 1): default the tile's label to the entity's
               // friendly name on add so new tiles aren't nameless. Only sets a
               // non-empty label; the inspector can still override/clear it.
@@ -4121,6 +4286,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       devices,
       deviceMap,
       entityDeviceMap,
+      areas,
+      addArea,
+      renameArea,
+      removeArea,
+      reorderArea,
+      assignEntityToArea,
+      importAreasFromHomeAssistant,
+      resolveTileDevice,
       panels,
       connections,
       users,
