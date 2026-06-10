@@ -237,8 +237,9 @@ export interface DashboardPanel {
   // view) INSTEAD of the generic tile grid. Absent on every existing panel, so
   // the grid path is unchanged — additive/non-breaking. Increment 2 ships
   // 'kitchen'; Increment 3 ships 'home' (the scene-forward landing overview);
-  // Increment 4 ships 'pool' (the Pool & Spa flagship compilation panel).
-  compilationKind?: 'kitchen' | 'home' | 'pool';
+  // Increment 4 ships 'pool' (the Pool & Spa flagship compilation panel);
+  // Increment 5 ships 'climate' (the whole-home HVAC compilation panel).
+  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate';
 }
 
 export interface ServiceConnection {

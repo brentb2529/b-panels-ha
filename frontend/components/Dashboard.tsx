@@ -19,6 +19,7 @@ import { startSiren, stopSiren } from '../services/alarmTones';
 const KitchenPanel = React.lazy(() => import('../design-system/panels/KitchenPanel'));
 const HomePanel = React.lazy(() => import('../design-system/panels/HomePanel'));
 const PoolPanel = React.lazy(() => import('../design-system/panels/PoolPanel'));
+const ClimatePanel = React.lazy(() => import('../design-system/panels/ClimatePanel'));
 
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
@@ -292,6 +293,15 @@ const Dashboard = () => {
       <div className="relative h-full">
         <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Pool &amp; Spa…</div>}>
           <PoolPanel />
+        </React.Suspense>
+      </div>
+    );
+  }
+  if (activePanel.compilationKind === 'climate') {
+    return (
+      <div className="relative h-full">
+        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Climate…</div>}>
+          <ClimatePanel />
         </React.Suspense>
       </div>
     );
