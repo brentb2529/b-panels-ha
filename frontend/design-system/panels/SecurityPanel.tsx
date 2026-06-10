@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSecurityEntities, type ArmTone } from './useSecurityEntities';
+import { useGarage } from '../entry/useGarage';
+import { useDoorbellRing } from '../entry/useDoorbellRing';
+import { GarageConfirmClose, GarageAlertStrip } from '../entry/GarageControls';
 import PanelShell from '../shell/PanelShell';
 import './securityPanel.css';
 
@@ -125,8 +128,17 @@ const LockIcon = () => (
 
 const SecurityPanel = () => {
   const s = useSecurityEntities();
+  // Live garage (cover[device_class=garage]) status + proactive alerts, and the
+  // live doorbell ring state — both display + notify/log only (feat/doorbell-garage).
+  const garage = useGarage();
+  const ring = useDoorbellRing();
   const [armHint, setArmHint] = useGatedHint();
   const [now, setNow] = useState(() => new Date());
+
+  // Match each contract access row to a live garage door (by id, else first one)
+  // so the Garage Door row reflects REAL cover state + the confirm-to-close gate.
+  const garageDoorFor = (rowId: string) =>
+    garage.doors.find((d) => d.id === rowId) ?? (garage.doors.length === 1 ? garage.doors[0] : undefined);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000);
@@ -268,10 +280,17 @@ const SecurityPanel = () => {
             <span className="secp-cam-sum-note">Protect via HA proxy</span>
           </div>
 
-          <div className="secp-doorbell">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-            <span className="secp-doorbell-label">{s.doorbell.label}</span>
-            <span className="secp-doorbell-meta">event.doorbell</span>
+          {/* Doorbell row — reflects LIVE ring state (feat/doorbell-garage). The
+              ring overlay is the global surface; this row mirrors it on the hub.
+              Ringing wins; else fall back to the demo binary_sensor read. */}
+          <div className={`secp-doorbell${ring.ringing ? ' secp-doorbell-ringing' : ''}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ring.ringing ? 'var(--accent-security)' : 'var(--text-secondary)'} strokeWidth="1.5" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+            <span className="secp-doorbell-label">
+              {ring.ringing
+                ? `Doorbell · Ringing now${ring.doorbellName ? ` · ${ring.doorbellName}` : ''}`
+                : s.doorbell.label}
+            </span>
+            <span className="secp-doorbell-meta">{ring.present ? (ring.doorbellId ?? 'event.doorbell') : 'event.doorbell'}</span>
           </div>
         </div>
 
@@ -282,20 +301,28 @@ const SecurityPanel = () => {
             <span className="secp-tag" title="UniFi Access not yet in contract">Surface 5a · Gap</span>
           </div>
 
-          {s.access.map((a) => (
+          {/* Proactive garage-open alerts (open-at-night / open-while-armed-away) —
+              calm, display/notify only. Renders nothing when no alert is active. */}
+          <GarageAlertStrip garage={garage} />
+
+          {s.access.map((a) => {
+            const gDoor = a.kind === 'cover' ? garageDoorFor(a.id) : undefined;
+            const coverOpen = gDoor ? gDoor.open : a.open;
+            const coverLabel = gDoor && gDoor.available ? gDoor.stateLabel : a.stateLabel;
+            return (
             <div className="secp-entry secp-proposed-row" key={a.id}>
               <div className="secp-entry-info">
                 <div className="secp-entry-name">{a.name}</div>
-                <div className="secp-entry-meta">{a.meta}</div>
+                <div className="secp-entry-meta">{gDoor ? `${gDoor.id} · confirm-to-close` : a.meta}</div>
               </div>
               {a.kind === 'cover' ? (
-                <div className={`secp-cover-btn${a.open ? ' secp-cover-open' : ''}`} title="Open/close is gated (display-only)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={a.open ? 'var(--sem-notready)' : 'var(--text-secondary)'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V8l9-5 9 5v13" /><path d="M3 13h18" /><path d="M3 17h18" /></svg>
-                  <span className="secp-cover-label">{a.stateLabel}</span>
-                  <div className="secp-cover-affordance">
-                    <svg className="secp-cover-chevron" width="11" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="3" strokeLinecap="round"><polyline points="6 15 12 9 18 15" /></svg>
-                    <svg className="secp-cover-chevron" width="11" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="3" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+                <div className="secp-cover-live">
+                  <div className={`secp-cover-state${coverOpen ? ' secp-cover-open' : ''}`} title="Live garage door state">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={coverOpen ? 'var(--sem-notready)' : 'var(--text-secondary)'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V8l9-5 9 5v13" /><path d="M3 13h18" /><path d="M3 17h18" /></svg>
+                    <span className="secp-cover-label">{coverLabel}</span>
                   </div>
+                  {/* Confirm-to-close — equipment gated, never auto-close, fires NOTHING. */}
+                  <GarageConfirmClose doorName={gDoor?.name ?? a.name} open={coverOpen} />
                 </div>
               ) : (
                 <div className={`secp-lock-btn${a.open ? ' secp-unlocked-state' : ' secp-locked-state'}`} title="Unlock is security + equipment gated (display-only)">
@@ -304,11 +331,12 @@ const SecurityPanel = () => {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           <div className="secp-access-note">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-            <span>Access locks &amp; garage cover are PROPOSED (Surface 5a). Unlock/open is security + equipment gated — read-only until ratified.</span>
+            <span>Locks are PROPOSED (Surface 5a) — unlock is security + equipment gated. The garage door shows LIVE cover state with confirm-to-close; close is equipment gated (never automatic, never on a person) and fires no actuation until ratified.</span>
           </div>
 
           {/* CLiC privacy glass — PROPOSED (HC-108), display-only toggles */}

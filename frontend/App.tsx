@@ -22,6 +22,7 @@ import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
 import LifeSafetyTakeover from './design-system/takeover/LifeSafetyTakeover';
 import { setTakeoverActive } from './design-system/takeover/takeoverSignal';
 import WeatherSafetyBanner from './design-system/weather-safety/WeatherSafetyBanner';
+import DoorbellRingOverlay from './design-system/entry/DoorbellRingOverlay';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -537,6 +538,23 @@ function App() {
                   AUTO-DETECTED generically; ZIP/location stays config, never
                   hardcoded. */}
               <WeatherSafetyBanner />
+              {/* DOORBELL RING (feat/doorbell-garage) — a NEW, EVEN-LOWER tier
+                  mounted as a sibling below the weather-safety banner, so a ring
+                  lands on EVERY panel. It is a calm, transient call card (NOT the
+                  red life-safety wash) and explicitly YIELDS to BOTH higher tiers:
+                  the projection forces it inactive while the alarm panel is
+                  `triggered` (life-safety) OR a freeze/storm is active
+                  (weather-safety), reading the SAME source entities those tiers
+                  read — and it ALSO subscribes to the takeover-active signal as a
+                  belt-and-suspenders yield. Precedence is life-safety > weather >
+                  ring, enforced from one source of truth. DISPLAY + NOTIFY/LOG
+                  ONLY — issues ZERO service calls: two-way talk is a UI placeholder
+                  (real audio needs hardware + go2rtc), and the gate/door release is
+                  the UniFi Access lock — equipment + security gated, confirm/PIN,
+                  no live actuation until Brent approves. Doorbell + camera are
+                  AUTO-DETECTED generically (no site id hardcoded); the camera is an
+                  honest poster / "feed unavailable" (UniFi Protect not in dev). */}
+              <DoorbellRingOverlay />
               <AppContent />
           </HashRouter>
         </SessionUnlockProvider>

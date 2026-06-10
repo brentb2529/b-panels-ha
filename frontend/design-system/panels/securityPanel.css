@@ -291,6 +291,17 @@ body.light-mode .secp-entry { border-bottom-color: rgba(0,0,0,0.07); }
 .secp-cover-affordance { display: flex; flex-direction: column; gap: 2px; margin-left: 2px; padding-left: 8px; border-left: 1px solid rgba(255,255,255,0.14); }
 .secp-cover-chevron { opacity: 0.6; }
 
+/* Live garage cover row (feat/doorbell-garage): state chip + confirm-to-close. */
+.secp-cover-live { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.secp-cover-state { display: flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 18px; }
+.secp-cover-state.secp-cover-open { background: rgba(var(--sem-notready-rgb),0.12); border: 1px solid rgba(var(--sem-notready-rgb),0.30); }
+.secp-cover-state .secp-cover-label { color: var(--sem-notready); }
+.secp-cover-state:not(.secp-cover-open) .secp-cover-label { color: var(--text-secondary); }
+
+/* Doorbell row — ring-active emphasis (indigo glow, never alarm red). */
+.secp-doorbell-ringing { background: rgba(var(--accent-security-rgb),0.14); border-color: rgba(var(--accent-security-rgb),0.40); }
+.secp-doorbell-ringing .secp-doorbell-label { color: var(--accent-security); font-weight: 600; }
+
 .secp-access-note { margin: 12px 0 0; padding: 10px 12px; background: rgba(var(--accent-security-rgb),0.10); border: 1px solid rgba(var(--accent-security-rgb),0.24); border-radius: 10px; font-size: 11px; color: rgba(140,154,232,0.90); display: flex; align-items: flex-start; gap: 7px; line-height: 1.35; }
 body.light-mode .secp-access-note { color: rgba(74,85,176,0.92); }
 

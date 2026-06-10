@@ -1,0 +1,220 @@
+/* =============================================================================
+ * Doorbell + Garage entry experience — entry.css (feat/doorbell-garage)
+ * -----------------------------------------------------------------------------
+ * ENTRY · DISPLAY + NOTIFY/LOG ONLY · NO LIVE ACTUATION.
+ *
+ * The doorbell RING overlay is a NEW, EVEN-LOWER tier — calm, transient, indigo
+ * (the Security identity accent), NEVER the red life-safety wash. Every selector
+ * is namespaced `dbr-*` and roots under `.dbr-scope`, so it never restyles the
+ * legacy dashboard, any panel, the shell, the weather banner, or the life-safety
+ * overlay. The garage confirm-to-close affordance is namespaced `gce-*` (used
+ * inside the Security panel + Home glance).
+ *
+ * z-index ordering (enforced once here, and again in the projection precedence):
+ *   life-safety overlay  2147483600   (red wash, top)
+ *   weather-safety        2147482000
+ *   DOORBELL RING         2147481000   (this surface — strictly below both)
+ *
+ * Accessibility: never color-alone (glyph + explicit WORD); honors
+ * prefers-reduced-motion.
+ * ===========================================================================*/
+
+.dbr-scope {
+  --dbr-bg: rgba(18, 20, 32, 0.95);
+  --dbr-border: rgba(120, 132, 210, 0.34);
+  --dbr-accent: var(--bp-accent-security, #5b6cc9);
+  --dbr-accent-rgb: var(--bp-accent-security-rgb, 91, 108, 201);
+  --dbr-text: #eef0f8;
+  --dbr-text-dim: rgba(238, 240, 248, 0.6);
+  position: fixed;
+  /* bottom-right corner — a transient call card, out of the way of banners */
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147481000;            /* < weather-safety (2147482000) < life-safety */
+  width: min(360px, calc(100vw - 28px));
+  pointer-events: none;            /* only the card catches clicks */
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.dbr-card {
+  pointer-events: auto;
+  background: var(--dbr-bg);
+  border: 1px solid var(--dbr-border);
+  border-left: 4px solid var(--dbr-accent);
+  border-radius: 18px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(var(--dbr-accent-rgb), 0.2);
+  backdrop-filter: blur(24px) saturate(135%);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  color: var(--dbr-text);
+  padding: 14px 14px 12px;
+  animation: dbr-rise 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes dbr-rise {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dbr-head { display: flex; align-items: flex-start; gap: 11px; }
+.dbr-bell {
+  flex-shrink: 0;
+  width: 42px; height: 42px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  color: var(--dbr-accent);
+  background: rgba(var(--dbr-accent-rgb), 0.16);
+  border: 1px solid rgba(var(--dbr-accent-rgb), 0.3);
+  animation: dbr-bell-swing 1.4s ease-in-out infinite;
+  transform-origin: top center;
+}
+@keyframes dbr-bell-swing {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-11deg); }
+  40% { transform: rotate(9deg); }
+  60% { transform: rotate(-6deg); }
+  80% { transform: rotate(3deg); }
+}
+.dbr-head-text { flex: 1; min-width: 0; }
+.dbr-kicker { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dbr-accent); font-weight: 600; }
+.dbr-title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin-top: 1px; }
+.dbr-time { font-size: 12px; color: var(--dbr-text-dim); margin-top: 1px; }
+.dbr-dismiss {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--dbr-text-dim); font-size: 20px; line-height: 1;
+  border-radius: 8px;
+}
+.dbr-dismiss:hover { background: rgba(255, 255, 255, 0.08); color: var(--dbr-text); }
+
+/* Camera — honest poster / "feed unavailable" */
+.dbr-cam {
+  margin-top: 11px;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(40, 44, 64, 0.9), rgba(22, 24, 38, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  position: relative;
+  display: grid; place-items: center;
+}
+.dbr-cam-empty { display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--dbr-text-dim); padding: 8px; text-align: center; }
+.dbr-cam-empty-label { font-size: 12.5px; font-weight: 500; color: rgba(238, 240, 248, 0.78); }
+.dbr-cam-empty-sub { font-size: 10px; color: var(--dbr-text-dim); }
+.dbr-cam-poster { width: 100%; height: 100%; position: relative; }
+.dbr-cam-live { background: linear-gradient(135deg, #2a3050, #1a1d2e); }
+.dbr-live-chip {
+  position: absolute; top: 8px; left: 8px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: #fff; background: rgba(0, 0, 0, 0.45);
+  padding: 3px 7px; border-radius: 6px;
+}
+.dbr-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; animation: dbr-pulse 1.6s infinite; }
+@keyframes dbr-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* Actions */
+.dbr-actions { display: flex; gap: 8px; margin-top: 11px; }
+.dbr-talk {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 1px;
+  padding: 9px 11px;
+  border-radius: 11px; cursor: pointer; text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--dbr-text);
+}
+.dbr-talk svg { color: var(--dbr-accent); }
+.dbr-talk-on { background: rgba(var(--dbr-accent-rgb), 0.2); border-color: rgba(var(--dbr-accent-rgb), 0.45); }
+.dbr-talk-lbl { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.dbr-talk-note { font-size: 9.5px; color: var(--dbr-text-dim); }
+
+.dbr-release { flex: 1.2; }
+.dbr-release-cta {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 11px;
+  border-radius: 11px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--dbr-text);
+}
+.dbr-release-cta svg { color: var(--dbr-text-dim); }
+.dbr-release-cta:hover { background: rgba(255, 255, 255, 0.09); }
+.dbr-release-confirm { display: flex; flex-direction: column; gap: 7px; padding: 9px; border-radius: 11px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); }
+.dbr-release-detail { font-size: 10.5px; line-height: 1.4; color: var(--dbr-text-dim); }
+.dbr-release-row { display: flex; gap: 6px; }
+.dbr-release-btn {
+  flex: 1; padding: 7px; border-radius: 8px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; border: none;
+  background: var(--dbr-accent); color: #fff;
+}
+.dbr-release-btn.ghost { background: rgba(255, 255, 255, 0.08); color: var(--dbr-text); }
+.dbr-release-note { display: flex; gap: 6px; align-items: flex-start; font-size: 10.5px; line-height: 1.4; color: var(--dbr-text-dim); padding: 8px; }
+.dbr-release-note svg { flex-shrink: 0; margin-top: 1px; color: var(--dbr-accent); }
+
+.dbr-foot {
+  margin-top: 10px;
+  display: flex; gap: 6px; align-items: flex-start;
+  font-size: 9.5px; line-height: 1.4;
+  color: var(--dbr-text-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 8px;
+}
+.dbr-foot svg { flex-shrink: 0; margin-top: 1px; color: var(--dbr-accent); }
+
+/* Light mode: the overlay floats over whatever panel is showing; keep it a dark
+ * glass card for contrast/legibility even in light mode (matches the wxs banner
+ * approach). Only soften the accent tint slightly. */
+.light-mode .dbr-scope { --dbr-accent: var(--bp-accent-security, #4a55b0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dbr-card { animation: none; }
+  .dbr-bell { animation: none; }
+  .dbr-live-dot { animation: none; }
+}
+
+/* =============================================================================
+ * Garage confirm-to-close affordance — `gce-*`
+ * Used inside the Security panel's Access row + the Home glance. Walks
+ * rest → confirm → noted in LOCAL state; the "Close" button fires NOTHING
+ * (ratgdo/Matter not in dev; equipment-gated → human-enable). Never auto-close.
+ * ===========================================================================*/
+.gce-confirm-wrap { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.gce-close-cta {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border-radius: 9px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-primary, #e8eaf2);
+}
+.gce-close-cta svg { color: var(--sem-notready, #e0a23c); }
+.gce-close-cta:hover { background: rgba(255, 255, 255, 0.1); }
+.gce-confirm { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; background: rgba(0, 0, 0, 0.22); border: 1px solid rgba(255, 255, 255, 0.12); max-width: 230px; }
+.gce-confirm-detail { font-size: 10px; line-height: 1.4; color: var(--text-secondary, rgba(232, 234, 242, 0.6)); }
+.gce-confirm-row { display: flex; gap: 6px; }
+.gce-btn { flex: 1; padding: 6px; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 600; border: none; background: var(--accent-security, #5b6cc9); color: #fff; }
+.gce-btn.ghost { background: rgba(255, 255, 255, 0.08); color: var(--text-primary, #e8eaf2); }
+.gce-noted { display: flex; gap: 5px; align-items: center; font-size: 10px; color: var(--text-secondary, rgba(232, 234, 242, 0.6)); }
+.gce-noted svg { flex-shrink: 0; color: var(--accent-security, #5b6cc9); }
+
+/* Proactive garage-open alert strip — calm amber caution (NOT alarm red). */
+.gce-alert-strip { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.gce-alert-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(224, 162, 60, 0.12);
+  border: 1px solid rgba(224, 162, 60, 0.34);
+  border-left: 3px solid #e0a23c;
+}
+.gce-alert-ico { color: #e0a23c; display: grid; place-items: center; flex-shrink: 0; }
+.gce-alert-text { flex: 1; font-size: 12px; font-weight: 500; color: var(--text-primary, #e8eaf2); }
+.gce-alert-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: #e0a23c; background: rgba(224, 162, 60, 0.16);
+  padding: 2px 7px; border-radius: 6px; flex-shrink: 0;
+}

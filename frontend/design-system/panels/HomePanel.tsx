@@ -4,6 +4,8 @@ import { useDashboard } from '../../hooks/useDashboard';
 import { useHomeEntities, SIGNATURE_SCENES, type SceneExperience } from './useHomeEntities';
 import PanelShell from '../shell/PanelShell';
 import { WeatherSafetyCard } from '../weather-safety/WeatherSafetyBanner';
+import { useGarage } from '../entry/useGarage';
+import { GarageAlertStrip } from '../entry/GarageControls';
 import HomeNewsTicker from './HomeNewsTicker';
 import './homePanel.css';
 
@@ -129,6 +131,9 @@ const greetingFor = (h: number) => (h < 12 ? 'Good morning' : h < 17 ? 'Good aft
 
 const HomePanel = () => {
   const h = useHomeEntities();
+  // Live garage roll-up for the Home glance (status + proactive alerts) —
+  // display/notify only (feat/doorbell-garage).
+  const garage = useGarage();
   const navigate = useNavigate();
   const { panels } = useDashboard();
   const [now, setNow] = useState(() => new Date());
@@ -278,6 +283,11 @@ const HomePanel = () => {
             actions stay equipment-mediated. ── */}
         <WeatherSafetyCard />
 
+        {/* ── Proactive garage-open alerts (open-at-night / open-while-armed-away)
+            — calm, display/notify only; renders nothing when no alert is active.
+            feat/doorbell-garage. ── */}
+        <GarageAlertStrip garage={garage} />
+
         {/* ── Area card grid ── */}
         <div className="hp-grid">
 
@@ -331,8 +341,11 @@ const HomePanel = () => {
               </div>
               <div className="hp-card-foot">
                 <div className="hp-foot-data">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" /></svg>
-                  {h.security.openContacts > 0 ? `${h.security.openContacts} open` : 'Perimeter secure'}
+                  {/* Garage glance — live cover state (display/notify only). */}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={garage.anyOpen ? 'var(--sem-notready)' : 'var(--text-secondary)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V8l9-5 9 5v13" /><path d="M3 13h18" /></svg>
+                  {!garage.present
+                    ? (h.security.openContacts > 0 ? `${h.security.openContacts} open` : 'Perimeter secure')
+                    : `Garage ${garage.summary.toLowerCase()}`}
                 </div>
                 <button className="hp-cta" onClick={() => open(/security|alarm/i)}>Open {chevron}</button>
               </div>
