@@ -37,7 +37,11 @@ const WebFrameTile = ({ device, tile, isEditor, cornerClassName }: { device: Dev
                         src={url}
                         onLoad={() => setIsLoaded(true)}
                         className="w-full h-full border-0 rounded-control absolute inset-0"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        /* M-3: keep the frame fully sandboxed. `allow-same-origin`
+                           is intentionally OMITTED — combined with allow-scripts it
+                           would let a same-origin framed page escape the sandbox.
+                           Arbitrary admin-configured external URLs do not need it. */
+                        sandbox="allow-scripts allow-forms"
                     />
                 ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-gray-300" style={{ background: 'radial-gradient(circle at 50% 45%, rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.7))' }}>

@@ -4,6 +4,7 @@ import { Device, TileConfig } from '../../types';
 import TileWrapper from './TileWrapper';
 import { IconRss, IconRefreshCw, IconAlertTriangle, IconX, IconArrowRight } from '../icons';
 import { apiFetchRssFeed } from '../../services/api';
+import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import { fluidIcon, fluidTextSm, fluidTextXs, fluidGap } from './tileScale';
 
 interface FeedItem {
@@ -95,10 +96,14 @@ const NewsModal = ({ item, onClose }: { item: FeedItem; onClose: () => void }) =
                 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 bg-gray-900 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800">
-                     <div 
+                     <div
                         ref={contentRef}
                         className="text-gray-300 space-y-4 leading-relaxed text-base"
-                        dangerouslySetInnerHTML={{ __html: item.description || '<p class="italic text-gray-500">No preview available. Click "Read full story" to view.</p>' }} 
+                        /* M-2: sanitize the untrusted feed HTML before injecting.
+                           A hostile/compromised feed can otherwise run script in
+                           the panel origin (same-origin with HA) and exfiltrate
+                           the kiosk LLAT from localStorage. */
+                        dangerouslySetInnerHTML={{ __html: item.description ? sanitizeHtml(item.description) : '<p class="italic text-gray-500">No preview available. Click "Read full story" to view.</p>' }}
                      />
                      
                      <div className="mt-8 pt-6 border-t border-gray-700">
@@ -196,8 +201,10 @@ const RSSFeedTile = ({ device, tile, isEditor, cornerClassName }: { device: Devi
           if (contentEncoded) description = contentEncoded;
           else if (!description && summary) description = summary;
 
-          // Basic HTML cleanup (optional, browser DOMParser helps sanitization naturally when setting innerHTML but scripts can persist)
-          // Note: For this dashboard, we assume trusted feeds.
+          // The raw description HTML is UNTRUSTED (the feed is admin-configured
+          // but a feed can be compromised). It is sanitized at render time via
+          // sanitizeHtml() before dangerouslySetInnerHTML — see the NewsModal
+          // body below (M-2). Do not inject item.description raw anywhere.
 
           if (title && link) {
             feedItems.push({ title, link, pubDate, description });

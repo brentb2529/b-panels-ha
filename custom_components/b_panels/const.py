@@ -17,9 +17,29 @@ FRONTEND_INDEX = f"{FRONTEND_URL_BASE}/index.html"
 STORAGE_KEY = "b_panels.dashboard_config"
 STORAGE_VERSION = 1
 
+# --- Kiosk endpoint hardening (H-2) ------------------------------------------
+# The four LAN kiosk endpoints (idle_config/heartbeat/screenshot/command_channel)
+# carry no HA session, so they are gated by a per-install KIOSK TOKEN instead of
+# HA auth. The token is generated once and stored in the config entry's `data`
+# (NOT in the dashboard config blob, so it never leaks via the open config/get).
+# The native iPad app provisions it exactly like the LLAT — as a header
+# (`X-BPanels-Kiosk-Token`) or a query param (`?kiosk_token=`).
+CONF_KIOSK_TOKEN = "kiosk_token"
+KIOSK_TOKEN_HEADER = "X-BPanels-Kiosk-Token"
+KIOSK_TOKEN_QUERY = "kiosk_token"
+# Heartbeat body cap (H-2): heartbeats are tiny status JSON; reject anything that
+# isn't, to bound memory + event-bus abuse from an unauthenticated LAN client.
+HEARTBEAT_MAX_BYTES = 64_000
+# Bound the in-memory maps an unauthenticated client can grow.
+MAX_TRACKED_PANELS = 256
+
 # Websocket command types used by the SPA (services/haClient.ts).
 WS_CONFIG_GET = "b_panels/config/get"
 WS_CONFIG_SAVE = "b_panels/config/save"
+# Returns the provisioning info (kiosk token + endpoint hints) so an ADMIN can
+# provision the native iPad kiosk app. Admin-gated (never readable by the kiosk
+# LLAT / non-admin session).
+WS_KIOSK_INFO = "b_panels/kiosk/info"
 # Server-side RSS/Atom fetch proxy (CORS-safe; SSRF-guarded) for the News tile.
 WS_RSS = "b_panels/rss"
 # Server-side JSON fetch proxy for the Generator tile. Unlike WS_RSS this

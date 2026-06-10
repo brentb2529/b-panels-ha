@@ -34,10 +34,15 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_KIOSK_TOKEN,
     DOMAIN,
     FRONTEND_DIR,
     FRONTEND_INDEX,
     FRONTEND_URL_BASE,
+    HEARTBEAT_MAX_BYTES,
+    KIOSK_TOKEN_HEADER,
+    KIOSK_TOKEN_QUERY,
+    MAX_TRACKED_PANELS,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL_PATH,
@@ -46,9 +51,15 @@ from .const import (
     WS_CONFIG_GET,
     WS_CONFIG_SAVE,
     WS_GENERATOR,
+    WS_KIOSK_INFO,
     WS_RSS,
 )
 from .gating import enforce_equipment_gating, strip_secret_keys
+from .kiosk_auth import (
+    extract_presented_token,
+    generate_kiosk_token,
+    token_ok,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,9 +72,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_save_config)
     websocket_api.async_register_command(hass, websocket_rss)
     websocket_api.async_register_command(hass, websocket_generator)
+    websocket_api.async_register_command(hass, websocket_kiosk_info)
     # HTTP endpoints the native iPad kiosk app uses (it has no HA token, so these
-    # are unauthenticated and carry only non-sensitive data). These replace the
-    # old Node api-server the kiosk used to talk to:
+    # are gated by a per-install KIOSK TOKEN — H-2 — instead of HA auth, and
+    # carry only non-sensitive data). These replace the old Node api-server the
+    # kiosk used to talk to:
     #   GET  /api/b_panels/idle_config              — per-panel idle/kiosk settings
     #   POST /api/b_panels/heartbeat                — panel "online" reporting
     #   GET  /api/b_panels/command_channel  (WS)    — receives push commands
@@ -86,6 +99,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def _get_kiosk_token(hass: HomeAssistant) -> str | None:
+    """Return the provisioned kiosk token (from hass.data), or None."""
+    return hass.data.get(DOMAIN, {}).get(CONF_KIOSK_TOKEN)
+
+
+def _kiosk_authorized(hass: HomeAssistant, request: web.Request) -> bool:
+    """True iff the request presents the correct kiosk token (H-2).
+
+    Token is read from the `X-BPanels-Kiosk-Token` header or the `kiosk_token`
+    query param. Fail-closed: rejects when no token is provisioned or none is
+    presented. This authenticates the LAN kiosk caller; it grants no actuation.
+    """
+    presented = extract_presented_token(
+        request.headers,
+        request.query,
+        header_name=KIOSK_TOKEN_HEADER,
+        query_name=KIOSK_TOKEN_QUERY,
+    )
+    return token_ok(_get_kiosk_token(hass), presented)
+
+
 class BPanelsIdleConfigView(HomeAssistantView):
     """Serve per-panel idle/kiosk config for the native iPad app (HA-only).
 
@@ -101,6 +135,8 @@ class BPanelsIdleConfigView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
+        if not _kiosk_authorized(hass, request):
+            return self.json({"error": "unauthorized"}, status_code=401)
         store: Store | None = hass.data.get(DOMAIN, {}).get("store")
         data = await store.async_load() if store else None
         panels = []
@@ -134,15 +170,40 @@ class BPanelsHeartbeatView(HomeAssistantView):
 
     async def post(self, request: web.Request) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
+        if not _kiosk_authorized(hass, request):
+            return self.json({"error": "unauthorized"}, status_code=401)
+        # H-2: cap the body. A heartbeat is tiny status JSON; reject anything
+        # larger so an unauthenticated-then-tokened client still can't spray
+        # huge payloads onto the event bus / into hass.data.
+        if request.content_length and request.content_length > HEARTBEAT_MAX_BYTES:
+            return self.json({"ok": False, "error": "too_large"}, status_code=413)
         try:
-            body = await request.json()
+            raw = await request.read()
         except Exception:  # noqa: BLE001
+            raw = b""
+        if len(raw) > HEARTBEAT_MAX_BYTES:
+            return self.json({"ok": False, "error": "too_large"}, status_code=413)
+        try:
+            body = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
             body = {}
         if not isinstance(body, dict):
             body = {}
         iid = str(body.get("installationId") or "unknown")
-        record = {**body, "lastSeen": dt_util.utcnow().isoformat()}
-        hass.data.setdefault(DOMAIN, {}).setdefault("heartbeats", {})[iid] = record
+        # H-2: bound what we store — only a small, known set of status fields,
+        # never the attacker's whole arbitrary JSON, and cap the number of
+        # tracked installations.
+        record = {
+            "installationId": iid,
+            "online": bool(body.get("online", True)),
+            "battery": body.get("battery"),
+            "version": str(body.get("version"))[:64] if body.get("version") is not None else None,
+            "lastSeen": dt_util.utcnow().isoformat(),
+        }
+        beats: dict = hass.data.setdefault(DOMAIN, {}).setdefault("heartbeats", {})
+        if iid not in beats and len(beats) >= MAX_TRACKED_PANELS:
+            return self.json({"ok": False, "error": "too_many_panels"}, status_code=429)
+        beats[iid] = record
         hass.bus.async_fire("b_panels_heartbeat", record)
         return self.json({"ok": True})
 
@@ -161,6 +222,8 @@ class BPanelsScreenshotView(HomeAssistantView):
 
     async def post(self, request: web.Request, installation_id: str) -> web.Response:
         hass: HomeAssistant = request.app["hass"]
+        if not _kiosk_authorized(hass, request):
+            return self.json({"error": "unauthorized"}, status_code=401)
         # Cap the upload (~6 MB of base64) so a rogue client can't exhaust memory.
         if request.content_length and request.content_length > 6_000_000:
             return self.json({"ok": False, "error": "too_large"}, status_code=413)
@@ -175,7 +238,10 @@ class BPanelsScreenshotView(HomeAssistantView):
             "contentType": body.get("contentType", "image/jpeg"),
             "ts": dt_util.utcnow().isoformat(),
         }
-        hass.data.setdefault(DOMAIN, {}).setdefault("screenshots", {})[installation_id] = record
+        shots: dict = hass.data.setdefault(DOMAIN, {}).setdefault("screenshots", {})
+        if installation_id not in shots and len(shots) >= MAX_TRACKED_PANELS:
+            return self.json({"ok": False, "error": "too_many_panels"}, status_code=429)
+        shots[installation_id] = record
         hass.bus.async_fire("b_panels_screenshot", {"installation_id": installation_id, "ts": record["ts"]})
         return self.json({"ok": True})
 
@@ -197,6 +263,10 @@ class BPanelsCommandChannelView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.StreamResponse:
         hass: HomeAssistant = request.app["hass"]
+        # H-2: gate the WS upgrade itself with the kiosk token. Without it any
+        # LAN client could open the socket and hijack a panel's command channel.
+        if not _kiosk_authorized(hass, request):
+            return self.json({"error": "unauthorized"}, status_code=401)
         ws = web.WebSocketResponse(heartbeat=30)
         await ws.prepare(request)
         panels: dict = hass.data.setdefault(DOMAIN, {}).setdefault("command_panels", {})
@@ -213,9 +283,35 @@ class BPanelsCommandChannelView(HomeAssistantView):
                     continue
                 if isinstance(data, dict) and data.get("type") == "register":
                     new_iid = str(data.get("installationId") or "")
-                    if new_iid:
-                        iid = new_iid
-                        panels[iid] = ws  # last registration for an id wins
+                    if not new_iid:
+                        continue
+                    # H-2 anti-hijack: do NOT let a new socket steal an id that a
+                    # different live socket already holds ("last registration
+                    # wins" let a LAN client intercept another panel's commands).
+                    # A panel can re-register its OWN socket (idempotent) or claim
+                    # an id whose previous socket is gone; it cannot displace a
+                    # live one. The token already authenticates the caller; this
+                    # is defence-in-depth against id collision/intercept.
+                    existing = panels.get(new_iid)
+                    if existing is not None and existing is not ws and not existing.closed:
+                        _LOGGER.warning(
+                            "b_panels command_channel: rejecting re-registration of "
+                            "installationId %r — already held by a live socket",
+                            new_iid,
+                        )
+                        try:
+                            await ws.send_str(
+                                json.dumps(
+                                    {"type": "register-rejected", "reason": "id_in_use"}
+                                )
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        continue
+                    if len(panels) >= MAX_TRACKED_PANELS and new_iid not in panels:
+                        continue
+                    iid = new_iid
+                    panels[iid] = ws
         finally:
             if iid and panels.get(iid) is ws:
                 panels.pop(iid, None)
@@ -363,6 +459,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     hass.data.setdefault(DOMAIN, {})["store"] = store
 
+    # H-2: provision the per-install kiosk token. Generate once and persist into
+    # the config entry `data` (NOT the dashboard config blob, so the open
+    # config/get can never leak it). The native iPad app provisions it the same
+    # way it provisions the LLAT (header or `?kiosk_token=`). Migration is
+    # transparent: an existing install with no token gets one minted here on the
+    # next start, and the admin re-provisions the kiosk from b_panels/kiosk/info.
+    token = entry.data.get(CONF_KIOSK_TOKEN)
+    if not token:
+        token = generate_kiosk_token()
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_KIOSK_TOKEN: token}
+        )
+        _LOGGER.warning(
+            "B-Panels: provisioned a new kiosk token. The four LAN kiosk "
+            "endpoints (idle_config/heartbeat/screenshot/command_channel) now "
+            "REQUIRE it. Provision the native iPad app with this token (header "
+            "%s or ?%s=). Retrieve it via the admin-only b_panels/kiosk/info "
+            "websocket command.",
+            KIOSK_TOKEN_HEADER,
+            KIOSK_TOKEN_QUERY,
+        )
+    hass.data[DOMAIN][CONF_KIOSK_TOKEN] = token
+
     frontend_path = os.path.join(os.path.dirname(__file__), FRONTEND_DIR)
     if not os.path.isfile(os.path.join(frontend_path, "index.html")):
         # Built assets ship inside HACS release zips. A source checkout without
@@ -428,6 +547,31 @@ async def websocket_get_config(
     store: Store | None = hass.data.get(DOMAIN, {}).get("store")
     data = await store.async_load() if store else None
     connection.send_result(msg["id"], data)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): WS_KIOSK_INFO})
+@websocket_api.async_response
+async def websocket_kiosk_info(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Return the kiosk provisioning token + hints. ADMIN-ONLY (H-2).
+
+    The native iPad app is provisioned with this token (header
+    `X-BPanels-Kiosk-Token` or `?kiosk_token=`) so it can keep calling the four
+    LAN kiosk endpoints. Admin-gated so the kiosk's own (non-admin) session can
+    never read it back.
+    """
+    connection.send_result(
+        msg["id"],
+        {
+            "token": _get_kiosk_token(hass),
+            "header": KIOSK_TOKEN_HEADER,
+            "query_param": KIOSK_TOKEN_QUERY,
+        },
+    )
 
 
 @websocket_api.require_admin
