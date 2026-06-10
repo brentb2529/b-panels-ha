@@ -1022,10 +1022,13 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
     // domain (and thus the auto-suggested tile type) comes straight from the id.
     // Returns `undefined` when nothing in the catalog matches, leaving the add
     // on the legacy inferred path. Pure / no side effects.
-    const bindingForDevice = (deviceId: string): { tileType?: string, entityId?: string } | undefined => {
+    const bindingForDevice = (deviceId: string): { tileType?: string, entityId?: string, label?: string } | undefined => {
         const suggestion = suggestTileType(deviceId);
         if (!suggestion) return undefined;
-        return { tileType: suggestion.key, entityId: deviceId };
+        // Inc 1 label fix: seed the new tile's label with the entity's friendly
+        // name so it isn't nameless on the grid.
+        const label = devices.find(d => d.id === deviceId)?.name;
+        return { tileType: suggestion.key, entityId: deviceId, label };
     };
 
     // Slice 0 — click-to-add an entity from the browser. Shows the
@@ -1039,7 +1042,7 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                 `Bound to entity: ${device.id}`,
             );
             if (!ok) return;
-            addTileToPanel(panelId, device.id, undefined, { tileType: suggestion.key, entityId: device.id });
+            addTileToPanel(panelId, device.id, undefined, { tileType: suggestion.key, entityId: device.id, label: device.name });
         } else {
             // No catalog match — fall back to the legacy inferred add.
             addTileToPanel(panelId, device.id, undefined);

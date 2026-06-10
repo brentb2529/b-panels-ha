@@ -940,7 +940,7 @@ interface DashboardContextType {
   updatePanelHighlights: (panelId: string, highlights: HighlightSectionConfig[]) => void;
   updatePanelConfig: (panelId: string, updates: Partial<Omit<DashboardPanel, 'id'>>) => void;
   updateTileConfig: (panelId: string, tileId: string, newConfig: Partial<Omit<TileConfig, 'id' | 'deviceId'>>) => void;
-  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string }) => void;
+  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string }) => void;
   removeTileFromPanel: (panelId: string, tileId: string) => void;
   addHighlightToPanel: (panelId: string) => void;
   removeHighlightFromPanel: (panelId: string, highlightId: string) => void;
@@ -3351,7 +3351,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }));
   }, []);
 
-  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string }) => {
+  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string, label?: string }) => {
       setConfig(currentConfig => produce(currentConfig, draft => {
           const panel = draft.panels.find(p => p.id === panelId);
           if (panel) {
@@ -3400,6 +3400,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
               // behave exactly as before.
               if (binding?.tileType !== undefined) newTile.tileType = binding.tileType;
               if (binding?.entityId !== undefined) newTile.entityId = binding.entityId;
+              // Slice-0 fix (Inc 1): default the tile's label to the entity's
+              // friendly name on add so new tiles aren't nameless. Only sets a
+              // non-empty label; the inspector can still override/clear it.
+              if (binding?.label) newTile.label = binding.label;
               panel.tiles.push(newTile);
           }
       }));

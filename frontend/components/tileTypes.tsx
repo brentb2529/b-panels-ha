@@ -1,6 +1,13 @@
 import type { TileComponent } from './tileRegistry';
-import SwitchTile from './tiles/SwitchTile';
-import DimmerTile from './tiles/DimmerTile';
+// Design-system increment 1: the catalog now serves the NEW liquid-glass tiles
+// (cool palette + glass material + Cormorant/DM Sans type) for these LOCKED
+// domains. The legacy tiles still exist and remain the inferred/fallback path
+// for tiles WITHOUT a `tileType`; only the admin-chosen (explicit) path renders
+// the glass versions.
+import GlassSwitchTile from '../design-system/tiles/GlassSwitchTile';
+import GlassDimmerTile from '../design-system/tiles/GlassDimmerTile';
+import GlassSceneTile from '../design-system/tiles/GlassSceneTile';
+import GlassSensorTile from '../design-system/tiles/GlassSensorTile';
 
 // ---------------------------------------------------------------------------
 // Tile-type catalog (Admin / config-flow — Vertical Slice 0)
@@ -67,6 +74,8 @@ export interface TileTypeDefinition {
 }
 
 // The catalog, keyed by `tileType`. Order matters only for picker display.
+// Every entry here renders the liquid-glass design-language component; all are
+// LOCKED display/control bindings (no equipment-gated entries in this increment).
 export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
   switch: {
     key: 'switch',
@@ -75,16 +84,34 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     acceptsDomains: ['switch', 'input_boolean'],
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
-    component: SwitchTile,
+    component: GlassSwitchTile,
   },
   dimmer: {
     key: 'dimmer',
     label: 'Dimmer',
-    description: 'Brightness control for a dimmable light.',
+    description: 'Brightness + on/off control for a dimmable light.',
     acceptsDomains: ['light'],
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
-    component: DimmerTile,
+    component: GlassDimmerTile,
+  },
+  scene: {
+    key: 'scene',
+    label: 'Scene',
+    description: 'Activate a scene (scene.turn_on). Shows last-activated time; no fake active state.',
+    acceptsDomains: ['scene'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassSceneTile,
+  },
+  sensor: {
+    key: 'sensor',
+    label: 'Sensor',
+    description: 'Read-only value readout (tabular figures, em-dash on unavailable).',
+    acceptsDomains: ['sensor', 'input_number', 'number'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassSensorTile,
   },
 };
 

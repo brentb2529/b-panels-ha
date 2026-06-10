@@ -1,0 +1,337 @@
+/* =============================================================================
+ * b-panels Liquid-Glass Design System — tokens.css
+ * -----------------------------------------------------------------------------
+ * The LOCKED "cool" luxury design language (2026-06-09, gate-vetted), extracted
+ * from the exemplar HTML in daily/2026-06-09/design-direction/ (DESIGN_DIRECTION
+ * + PALETTE_COOL). This file is the single source of truth for the cool palette,
+ * glass material, typography and motion grammar used by the NEW design-language
+ * tiles.
+ *
+ * SCOPING — non-breaking by construction:
+ *   Every token and helper class below is scoped under `.bp-glass-scope`. The
+ *   new tiles wrap their root in this class (via <GlassCard>), so the legacy
+ *   22 tiles — which never carry the class — are NOT restyled. The variables
+ *   live on the scope element, NOT on :root, so they cannot leak onto the
+ *   existing index.html `:root` / `.light-mode` token set.
+ *
+ *   Dark is the default. The cool LIGHT theme activates when the scope is inside
+ *   `body.light-mode` (the app's existing theme switch in App.tsx), so the new
+ *   tiles follow the same dark/light toggle as the rest of the dashboard with no
+ *   extra wiring.
+ * ===========================================================================*/
+
+/* ---- DARK (primary — iPad kiosk default) ------------------------------------ */
+.bp-glass-scope {
+  /* Canvas (used by tiles that paint their own ground; the dashboard canvas is
+     unchanged — these are for in-tile gradients/photographic washes). */
+  --bp-bg-canvas: #09090f;
+
+  /* Glass material surfaces */
+  --bp-surface-glass: rgba(255, 255, 255, 0.07);
+  --bp-surface-glass-raised: rgba(255, 255, 255, 0.11);
+  --bp-glass-border: rgba(255, 255, 255, 0.12);
+  --bp-glass-border-bright: rgba(255, 255, 255, 0.22);
+
+  /* Text */
+  --bp-text-primary: #f2f0eb;            /* warm white — not pure #FFF */
+  --bp-text-secondary: rgba(242, 240, 235, 0.55);
+  --bp-text-dim: rgba(242, 240, 235, 0.30);
+
+  /* LOCKED cool area-accent family (PALETTE_COOL ★) — both hex and rgb triplet
+     so callers can build rgba()/glow with arbitrary alpha. */
+  --bp-accent-pool: #3ab5d4;        --bp-accent-pool-rgb: 58, 181, 212;     /* cerulean */
+  --bp-accent-climate: #7a9bbf;     --bp-accent-climate-rgb: 122, 155, 191; /* slate-blue */
+  --bp-accent-security: #5b6cc9;    --bp-accent-security-rgb: 91, 108, 201; /* indigo */
+  --bp-accent-lights: #c7d2da;      --bp-accent-lights-rgb: 199, 210, 218;  /* platinum/pearl */
+
+  /* State semantics (locked v1.2.1 + life-safety) */
+  --bp-positive: #5dc98a;           --bp-positive-rgb: 93, 201, 138;
+  --bp-warning: #e5a040;            --bp-warning-rgb: 229, 160, 64;
+  --bp-critical: #e5484d;           --bp-critical-rgb: 229, 72, 77;   /* fire red */
+  --bp-co: #d62333;                 --bp-co-rgb: 214, 35, 51;
+  --bp-notready: #7e8ce8;           --bp-notready-rgb: 126, 140, 232; /* periwinkle */
+  /* The ONE allowed warm pixel — dormant HVAC heat state chip, never ambiance. */
+  --bp-accent-heat: #e0683c;        --bp-accent-heat-rgb: 224, 104, 60;
+
+  /* Default tile accent (overridable per-tile via --bp-accent / --bp-accent-rgb) */
+  --bp-accent: var(--bp-accent-lights);
+  --bp-accent-rgb: var(--bp-accent-lights-rgb);
+
+  /* Shape */
+  --bp-radius-card: 20px;
+  --bp-radius-control: 13px;
+  --bp-radius-pill: 14px;
+
+  /* Type families */
+  --bp-font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --bp-font-data: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Motion */
+  --bp-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --bp-ease-out: ease-out;
+
+  font-family: var(--bp-font-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--bp-text-primary);
+}
+
+/* ---- LIGHT (first-class cool light theme) ----------------------------------- */
+/* Mirrors the cool light exemplars (DESIGN_DIRECTION light table + PALETTE_COOL
+   light column). Darker accents for contrast on the off-white ground. */
+body.light-mode .bp-glass-scope {
+  --bp-bg-canvas: #eef1f5;
+  --bp-surface-glass: rgba(255, 255, 255, 0.72);
+  --bp-surface-glass-raised: rgba(255, 255, 255, 0.86);
+  --bp-glass-border: rgba(0, 0, 0, 0.08);
+  --bp-glass-border-bright: rgba(0, 0, 0, 0.18);
+
+  --bp-text-primary: #121218;
+  --bp-text-secondary: rgba(18, 18, 24, 0.55);
+  --bp-text-dim: rgba(18, 18, 24, 0.32);
+
+  --bp-accent-pool: #1a8fb0;        --bp-accent-pool-rgb: 26, 143, 176;
+  --bp-accent-climate: #4a78a8;     --bp-accent-climate-rgb: 74, 120, 168;
+  --bp-accent-security: #4a55b0;    --bp-accent-security-rgb: 74, 85, 176;
+  --bp-accent-lights: #6e7c88;      --bp-accent-lights-rgb: 110, 124, 136;  /* slate-pewter */
+
+  --bp-positive: #2f9c66;           --bp-positive-rgb: 47, 156, 102;
+  --bp-warning: #b06b1a;            --bp-warning-rgb: 176, 107, 26;
+  --bp-notready: #5566c8;           --bp-notready-rgb: 85, 102, 200;
+  --bp-accent-heat: #c5562b;        --bp-accent-heat-rgb: 197, 86, 43;
+
+  --bp-accent: var(--bp-accent-lights);
+  --bp-accent-rgb: var(--bp-accent-lights-rgb);
+}
+
+/* =============================================================================
+ * Glass material
+ * ===========================================================================*/
+.bp-glass-card {
+  position: relative;
+  background: var(--bp-surface-glass);
+  border: 1px solid var(--bp-glass-border);
+  border-radius: var(--bp-radius-card);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,   /* top-edge highlight */
+    0 24px 48px rgba(0, 0, 0, 0.45),           /* depth shadow */
+    0 4px 12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  transition:
+    transform 160ms var(--bp-ease-out),
+    box-shadow 160ms var(--bp-ease-out),
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+
+/* In light mode the heavy black depth shadow reads as dirt — soften it. */
+body.light-mode .bp-glass-card {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 18px 38px rgba(31, 45, 61, 0.16),
+    0 3px 10px rgba(31, 45, 61, 0.10);
+}
+
+/* Active / selected state: accent rim + soft accent glow (DESIGN_DIRECTION
+   "Area Accent Glow"). Driven by the per-tile --bp-accent-rgb. */
+.bp-glass-card.is-active {
+  border-color: rgba(var(--bp-accent-rgb), 0.55);
+  background: var(--bp-surface-glass-raised);
+  box-shadow:
+    0 0 0 1px rgba(var(--bp-accent-rgb), 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 8px 32px rgba(var(--bp-accent-rgb), 0.18),
+    0 24px 48px rgba(0, 0, 0, 0.45);
+}
+body.light-mode .bp-glass-card.is-active {
+  box-shadow:
+    0 0 0 1px rgba(var(--bp-accent-rgb), 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 8px 28px rgba(var(--bp-accent-rgb), 0.20),
+    0 16px 36px rgba(31, 45, 61, 0.14);
+}
+
+/* Interactive feedback (motion grammar): hover lift, press snap. */
+.bp-glass-card.is-interactive {
+  cursor: pointer;
+}
+.bp-glass-card.is-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 30px 56px rgba(0, 0, 0, 0.50),
+    0 6px 16px rgba(0, 0, 0, 0.30);
+}
+.bp-glass-card.is-interactive.is-active:hover {
+  box-shadow:
+    0 0 0 1px rgba(var(--bp-accent-rgb), 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.10) inset,
+    0 12px 40px rgba(var(--bp-accent-rgb), 0.24),
+    0 30px 56px rgba(0, 0, 0, 0.50);
+}
+.bp-glass-card.is-interactive:active {
+  transform: scale(0.975);
+  transition: transform 80ms ease-in;
+}
+
+/* Unavailable: desaturated + dimmed (the em-dash readout lives in the tile). */
+.bp-glass-card.is-unavailable {
+  filter: grayscale(0.9);
+  opacity: 0.6;
+}
+
+/* =============================================================================
+ * Typography helpers
+ * ===========================================================================*/
+.bp-display       { font-family: var(--bp-font-display); font-weight: 300; letter-spacing: -0.02em; }
+.bp-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--bp-text-dim); }
+.bp-card-title    { font-family: var(--bp-font-data); font-weight: 500; letter-spacing: -0.01em; color: var(--bp-text-primary); }
+.bp-readout       { font-family: var(--bp-font-data); font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--bp-text-primary); }
+.bp-meta          { font-family: var(--bp-font-data); font-weight: 300; color: var(--bp-text-secondary); }
+.bp-num           { font-variant-numeric: tabular-nums; }
+
+/* =============================================================================
+ * Controls — glass toggle (DESIGN_DIRECTION "Toggle") + dimmer track
+ * ===========================================================================*/
+.bp-toggle {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border-radius: 15px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--bp-glass-border);
+  transition: background-color 200ms var(--bp-ease-spring), box-shadow 200ms ease;
+  cursor: pointer;
+}
+.bp-toggle.is-on {
+  background: rgba(var(--bp-accent-rgb), 0.85);
+  box-shadow: 0 0 12px rgba(var(--bp-accent-rgb), 0.45);
+  border-color: rgba(var(--bp-accent-rgb), 0.9);
+}
+.bp-toggle .bp-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 200ms var(--bp-ease-spring);
+}
+.bp-toggle.is-on .bp-toggle-thumb {
+  transform: translateX(22px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 8px rgba(var(--bp-accent-rgb), 0.6);
+}
+
+.bp-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.13);
+  overflow: hidden;
+}
+body.light-mode .bp-track { background: rgba(18, 18, 24, 0.10); }
+.bp-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(var(--bp-accent-rgb), 0.65), rgba(var(--bp-accent-rgb), 1));
+  transition: width 200ms var(--bp-ease-out);
+}
+/* Native range overlaid transparently on the track for touch drag. */
+.bp-range {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.bp-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 6px rgba(var(--bp-accent-rgb), 0.5);
+  cursor: pointer;
+}
+.bp-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+/* Scene pill (DESIGN_DIRECTION "Scene Pill") */
+.bp-scene-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 10px;
+  border-radius: var(--bp-radius-control);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  text-align: center;
+  cursor: pointer;
+  transition: transform 80ms ease-in, background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+body.light-mode .bp-scene-pill {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.bp-scene-pill:hover { background: rgba(255, 255, 255, 0.09); }
+.bp-scene-pill:active { transform: scale(0.97); }
+.bp-scene-pill.just-fired {
+  background: rgba(var(--bp-accent-rgb), 0.20);
+  border-color: rgba(var(--bp-accent-rgb), 1);
+  box-shadow: 0 0 18px rgba(var(--bp-accent-rgb), 0.24), 0 0 0 1px rgba(var(--bp-accent-rgb), 0.30);
+}
+
+/* =============================================================================
+ * Motion — page-load stagger + status dot pulse
+ * ===========================================================================*/
+@keyframes bp-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+.bp-glass-card.bp-fade-in {
+  animation: bp-fade-up 280ms var(--bp-ease-spring) both;
+}
+
+@keyframes bp-pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.15); opacity: 0.65; }
+}
+.bp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(var(--bp-accent-rgb), 1);
+}
+.bp-status-dot.is-pulsing {
+  animation: bp-pulse-dot 3s ease-in-out infinite;
+}
+
+/* Honor reduced-motion (mirrors index.html). */
+@media (prefers-reduced-motion: reduce) {
+  .bp-glass-card, .bp-glass-card.bp-fade-in, .bp-status-dot.is-pulsing,
+  .bp-toggle, .bp-toggle-thumb, .bp-scene-pill {
+    animation: none !important;
+    transition-duration: 0.001ms !important;
+  }
+}

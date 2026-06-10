@@ -8,6 +8,10 @@ import {
 } from './tileTypes';
 import SwitchTile from './tiles/SwitchTile';
 import DimmerTile from './tiles/DimmerTile';
+import GlassSwitchTile from '../design-system/tiles/GlassSwitchTile';
+import GlassDimmerTile from '../design-system/tiles/GlassDimmerTile';
+import GlassSceneTile from '../design-system/tiles/GlassSceneTile';
+import GlassSensorTile from '../design-system/tiles/GlassSensorTile';
 import { Device, DeviceType, DeviceService, TileConfig } from '../types';
 
 // Minimal real Device fixtures. `id === entity_id` for HA-sourced devices.
@@ -25,14 +29,23 @@ function tile(overrides: Partial<TileConfig>): TileConfig {
   return { id: 'tile-test', deviceId: overrides.deviceId ?? 'switch.test', ...overrides };
 }
 
-describe('tileTypes catalog (Slice 0)', () => {
-  it('registers exactly the two Slice-0 entries wrapping existing tiles', () => {
-    expect(Object.keys(tileTypeCatalog).sort()).toEqual(['dimmer', 'switch']);
-    expect(tileTypeCatalog.switch.component).toBe(SwitchTile);
-    expect(tileTypeCatalog.dimmer.component).toBe(DimmerTile);
+describe('tileTypes catalog (design-system Inc 1)', () => {
+  it('serves the liquid-glass starter set for the LOCKED domains', () => {
+    expect(Object.keys(tileTypeCatalog).sort()).toEqual(['dimmer', 'scene', 'sensor', 'switch']);
+    expect(tileTypeCatalog.switch.component).toBe(GlassSwitchTile);
+    expect(tileTypeCatalog.dimmer.component).toBe(GlassDimmerTile);
+    expect(tileTypeCatalog.scene.component).toBe(GlassSceneTile);
+    expect(tileTypeCatalog.sensor.component).toBe(GlassSensorTile);
   });
 
-  it('carries the Stage-1 fields and marks Slice-0 entries non-gated/LOCKED', () => {
+  it('no longer points the catalog at the legacy tile components', () => {
+    // The legacy tiles still exist (inferred/fallback path) but the explicit
+    // admin-chosen catalog now renders the glass versions.
+    expect(tileTypeCatalog.switch.component).not.toBe(SwitchTile);
+    expect(tileTypeCatalog.dimmer.component).not.toBe(DimmerTile);
+  });
+
+  it('keeps every entry non-gated / LOCKED with declared domains', () => {
     for (const def of Object.values(tileTypeCatalog)) {
       expect(def.alwaysEquipmentGated).toBe(false);
       expect(def.contractStatus).toBe('LOCKED');
@@ -40,26 +53,30 @@ describe('tileTypes catalog (Slice 0)', () => {
     }
   });
 
-  it('suggests switch for switch/input_boolean and dimmer for light', () => {
+  it('auto-suggests the right glass tile per domain', () => {
     expect(suggestTileType('switch.porch')?.key).toBe('switch');
     expect(suggestTileType('input_boolean.guest')?.key).toBe('switch');
     expect(suggestTileType('light.kitchen')?.key).toBe('dimmer');
+    expect(suggestTileType('scene.evening')?.key).toBe('scene');
+    expect(suggestTileType('sensor.temp')?.key).toBe('sensor');
+    expect(suggestTileType('input_number.target')?.key).toBe('sensor');
   });
 
   it('returns no suggestion for a domain the catalog does not accept', () => {
-    expect(suggestTileType('sensor.temp')).toBeUndefined();
-    expect(getCompatibleTileTypes('sensor.temp')).toEqual([]);
+    expect(suggestTileType('lock.front')).toBeUndefined();
+    expect(getCompatibleTileTypes('lock.front')).toEqual([]);
   });
 });
 
 describe('dual-path tile resolution (Slice 0)', () => {
   it('uses the catalog component when tileType is set', () => {
     // A light entity rendered with an explicit `switch` tileType resolves to
-    // the catalog component (SwitchTile), NOT the inferred DimmerTile.
+    // the catalog component (the glass switch), NOT the inferred DimmerTile.
     const t = tile({ deviceId: 'light.kitchen', tileType: 'switch', entityId: 'light.kitchen' });
     const d = dev('light.kitchen', DeviceType.Dimmer);
-    expect(resolveTileComponent(t, d)).toBe(SwitchTile);
+    expect(resolveTileComponent(t, d)).toBe(GlassSwitchTile);
     expect(resolveTileComponent(t, d)).toBe(resolveTileTypeComponent('switch'));
+    expect(resolveTileComponent(t, d)).not.toBe(DimmerTile);
   });
 
   it('falls back to the inferred path when tileType is absent (legacy tile)', () => {
