@@ -2,7 +2,7 @@
 import React from 'react';
 import { TileConfig, Device } from '../types';
 import UnknownTile from './tiles/UnknownTile';
-import { resolveTile } from './tileRegistry';
+import { resolveTileComponent } from './tileRegistry';
 
 interface TileProps {
   tile: TileConfig;
@@ -17,7 +17,10 @@ const Tile = ({ tile, device, onEnlarge, isEditor, cornerClassName }: TileProps)
     return <UnknownTile tile={tile} isEditor={isEditor} cornerClassName={cornerClassName} />;
   }
 
-  const ResolvedTile = resolveTile(device);
+  // Dual-path: explicit `tile.tileType` (admin-chosen, from the tileTypes
+  // catalog) takes precedence; otherwise falls back to the inferred
+  // DeviceType path. Legacy tiles have no `tileType` and resolve as before.
+  const ResolvedTile = resolveTileComponent(tile, device);
   return (
     <ResolvedTile
       device={device}

@@ -25,6 +25,7 @@ import GeneratorTile from './tiles/GeneratorTile';
 import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
 import AkvoFloorSurface from './tiles/AkvoFloorSurface';
+import { resolveTileTypeComponent } from './tileTypes';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
 // because Tile.tsx resolves only after the not-found guard; individual tiles
@@ -97,4 +98,23 @@ export function resolveTile(device: Device): TileComponent {
   if (byType) return byType;
   if (device.capabilities && device.capabilities.length > 0) return GenericCapabilityTile;
   return UnknownTile;
+}
+
+// Dual-path tile resolution (Admin tile-registry — Vertical Slice 0).
+//
+//  1. EXPLICIT path: if the TileConfig carries a `tileType`, resolve the
+//     component from the `tileTypes.tsx` catalog (the admin-chosen binding).
+//     If the key is unknown we fall through to the inferred path rather than
+//     rendering nothing.
+//  2. INFERRED path (legacy, unchanged): resolve from the device's inferred
+//     DeviceType via `resolveTile(device)`.
+//
+// Legacy tiles have no `tileType`, so they ALWAYS take the inferred path and
+// resolve byte-for-byte as before — this function is purely additive.
+export function resolveTileComponent(tile: TileConfig, device: Device): TileComponent {
+  if (tile.tileType) {
+    const fromCatalog = resolveTileTypeComponent(tile.tileType);
+    if (fromCatalog) return fromCatalog;
+  }
+  return resolveTile(device);
 }

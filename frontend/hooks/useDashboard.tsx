@@ -940,7 +940,7 @@ interface DashboardContextType {
   updatePanelHighlights: (panelId: string, highlights: HighlightSectionConfig[]) => void;
   updatePanelConfig: (panelId: string, updates: Partial<Omit<DashboardPanel, 'id'>>) => void;
   updateTileConfig: (panelId: string, tileId: string, newConfig: Partial<Omit<TileConfig, 'id' | 'deviceId'>>) => void;
-  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }) => void;
+  addTileToPanel: (panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string }) => void;
   removeTileFromPanel: (panelId: string, tileId: string) => void;
   addHighlightToPanel: (panelId: string) => void;
   removeHighlightFromPanel: (panelId: string, highlightId: string) => void;
@@ -1988,6 +1988,14 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             if (loadedConfig) {
                 const mergedConfig = produce(defaultConfig, draft => {
                     Object.assign(draft, loadedConfig);
+
+                    // Tile-registry boot note (Admin Slice 0): legacy tiles have
+                    // no `tileType`/`entityId`. They need NO migration here — the
+                    // dual-path resolver (tileRegistry.resolveTileComponent) falls
+                    // back to the inferred DeviceType path whenever `tileType` is
+                    // absent, so they render exactly as before. Deriving
+                    // `entityId` from `deviceId` for legacy tiles is deferred to
+                    // Stage 1 (bind-by-selection); not required to render/persist.
 
                     // Ensure system virtual devices exist. Without this, an
                     // upgrade can leave the user with a saved virtualDevices
@@ -3343,7 +3351,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }));
   }, []);
 
-  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }) => {
+  const addTileToPanel = useCallback((panelId: string, deviceId: string, position?: { x: number, y: number }, binding?: { tileType?: string, entityId?: string }) => {
       setConfig(currentConfig => produce(currentConfig, draft => {
           const panel = draft.panels.find(p => p.id === panelId);
           if (panel) {
@@ -3385,6 +3393,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                   x: finalX ?? 0,
                   y: finalY ?? 0,
               };
+              // Admin tile-registry binding (Slice 0): persist the explicit
+              // tile type + bound entity_id when the editor supplies them, so
+              // the saved config drives dual-path resolution. Only set when
+              // provided — legacy/inferred adds leave these undefined and
+              // behave exactly as before.
+              if (binding?.tileType !== undefined) newTile.tileType = binding.tileType;
+              if (binding?.entityId !== undefined) newTile.entityId = binding.entityId;
               panel.tiles.push(newTile);
           }
       }));

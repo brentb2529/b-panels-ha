@@ -9,6 +9,7 @@ import AdminUserManager from './AdminUserManager';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
 import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
+import { suggestTileType } from './tileTypes';
 import yaml from 'js-yaml';
 import { playTextToSpeech } from '../services/audioPlayer';
 
@@ -1016,6 +1017,35 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
         e.dataTransfer.setDragImage(img, 0, 0);
     };
 
+    // Slice 0 — compute the explicit tile-registry binding for a device the
+    // admin is adding. For HA devices `device.id === entity_id`, so the HA
+    // domain (and thus the auto-suggested tile type) comes straight from the id.
+    // Returns `undefined` when nothing in the catalog matches, leaving the add
+    // on the legacy inferred path. Pure / no side effects.
+    const bindingForDevice = (deviceId: string): { tileType?: string, entityId?: string } | undefined => {
+        const suggestion = suggestTileType(deviceId);
+        if (!suggestion) return undefined;
+        return { tileType: suggestion.key, entityId: deviceId };
+    };
+
+    // Slice 0 — click-to-add an entity from the browser. Shows the
+    // auto-suggested tile type for confirmation (a simple confirm; the
+    // multi-match picker is Stage 2), then adds with the explicit binding.
+    const handleAddDeviceClick = (device: Device) => {
+        const suggestion = suggestTileType(device.id);
+        if (suggestion) {
+            const ok = window.confirm(
+                `Add "${device.name}" as a "${suggestion.label}" tile?\n\n` +
+                `Bound to entity: ${device.id}`,
+            );
+            if (!ok) return;
+            addTileToPanel(panelId, device.id, undefined, { tileType: suggestion.key, entityId: device.id });
+        } else {
+            // No catalog match — fall back to the legacy inferred add.
+            addTileToPanel(panelId, device.id, undefined);
+        }
+    };
+
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         if (!draggedItem) return;
@@ -1038,7 +1068,11 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
     
         if (draggedItem.type === 'device') {
             const finalPos = findNextFreeSpot(pos.x, pos.y, 1, 1, panel.tiles, panel.columns || 8);
-            addTileToPanel(panelId, draggedItem.id, finalPos);
+            // Slice 0: auto-suggest a tile type from the entity's HA domain and
+            // persist the explicit binding when one matches. No match -> add as
+            // before (legacy inferred path), so this never blocks an add.
+            const binding = bindingForDevice(draggedItem.id);
+            addTileToPanel(panelId, draggedItem.id, finalPos, binding);
         } else if (draggedItem.type === 'tile') {
             const updatedTiles = shiftTilesOnDrop(panel.tiles, draggedItem.id, pos.x, pos.y, panel.columns || 8);
             updatePanelTiles(panelId, updatedTiles);
@@ -1179,8 +1213,17 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                 <p className="text-xs text-gray-400">Visually group tiles</p>
                             </div>
                         </button>
-                        {availableDevices.map(device => (
-                            <div key={device.id} draggable onDragStart={(e) => handleDragStart(e, 'device', device.id)} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab">
+                        {availableDevices.map(device => {
+                            const suggested = suggestTileType(device.id);
+                            return (
+                            <div
+                                key={device.id}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, 'device', device.id)}
+                                onClick={() => handleAddDeviceClick(device)}
+                                title={suggested ? `Click to add as "${suggested.label}" tile (or drag)` : 'Click to add (or drag)'}
+                                className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-700 cursor-grab"
+                            >
                                 <TilePreviewIcon type={device.type} />
                                 <div className="flex-1 min-w-0">
                                     <p className="font-semibold truncate" title={device.name}>{device.name}</p>
@@ -1189,8 +1232,14 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                         <span className="truncate" title={device.location || device.service}>{device.location || device.service}</span>
                                     </div>
                                 </div>
+                                {suggested && (
+                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-blue/20 text-brand-blue border border-brand-blue/40" title={`Auto-suggested tile type: ${suggested.label}`}>
+                                        {suggested.label}
+                                    </span>
+                                )}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 

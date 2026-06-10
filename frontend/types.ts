@@ -139,6 +139,17 @@ export interface TileAnimationConfig {
 export interface TileConfig {
   id: string;
   deviceId: string;
+  // --- Admin tile-registry binding (Vertical Slice 0, additive/optional) ---
+  // When set, `tileType` selects a component from the `tileTypes.tsx` catalog
+  // (the explicit, admin-chosen path). When ABSENT, resolution falls back to
+  // the legacy `resolveTile(device)` path that infers the component from the
+  // device's inferred `DeviceType`. Legacy tiles (no `tileType`) therefore
+  // resolve and render EXACTLY as before — this is purely additive.
+  tileType?: string;
+  // The Home Assistant entity_id this tile is bound to. For HA-sourced devices
+  // `deviceId === entity_id` already, so this is currently a redundant-but-
+  // explicit binding record that Stage 1 (bind-by-selection) will build on.
+  entityId?: string;
   label?: string;
   width?: number;
   height?: number;
