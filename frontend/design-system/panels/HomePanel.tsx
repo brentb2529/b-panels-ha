@@ -15,8 +15,11 @@ import './homePanel.css';
 // The persistent arming bar binds to the REAL alarm_control_panel.house
 // (Alarmo) through useDashboard()'s alarmState/armingState — DISPLAY-ONLY (no
 // arm/disarm control on this surface). Generator + AKVO render their honest
-// unconnected / PROPOSED-gated state; no equipment actuation. The ONE inline
-// control is the low-hazard pool-body switch (a normal switch, NOT gated).
+// unconnected / PROPOSED-gated state; no equipment actuation. The pool-body
+// control is DISPLAY + a GATED "confirm" affordance ONLY — the body drives the
+// pool pump (equipment-gated), so it issues NO service call here (matching the
+// locked exemplar-home-cool and the Pool panel's GatedBodyRow). The only LIVE
+// action on this surface is low-hazard scenes (scene.turn_on).
 //
 // Scoping: all markup under `.hp-scope`, all CSS namespaced `hp-*`, so the panel
 // never restyles the legacy dashboard, the 22 legacy tiles, or the Kitchen
@@ -190,17 +193,21 @@ const HomePanel = () => {
                 <div className="hp-card-title">Pool &amp; Spa</div>
                 <div className="hp-card-sum num">{h.pool.summary}</div>
               </div>
-              <div className="hp-card-foot" onClick={(e) => e.stopPropagation()}>
-                <div className={`hp-toggle-inline${h.pool.on ? ' on' : ''}`}>
-                  <button
-                    className={`hp-toggle${h.pool.on ? ' on' : ''}`}
-                    disabled={!h.pool.bodyAvailable}
-                    onClick={() => h.actions.togglePoolBody(!h.pool.on)}
-                    aria-label="Toggle pool body"
-                  ><span className="hp-toggle-thumb" /></button>
-                  <span className="hp-toggle-lbl">{!h.pool.bodyAvailable ? '—' : h.pool.on ? 'ON' : 'OFF'}</span>
+              <div className="hp-card-foot">
+                {/* Pool body run state is EQUIPMENT-GATED (drives the pool pump):
+                    display + gated "confirm" affordance only — NO actuation here.
+                    Run control lives behind on-site authorization on the Pool
+                    panel. Matches the locked exemplar-home-cool. */}
+                <div
+                  className={`hp-toggle-inline gated${h.pool.on ? ' on' : ''}`}
+                  title="Equipment-gated — pool body run is read-only here; control on the Pool panel"
+                  aria-label={`Pool body ${!h.pool.bodyAvailable ? 'unavailable' : h.pool.on ? 'running' : 'standby'} (equipment-gated, display only)`}
+                >
+                  <svg className="hp-toggle-lock" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="2" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  <div className={`hp-toggle-static${h.pool.on ? ' on' : ''}`}><span className="hp-toggle-thumb" /></div>
+                  <span className="hp-toggle-lbl">{!h.pool.bodyAvailable ? '—' : h.pool.on ? 'ON · confirm' : 'OFF · confirm'}</span>
                 </div>
-                <button className="hp-cta" onClick={() => open(/pool/i)}>Open {chevron}</button>
+                <button className="hp-cta" onClick={(e) => { e.stopPropagation(); open(/pool/i); }}>Open {chevron}</button>
               </div>
             </div>
           </div>

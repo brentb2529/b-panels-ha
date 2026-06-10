@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import type { HassEntities } from 'home-assistant-js-websocket';
 import { projectHome, HOME_ENTITIES } from './useHomeEntities';
 
@@ -176,5 +179,50 @@ describe('projectHome', () => {
     } as unknown as HassEntities;
     const v = projectHome(ents);
     expect(v.activeScene).toBeNull();
+  });
+});
+
+// ── F-1 (inc16) — pool body is EQUIPMENT-GATED: the Home surface must issue NO
+// actuation on the pool body. The body (OBJTYPE=BODY) drives the pool pump, so
+// per CLAUDE.md it is never auto-applied without human approval. The Home panel
+// renders the body STATUS + a gated "confirm" affordance only; control lives on
+// the Pool panel behind on-site authorization. These guards assert the leak is
+// closed at the source so it can't silently regress. ────────────────────────
+describe('F-1: Home pool-body control issues NO actuation', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const hookSrc = readFileSync(join(here, 'useHomeEntities.ts'), 'utf8');
+  const panelSrc = readFileSync(join(here, 'HomePanel.tsx'), 'utf8');
+
+  it('the home-entities hook still READS the pool body state (display)', () => {
+    // status must remain available so the card can show running/standby.
+    expect(HOME_ENTITIES.pool.body).toBe('switch.pool_body');
+    const v = projectHome({ [HOME_ENTITIES.pool.body]: ent('on') } as unknown as HassEntities);
+    expect(v.pool.on).toBe(true);
+    expect(v.pool.bodyAvailable).toBe(true);
+  });
+
+  it('exposes NO pool-body actuation action (only low-hazard scenes)', () => {
+    // The HomeActions surface must not carry any body toggle.
+    expect(hookSrc).not.toMatch(/togglePoolBody/);
+    // The only callService in the hook is the low-hazard scene activation.
+    const calls = hookSrc.match(/callService\([^)]*\)/g) ?? [];
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/'scene',\s*'turn_on'/);
+    // No switch service is ever issued from the Home hook.
+    expect(hookSrc).not.toMatch(/callService\(\s*'switch'/);
+    expect(hookSrc).not.toMatch(/'switch',\s*(on\s*\?|'turn_on'|'turn_off')/);
+  });
+
+  it('the Home panel renders the pool body as gated/display-only (no live toggle)', () => {
+    // No actuating handler on the body control.
+    expect(panelSrc).not.toMatch(/togglePoolBody/);
+    // The body footer must NOT contain a clickable switch button.
+    expect(panelSrc).not.toMatch(/onClick=\{\(\)\s*=>\s*h\.actions\.togglePoolBody/);
+    // It carries the gated affordance markers instead.
+    expect(panelSrc).toMatch(/hp-toggle-inline gated/);
+    expect(panelSrc).toMatch(/confirm/);
+    // The only h.actions.* call left on the panel is the scene activation.
+    const actionCalls = panelSrc.match(/h\.actions\.\w+/g) ?? [];
+    expect(actionCalls.every((c) => c === 'h.actions.activateScene')).toBe(true);
   });
 });

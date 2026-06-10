@@ -9,6 +9,8 @@
 // Bound entities (dev). Real dev integrations where they exist, else demo
 // fixtures provisioned in dev-ha/config/packages/home_demo.yaml + scenes.yaml:
 //   pool (DEMO):     sensor.hd_pool_water_temperature / _ph / _salt + switch.pool_body
+//                    (body is read for STATUS ONLY — it is equipment-gated, no
+//                    actuation is wired from Home; see HomeActions note below)
 //   climate (MIX):   climate.kitchen_zone (real demo) + climate.living_zone +
 //                    climate.primary_zone (avg roll-up)
 //   lighting (DEMO): light.{great_room,master,kitchen_house,foyer,office,patio,
@@ -315,7 +317,13 @@ export const projectHome = (ents: HassEntities): Omit<HomeView, 'status'> => {
 
 export interface HomeActions {
   activateScene: (id: string) => void;
-  togglePoolBody: (on: boolean) => void;
+  // NOTE: there is intentionally NO pool-body actuation here. The pool body
+  // (OBJTYPE=BODY) drives the pool pump = equipment-gated hardware (CLAUDE.md:
+  // "anything that can drive real pool/HVAC/pump hardware is never auto-applied
+  // without human approval"). The Home card renders the body STATUS + a gated
+  // "confirm" affordance only (matching the locked exemplar-home-cool and the
+  // Pool compilation panel's GatedBodyRow); the run control lives behind on-site
+  // authorization, never an inline live toggle here. See F-1 (inc16).
 }
 
 export function useHomeEntities(): HomeView & { actions: HomeActions } {
@@ -352,9 +360,6 @@ export function useHomeEntities(): HomeView & { actions: HomeActions } {
   const activateScene = useCallback((id: string) => {
     callService('scene', 'turn_on', { entity_id: id });
   }, []);
-  const togglePoolBody = useCallback((on: boolean) => {
-    callService('switch', on ? 'turn_on' : 'turn_off', { entity_id: HOME_ENTITIES.pool.body });
-  }, []);
 
-  return { status, ...view, actions: { activateScene, togglePoolBody } };
+  return { status, ...view, actions: { activateScene } };
 }
