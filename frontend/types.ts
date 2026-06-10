@@ -240,8 +240,10 @@ export interface DashboardPanel {
   // Increment 4 ships 'pool' (the Pool & Spa flagship compilation panel);
   // Increment 5 ships 'climate' (the whole-home HVAC compilation panel);
   // Increment 6 ships 'primary-suite' (the Primary Suite room view, sibling of
-  // the Kitchen room view).
-  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite';
+  // the Kitchen room view); Increment 7 ships 'security' (the Security hub —
+  // arming state is LIVE display-only off the real Alarmo; cameras/locks/glass
+  // are PROPOSED/GAP, display-only, with no actuation).
+  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security';
 }
 
 export interface ServiceConnection {
