@@ -6,6 +6,8 @@ export type HaArmMode = 'away' | 'home' | 'night' | 'vacation' | 'custom';
 export interface HaArmOptions {
     skipDelay?: boolean;
     force?: boolean;
+    // PIN collected at the point of action (NOT persisted). H-1 (Inc 11).
+    code?: string;
 }
 
 // All transport is now the HA WebSocket via haClient. The ServiceConnection
@@ -121,12 +123,16 @@ class HomeAssistantService {
     }
 
     async armAlarm(
-        connection: ServiceConnection,
+        _connection: ServiceConnection,
         entityId: string,
         armState: 'armedAway' | 'armedStay' | 'disarmed',
         options?: HaArmOptions
     ): Promise<void> {
-        const code = connection?.haAlarmCode || undefined;
+        // H-1 (Inc 11): the plaintext disarm PIN is no longer stored in the
+        // dashboard config. The user's PIN is collected at the point of action
+        // (the Security panel's PIN entry) and passed via `options.code`; we
+        // never read a persisted secret here. Alarmo enforces its own code.
+        const code = options?.code || undefined;
 
         const serviceData: Record<string, any> = { entity_id: entityId };
         let service: string;

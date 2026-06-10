@@ -9,7 +9,7 @@ import AdminUserManager from './AdminUserManager';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
 import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
-import { suggestTileType } from './tileTypes';
+import { suggestTileType, isAlwaysEquipmentGated, getTileTypeDefinition } from './tileTypes';
 import yaml from 'js-yaml';
 import { playTextToSpeech } from '../services/audioPlayer';
 
@@ -1395,13 +1395,31 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                         </AdminSelect>
                                     )}
 
+                                    {/* Admin Stage 1 (Inc 11): equipment-gated tile types show a
+                                        display-only, NON-CLEARABLE safety notice. The flag is set
+                                        by the editor (and re-forced by the server) and can never be
+                                        toggled off in the inspector. No actuation is enabled here —
+                                        the gated tile renders display-only. */}
+                                    {(selectedTile.gatingFlags?.equipmentGated || isAlwaysEquipmentGated(selectedTile.tileType)) && (
+                                        <div className="flex items-start gap-2 text-sm rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 my-2">
+                                            <IconLock className="w-4 h-4 mt-0.5 text-amber-400 shrink-0" />
+                                            <div className="text-amber-200/90">
+                                                <div className="font-semibold">Safety gating enforced</div>
+                                                <div className="text-xs text-amber-200/70">
+                                                    {getTileTypeDefinition(selectedTile.tileType || '')?.label || 'This tile type'} is equipment-gated and display-only.
+                                                    This cannot be cleared.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {selectedTile.deviceId !== 'hometile-sthm-panel' && (
                                         <>
                                             <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer py-2">
                                                 <input
                                                     type="checkbox"
                                                     checked={!!selectedTile.isLocked}
-                                                    onChange={e => updateTileConfig(panelId, selectedTile.id, { 
+                                                    onChange={e => updateTileConfig(panelId, selectedTile.id, {
                                                         isLocked: e.target.checked,
                                                         requirePin: e.target.checked ? false : selectedTile.requirePin
                                                     })}

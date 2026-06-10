@@ -1,34 +1,30 @@
 import type { TileComponent } from './tileRegistry';
-// Design-system increment 1: the catalog now serves the NEW liquid-glass tiles
-// (cool palette + glass material + Cormorant/DM Sans type) for these LOCKED
-// domains. The legacy tiles still exist and remain the inferred/fallback path
-// for tiles WITHOUT a `tileType`; only the admin-chosen (explicit) path renders
-// the glass versions.
+// Admin Stage 1 (Increment 11): the tile-type catalog grows from the Slice-0
+// starter set (switch/dimmer/scene/sensor) into a full PLACEABLE-tile catalog
+// over the common HA domains, each rendering a liquid-glass design-language
+// component. This is the EXPLICIT, admin-chosen resolution path; legacy tiles
+// without a `tileType` still resolve via the inferred `resolveTile(device)`
+// fallback in `tileRegistry.tsx`, unchanged.
+//
+// NOTE (architecture): the bespoke `compilationKind` panels (Kitchen / Home /
+// Pool / Climate / Suite / Security / Lighting) remain CURATED fixed-layout
+// experiences and are NOT decomposed into placeable tiles. Deep decomposition of
+// those compilations into individually-placeable rich domain tiles is DEFERRED.
 import GlassSwitchTile from '../design-system/tiles/GlassSwitchTile';
 import GlassDimmerTile from '../design-system/tiles/GlassDimmerTile';
 import GlassSceneTile from '../design-system/tiles/GlassSceneTile';
 import GlassSensorTile from '../design-system/tiles/GlassSensorTile';
-
-// ---------------------------------------------------------------------------
-// Tile-type catalog (Admin / config-flow — Vertical Slice 0)
-//
-// This is the EXPLICIT, admin-chosen tile-resolution path. A `TileConfig` that
-// carries a `tileType` is resolved against this catalog by key; a `TileConfig`
-// WITHOUT a `tileType` (every legacy tile) is untouched and continues to use
-// the inferred `resolveTile(device)` path in `tileRegistry.tsx`.
-//
-// Slice 0 intentionally ships only TWO entries, and both WRAP existing tile
-// components — no new tile UI. The shape carries the Stage-1 fields
-// (`alwaysEquipmentGated`, `contractStatus`, etc.) even though Slice 0 does
-// not consume them, so the catalog can be extended in place without a schema
-// churn. Gating ENFORCEMENT is deliberately deferred to Stage 1; Slice 0 only
-// registers LOCKED, non-gated display/control bindings (switch + dimmer).
-// ---------------------------------------------------------------------------
+import GlassShadeTile from '../design-system/tiles/GlassShadeTile';
+import GlassClimateTile from '../design-system/tiles/GlassClimateTile';
+import GlassMediaTile from '../design-system/tiles/GlassMediaTile';
+import GlassCameraTile from '../design-system/tiles/GlassCameraTile';
+import GlassLightGroupTile from '../design-system/tiles/GlassLightGroupTile';
+import GlassArmingStatusTile from '../design-system/tiles/GlassArmingStatusTile';
 
 export type ContractStatus = 'LOCKED' | 'PROPOSED' | 'GATED';
 
-// A single options-schema field for a tile type. Unused in Slice 0; present so
-// Stage 1 can author per-tile config fields without changing this interface.
+// A single options-schema field for a tile type. Stubbed in Stage 1 (a few
+// entries declare fields); consumed by the inspector in a later stage.
 export interface OptionFieldDef {
   key: string;
   label: string;
@@ -39,7 +35,7 @@ export interface OptionFieldDef {
 }
 
 // A secondary entity binding a tile type may request (e.g. a climate tile that
-// also wants a humidity sensor). Unused in Slice 0; present for Stage 1+.
+// also wants a humidity sensor). Declared for the inspector in a later stage.
 export interface SecondaryBindingDef {
   key: string;
   label: string;
@@ -58,30 +54,54 @@ export interface TileTypeDefinition {
   acceptsDomains?: string[];
   // HA device_classes this tile type can bind (refines `acceptsDomains`).
   acceptsDeviceClasses?: string[];
-  // Stage 1+ fields — declared now so the catalog shape is stable.
+  // Inspector affordances declared for a later stage.
   secondaryBindings?: SecondaryBindingDef[];
   optionsSchema?: OptionFieldDef[];
-  // SAFETY: when true the editor MUST set `equipmentGated` and the inspector
-  // shows display-only "safety gating enforced" — it can never be cleared.
-  // No Slice 0 entry sets this (switch/light are not gated).
+  // SAFETY: when true the editor MUST set `gatingFlags.equipmentGated = true`
+  // and the inspector shows display-only "safety gating enforced" — it can
+  // never be cleared by the user. `Tile.tsx` enforces confirm/PIN AND issues
+  // NO actuation for an equipment-gated tile; the Python `config/save` path
+  // re-forces this flag server-side as defense-in-depth.
   alwaysEquipmentGated?: boolean;
-  // Honest contract label for PROPOSED/GATED surfaces. Slice 0 entries are
-  // LOCKED display/control bindings.
+  // Honest contract label for the surface (PROPOSED/GATED vs LOCKED).
   contractStatus?: ContractStatus;
-  // The React component this tile type renders. Wraps an EXISTING tile in
-  // Slice 0 — no new tile UI is introduced.
+  // The React component this tile type renders (a liquid-glass tile).
   component: TileComponent;
 }
 
-// The catalog, keyed by `tileType`. Order matters only for picker display.
-// Every entry here renders the liquid-glass design-language component; all are
-// LOCKED display/control bindings (no equipment-gated entries in this increment).
+// The set of tile-type keys that are ALWAYS equipment-gated. Mirrored verbatim
+// in `custom_components/b_panels/__init__.py` (server-side defense-in-depth) —
+// keep the two lists in sync. These cover the life-safety / equipment surfaces:
+// alarm arm/disarm, locks, the AKVO movable floor, the panic dispatch, garage
+// doors, and pool bodies. (Stage 1 does NOT enable actuation for any of these —
+// the gated entries render display-only; the flag is hardening, not enablement.)
+export const ALWAYS_EQUIPMENT_GATED_TYPES: readonly string[] = [
+  'alarm',
+  'lock',
+  'akvo-floor',
+  'panic',
+  'garage-cover',
+  'pool-body',
+];
+
+// Whether a tile type is always equipment-gated (catalog flag is authoritative;
+// the const list above is the fallback so the server and any non-catalog code
+// agree even if the catalog entry is missing).
+export function isAlwaysEquipmentGated(tileType?: string): boolean {
+  if (!tileType) return false;
+  const def = tileTypeCatalog[tileType];
+  if (def?.alwaysEquipmentGated) return true;
+  return ALWAYS_EQUIPMENT_GATED_TYPES.includes(tileType);
+}
+
+// The catalog, keyed by `tileType`. Order is picker-display order.
 export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
+  // ── Common control / display placeable tiles (LOCKED) ──────────────────
   switch: {
     key: 'switch',
     label: 'Switch',
     description: 'On/off control for a switch or input boolean.',
-    acceptsDomains: ['switch', 'input_boolean'],
+    acceptsDomains: ['switch', 'input_boolean', 'fan', 'siren'],
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassSwitchTile,
@@ -91,18 +111,71 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     label: 'Dimmer',
     description: 'Brightness + on/off control for a dimmable light.',
     acceptsDomains: ['light'],
+    optionsSchema: [
+      { key: 'showColor', label: 'Show live light color', type: 'boolean', optional: true, default: true },
+    ],
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassDimmerTile,
+  },
+  'light-group': {
+    key: 'light-group',
+    label: 'Light Group',
+    description: 'A curated group of lights: master on/off + dim, with an honest "N of M on" rollup when the group reports member counts.',
+    acceptsDomains: ['light', 'group'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassLightGroupTile,
   },
   scene: {
     key: 'scene',
     label: 'Scene',
     description: 'Activate a scene (scene.turn_on). Shows last-activated time; no fake active state.',
-    acceptsDomains: ['scene'],
+    acceptsDomains: ['scene', 'script'],
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassSceneTile,
+  },
+  cover: {
+    key: 'cover',
+    label: 'Shade / Cover',
+    description: 'Position control for a shade/blind/cover with a live position readout and visualizer.',
+    acceptsDomains: ['cover'],
+    acceptsDeviceClasses: ['shade', 'blind', 'curtain', 'shutter', 'awning', 'window'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassShadeTile,
+  },
+  climate: {
+    key: 'climate',
+    label: 'Thermostat',
+    description: 'Thermostat-style tile: setpoint nudges + mode cycle + ambient readout for a single climate entity.',
+    acceptsDomains: ['climate'],
+    secondaryBindings: [
+      { key: 'humidity', label: 'Humidity sensor', acceptsDomains: ['sensor'], optional: true },
+    ],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassClimateTile,
+  },
+  'media-player': {
+    key: 'media-player',
+    label: 'Media Player',
+    description: 'Now-playing + transport + volume for a Sonos / HA media-player speaker.',
+    acceptsDomains: ['media_player'],
+    acceptsDeviceClasses: ['speaker', 'receiver'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassMediaTile,
+  },
+  camera: {
+    key: 'camera',
+    label: 'Camera',
+    description: '16:9 live camera feed with a poster snapshot and a calm "feed unavailable" fallback. Display-only.',
+    acceptsDomains: ['camera'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassCameraTile,
   },
   sensor: {
     key: 'sensor',
@@ -112,6 +185,51 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassSensorTile,
+  },
+
+  // ── Equipment-gated / life-safety surfaces ─────────────────────────────
+  // These render DISPLAY-ONLY in Stage 1. `alwaysEquipmentGated: true` forces
+  // the editor to set (and never clear) `equipmentGated`, makes `Tile.tsx`
+  // suppress actuation, and is re-forced server-side. NO actuation is enabled
+  // here — these are honest, gated displays only.
+  alarm: {
+    key: 'alarm',
+    label: 'Arming Status',
+    description: 'Display-only Alarmo / alarm_control_panel arming state. Never arms or disarms — arm/disarm lives in the curated Security panel with PIN entry.',
+    acceptsDomains: ['alarm_control_panel'],
+    alwaysEquipmentGated: true,
+    contractStatus: 'GATED',
+    component: GlassArmingStatusTile,
+  },
+  'arming-status': {
+    key: 'arming-status',
+    label: 'Arming Status (display)',
+    description: 'Alias of the display-only arming-state readout for explicit placement.',
+    acceptsDomains: ['alarm_control_panel'],
+    alwaysEquipmentGated: true,
+    contractStatus: 'GATED',
+    component: GlassArmingStatusTile,
+  },
+  lock: {
+    key: 'lock',
+    label: 'Lock',
+    description: 'Lock state display. Equipment-gated: shown display-only in Stage 1, no actuation enabled.',
+    acceptsDomains: ['lock'],
+    alwaysEquipmentGated: true,
+    contractStatus: 'GATED',
+    // Renders the glass switch shell for lock state (display-only; gating in
+    // Tile.tsx suppresses the toggle). No lock/unlock is wired here.
+    component: GlassSwitchTile,
+  },
+  'garage-cover': {
+    key: 'garage-cover',
+    label: 'Garage Door',
+    description: 'Garage-door cover. Equipment-gated: display-only in Stage 1, no actuation enabled.',
+    acceptsDomains: ['cover'],
+    acceptsDeviceClasses: ['garage', 'gate', 'door'],
+    alwaysEquipmentGated: true,
+    contractStatus: 'GATED',
+    component: GlassShadeTile,
   },
 };
 
@@ -133,18 +251,19 @@ export function domainOf(entityId: string): string {
 }
 
 // Catalog entries whose `acceptsDomains` includes the entity's domain. Used by
-// the editor to auto-suggest a tile type when an entity is added. Slice 0 keeps
-// this domain-only (no device_class refinement yet).
+// the editor to auto-suggest a tile type when an entity is added. Domain-level
+// filtering; device_class refinement (`acceptsDeviceClasses`) is applied by the
+// editor when an entity's device_class is known.
 export function getCompatibleTileTypes(entityId: string): TileTypeDefinition[] {
   const domain = domainOf(entityId);
-  return Object.values(tileTypeCatalog).filter(def =>
-    def.acceptsDomains?.includes(domain),
-  );
+  return Object.values(tileTypeCatalog).filter(def => def.acceptsDomains?.includes(domain));
 }
 
-// The single best-guess tile type for an entity (first compatible match), or
-// `undefined` when nothing in the catalog accepts the domain (the editor then
-// falls back to the inferred/legacy add path).
+// The single best-guess tile type for an entity (first compatible NON-gated
+// match), or `undefined` when nothing in the catalog accepts the domain. We
+// never auto-suggest an equipment-gated type — gated placement is always an
+// explicit admin choice, never a default.
 export function suggestTileType(entityId: string): TileTypeDefinition | undefined {
-  return getCompatibleTileTypes(entityId)[0];
+  const compatible = getCompatibleTileTypes(entityId);
+  return compatible.find(def => !def.alwaysEquipmentGated) ?? undefined;
 }

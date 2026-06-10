@@ -157,6 +157,19 @@ export interface TileConfig {
   y?: number;
   requirePin?: boolean;
   isLocked?: boolean;
+  // --- Admin Stage 1 gating (additive/optional) ---
+  // Structural gating metadata for a placeable tile. `requirePin`/`isLocked`
+  // above remain user-facing convenience toggles; `gatingFlags.equipmentGated`
+  // is a SAFETY flag the editor SETS (and never lets the user clear) for tile
+  // types whose `alwaysEquipmentGated` is true. When `equipmentGated` is set,
+  // `Tile.tsx` enforces confirm/PIN AND issues no actuation, and the Python
+  // `config/save` path re-forces it server-side. The flags here mirror the two
+  // legacy fields so a single object carries all gating state going forward.
+  gatingFlags?: {
+    requirePin?: boolean;
+    isLocked?: boolean;
+    equipmentGated?: boolean;
+  };
   cameraEnlargeOnClick?: boolean;
   displayOverride?: TileDisplayOverride;
   folderIcon?: string;
@@ -246,52 +259,55 @@ export interface DashboardPanel {
   compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite' | 'security' | 'lighting';
 }
 
+// ServiceConnection — per-integration connection config.
+//
+// SECURITY (H-1, Inc 11): the plaintext third-party CREDENTIAL fields that used
+// to live here (apiKey, apiToken, lutronClientKey/Cert/CaCert, energytrakMagicLink,
+// whiskerPassword, tempestApiToken, haywardPassword, flairClientSecret,
+// coolmasterPassword, and the plaintext disarm PIN haAlarmCode) have been
+// REMOVED. Those integrations are now stubs / owned by their own HA config
+// entries, so this dashboard config must never solicit or persist secrets.
+// Anything that did read a credential now relies on HA's own auth (same-origin
+// session) and the owning integration's config. Non-secret connection config
+// (emails as identifiers, LAN IPs, station/unit ids, connection modes) is
+// retained for display/selection. The server `config/save` path additionally
+// strips any stray secret-bearing key as defense-in-depth, so the open
+// (non-admin) `config/get` read is safe for the kiosk.
 export interface ServiceConnection {
     id: DeviceService;
     cloudEndpoint: string;
     localEndpoint?: string;
-    apiKey?: string;
     preferLocal?: boolean;
     enabled: boolean;
     selectedLocations?: string[];
     webSocketUrl?: string;
-    // Noonlight Specific
-    apiToken?: string;
+    // Noonlight Specific (dispatch address fields — not credentials)
     address?: string;
     city?: string;
     state?: string;
     zip?: string;
     name?: string;
     phone?: string;
-    // Lutron Specific
-    lutronClientKey?: string;
-    lutronClientCert?: string;
-    lutronCaCert?: string;
+    // Lutron Specific (LAN bridge IP — not a credential)
     lutronManualIp?: string;
-    // EnergyTrak Specific
+    // EnergyTrak Specific (email is an identifier, not a secret)
     energytrakEmail?: string;
-    energytrakMagicLink?: string;
-    // Whisker Specific
+    // Whisker Specific (email is an identifier, not a secret)
     whiskerEmail?: string;
-    whiskerPassword?: string;
-    // Tempest Specific
-    tempestApiToken?: string;
+    // Tempest Specific (station id is public)
     tempestStationId?: string;
     // Hayward Pool Specific
     haywardEmail?: string;
-    haywardPassword?: string;
     haywardControllerIp?: string; // Local controller IP (e.g., 192.168.1.100)
     haywardConnectionMode?: 'local' | 'cloud' | 'both' | 'demo'; // 'both' = local-first, cloud fallback
-    // Flair Specific (OAuth2 client credentials from Flair developer API)
+    // Flair Specific (client id is not the secret; the secret is removed)
     flairClientId?: string;
-    flairClientSecret?: string;
     flairConnectionMode?: 'cloud' | 'demo';
     // CoolAutomation / CoolMaster Specific — dual-transport (local box + cloud)
     coolmasterConnectionMode?: 'local' | 'cloud' | 'both' | 'demo';
     coolmasterLocalIp?: string;           // IP of the CoolMasterNet gateway on the LAN
     coolmasterLocalDeviceId?: string;     // gateway serial e.g. "L4.123"; auto-discovered on first configure
-    coolmasterUsername?: string;          // CoolAutomation cloud account email
-    coolmasterPassword?: string;
+    coolmasterUsername?: string;          // CoolAutomation cloud account email (identifier)
     coolmasterUnitAliases?: Record<string, string>; // "L1.100" → "Primary Bedroom"
     // Pool Floor (Akvo Spiralift) Specific — Modbus TCP
     poolFloorConnectionMode?: 'live' | 'demo';
@@ -300,8 +316,7 @@ export interface ServiceConnection {
     poolFloorUnitId?: number;
     poolFloorConfigNames?: string[]; // labels for configs 1-8, e.g. ["Diving", "Lap Swim", ...]
     // Home Assistant Specific
-    haAlarmEntityId?: string;        // e.g. alarm_control_panel.alarmo
-    haAlarmCode?: string;            // optional disarm PIN
+    haAlarmEntityId?: string;        // e.g. alarm_control_panel.alarmo (not a secret)
     locationAliases?: Record<string, string>; // locationId → display name
 }
 

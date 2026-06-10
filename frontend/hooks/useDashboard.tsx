@@ -9,6 +9,8 @@ import PinPadModal from '../components/PinPadModal';
 import ConfirmModal from '../components/ConfirmModal';
 import InputModal from '../components/InputModal';
 import { apiGetConfig, apiSaveConfig } from '../services/api';
+import { isAlwaysEquipmentGated } from '../components/tileTypes';
+import { CONFIG_SCHEMA_VERSION as MIGRATION_SCHEMA_VERSION, migrateTile } from './configMigration';
 import { playTextToSpeech, getFully } from '../services/audioPlayer';
 import { apiHomeAssistantArm, apiNoonlightCreateAlarm, apiAlarmoCreateUser, apiAlarmoDeleteUserByName } from '../services/api';
 
@@ -90,8 +92,19 @@ const DEAD_VIRTUAL_TYPES = new Set<DeviceType>([
   DeviceType.PoolFloor,
 ]);
 
+// Current dashboard-config schema version. Bumped when the persisted shape
+// changes in a way boot-migration must reconcile. v1 = pre-Inc-11; v2 = Inc 11
+// (TileConfig carries explicit tileType/entityId/gatingFlags; entityId derived
+// from deviceId at boot for legacy tiles). The migration stays ADDITIVE — it
+// only fills missing fields, never removes/rewrites existing ones — so it does
+// not trip the server clobber-guard. The v1->v2 dead-field cleanup is deferred
+// (except the H-1 secret stripping, handled separately).
+export const CONFIG_SCHEMA_VERSION = MIGRATION_SCHEMA_VERSION;
+
 // Export StoredConfig for the API service to use
 export interface StoredConfig {
+    // Persisted schema version (absent on pre-Inc-11 configs => treated as v1).
+    schema_version?: number;
     panels: DashboardPanel[];
     connections: ServiceConnection[];
     useDemoMode: boolean;
@@ -134,19 +147,23 @@ export interface StoredConfig {
 }
 
 const getDefaultConfig = (): StoredConfig => ({
+  schema_version: CONFIG_SCHEMA_VERSION,
   panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showAlarmAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
+  // H-1 (Inc 11): no plaintext credential fields are seeded here anymore — the
+  // dashboard config must not solicit or persist third-party secrets. Only
+  // non-secret connection config (identifiers, LAN IPs, modes) is seeded.
   connections: [
       {id: DeviceService.Lutron, cloudEndpoint: '', enabled: false},
       {id: DeviceService.Sonos, cloudEndpoint: 'http://localhost:5005', enabled: false},
-      {id: DeviceService.HomeAssistant, cloudEndpoint: 'http://homeassistant.local:8123', apiKey: '', enabled: false},
-      {id: DeviceService.Noonlight, cloudEndpoint: 'https://api-sandbox.noonlight.com/dispatch/v1/alarms', enabled: false, apiToken: '', address: '', city: '', state: '', zip: '', name: '', phone: ''},
+      {id: DeviceService.HomeAssistant, cloudEndpoint: 'http://homeassistant.local:8123', enabled: false},
+      {id: DeviceService.Noonlight, cloudEndpoint: 'https://api-sandbox.noonlight.com/dispatch/v1/alarms', enabled: false, address: '', city: '', state: '', zip: '', name: '', phone: ''},
       {id: DeviceService.RTSP, cloudEndpoint: 'http://localhost:8888', enabled: false},
-      {id: DeviceService.EnergyTrak, cloudEndpoint: '', enabled: false, energytrakEmail: '', energytrakMagicLink: ''},
-      {id: DeviceService.Whisker, cloudEndpoint: '', enabled: false, whiskerEmail: '', whiskerPassword: ''},
-      {id: DeviceService.Tempest, cloudEndpoint: '', enabled: false, tempestApiToken: '', tempestStationId: ''},
-      {id: DeviceService.HaywardPool, cloudEndpoint: '', enabled: false, haywardEmail: '', haywardPassword: '', haywardControllerIp: '', haywardConnectionMode: 'local'},
-      {id: DeviceService.Flair, cloudEndpoint: '', enabled: false, flairClientId: '', flairClientSecret: '', flairConnectionMode: 'cloud'},
-      {id: DeviceService.CoolMaster, cloudEndpoint: '', enabled: false, coolmasterConnectionMode: 'demo', coolmasterLocalIp: '', coolmasterLocalDeviceId: '', coolmasterUsername: '', coolmasterPassword: '', coolmasterUnitAliases: {}},
+      {id: DeviceService.EnergyTrak, cloudEndpoint: '', enabled: false, energytrakEmail: ''},
+      {id: DeviceService.Whisker, cloudEndpoint: '', enabled: false, whiskerEmail: ''},
+      {id: DeviceService.Tempest, cloudEndpoint: '', enabled: false, tempestStationId: ''},
+      {id: DeviceService.HaywardPool, cloudEndpoint: '', enabled: false, haywardEmail: '', haywardControllerIp: '', haywardConnectionMode: 'local'},
+      {id: DeviceService.Flair, cloudEndpoint: '', enabled: false, flairClientId: '', flairConnectionMode: 'cloud'},
+      {id: DeviceService.CoolMaster, cloudEndpoint: '', enabled: false, coolmasterConnectionMode: 'demo', coolmasterLocalIp: '', coolmasterLocalDeviceId: '', coolmasterUsername: '', coolmasterUnitAliases: {}},
       {id: DeviceService.PoolFloor, cloudEndpoint: '', enabled: false, poolFloorConnectionMode: 'demo', poolFloorIp: '172.20.1.100', poolFloorPort: 502, poolFloorUnitId: 1},
   ],
   useDemoMode: false,
@@ -1989,13 +2006,22 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                 const mergedConfig = produce(defaultConfig, draft => {
                     Object.assign(draft, loadedConfig);
 
-                    // Tile-registry boot note (Admin Slice 0): legacy tiles have
-                    // no `tileType`/`entityId`. They need NO migration here — the
-                    // dual-path resolver (tileRegistry.resolveTileComponent) falls
-                    // back to the inferred DeviceType path whenever `tileType` is
-                    // absent, so they render exactly as before. Deriving
-                    // `entityId` from `deviceId` for legacy tiles is deferred to
-                    // Stage 1 (bind-by-selection); not required to render/persist.
+                    // Admin Stage 1 (Inc 11) boot migration — ADDITIVE only:
+                    //  (a) derive `entityId` from `deviceId` for tiles that lack
+                    //      it. HA-sourced devices have `id === entity_id`, so the
+                    //      deviceId IS the entity_id (heuristic: contains a '.').
+                    //  (b) re-force `gatingFlags.equipmentGated` for tiles whose
+                    //      tileType is always-gated (defense-in-depth at boot, in
+                    //      case a tile was saved before the editor set it).
+                    //  (c) stamp the current `schema_version`.
+                    // This only FILLS missing fields and is held in-memory until
+                    // the next real save — it never removes/rewrites existing
+                    // fields, so the server clobber-guard is never tripped.
+                    (draft.panels || []).forEach(panel => {
+                        if (!panel.tiles) return;
+                        panel.tiles = panel.tiles.map(t => migrateTile(t));
+                    });
+                    draft.schema_version = CONFIG_SCHEMA_VERSION;
 
                     // Ensure system virtual devices exist. Without this, an
                     // upgrade can leave the user with a saved virtualDevices
@@ -3404,6 +3430,15 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
               // friendly name on add so new tiles aren't nameless. Only sets a
               // non-empty label; the inspector can still override/clear it.
               if (binding?.label) newTile.label = binding.label;
+              // Admin Stage 1 (Inc 11): when the chosen tile type is always
+              // equipment-gated (alarm/lock/akvo-floor/panic/garage-cover/
+              // pool-body), the editor SETS the structural gating flag at add
+              // time. The inspector renders this as non-clearable, and the
+              // server re-forces it. This enables NO actuation — gated tiles
+              // are display-only — it just records the honest safety state.
+              if (isAlwaysEquipmentGated(newTile.tileType)) {
+                  newTile.gatingFlags = { ...(newTile.gatingFlags || {}), equipmentGated: true };
+              }
               panel.tiles.push(newTile);
           }
       }));

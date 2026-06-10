@@ -48,6 +48,7 @@ from .const import (
     WS_GENERATOR,
     WS_RSS,
 )
+from .gating import enforce_equipment_gating, strip_secret_keys
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -450,6 +451,12 @@ async def websocket_save_config(
     would blank a populated config, (2) stamp a monotonic `_rev`, and (3) fire
     `b_panels_config_updated` so other open panels live-refresh instead of
     holding a stale copy that they later save back.
+
+    Inc 11 defense-in-depth (no actuation enabled by either):
+      - force `gatingFlags.equipmentGated=true` on always-gated tile types and
+        log if a client tried to clear it;
+      - strip any plaintext secret key from connections (H-1) so the open
+        `config/get` read can never leak a credential.
     """
     store: Store | None = hass.data.get(DOMAIN, {}).get("store")
     if store is None:
@@ -467,6 +474,23 @@ async def websocket_save_config(
             "Refused: incoming config has no panels but the stored config does.",
         )
         return
+
+    # Defense-in-depth: re-force equipment gating + strip secrets before persist.
+    forced = enforce_equipment_gating(new_cfg)
+    if forced:
+        _LOGGER.warning(
+            "b_panels config/save: re-forced equipmentGated on %d always-gated "
+            "tile(s) that arrived without it (client may have tried to clear "
+            "the safety flag)",
+            forced,
+        )
+    stripped = strip_secret_keys(new_cfg)
+    if stripped:
+        _LOGGER.warning(
+            "b_panels config/save: stripped %d plaintext secret field(s) from "
+            "connections before persisting (config/get is non-admin readable)",
+            stripped,
+        )
 
     new_cfg["_rev"] = (current.get("_rev") or 0) + 1
     await store.async_save(new_cfg)
