@@ -21,6 +21,7 @@ import { IconRefreshCw } from './components/icons';
 import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
 import LifeSafetyTakeover from './design-system/takeover/LifeSafetyTakeover';
 import { setTakeoverActive } from './design-system/takeover/takeoverSignal';
+import WeatherSafetyBanner from './design-system/weather-safety/WeatherSafetyBanner';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -522,6 +523,20 @@ function App() {
                   ANNUNCIATION ONLY — issues ZERO service calls. Publishes its
                   active flag so the shell idle-return is suppressed mid-takeover. */}
               <LifeSafetyTakeover onActiveChange={setTakeoverActive} />
+              {/* FREEZE + STORM PROTECTION (feat/freeze-storm) — a LOWER-TIER,
+                  calm protective announcement mounted as a sibling below the
+                  life-safety takeover, so it surfaces on EVERY panel (a
+                  freeze/storm condition is whole-house context). It is NOT
+                  life-safety styling and explicitly YIELDS when the alarm panel
+                  is `triggered` (the projection reads the SAME alarm entity, and
+                  it also subscribes to the takeover-active signal — precedence is
+                  enforced twice). DISPLAY + NOTIFY/LOG ONLY — issues ZERO service
+                  calls; any protective pump/shade/valve action stays
+                  equipment-mediated behind human approval. The freeze sensor
+                  (device_class:cold, LOCKED) + severe-weather alert entity are
+                  AUTO-DETECTED generically; ZIP/location stays config, never
+                  hardcoded. */}
+              <WeatherSafetyBanner />
               <AppContent />
           </HashRouter>
         </SessionUnlockProvider>

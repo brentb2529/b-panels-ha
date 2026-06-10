@@ -1,0 +1,195 @@
+/* =============================================================================
+ * Freeze + Storm protection — weatherSafety.css (feat/freeze-storm)
+ * -----------------------------------------------------------------------------
+ * PROTECTIVE · LOWER-TIER · DISPLAY + NOTIFY/LOG ONLY.
+ *
+ * A CALM, non-alarm announcement that sits BELOW the life-safety takeover. It is
+ * deliberately NOT red and NOT a full-screen wash — a slate banner with an ice
+ * (freeze) / amber (storm) accent. Every selector is namespaced `wxs-*` and the
+ * whole surface roots under `.wxs-scope`, so it never restyles the legacy
+ * dashboard, any panel, the shell, or the life-safety overlay.
+ *
+ * z-index sits ABOVE normal panels/header but BELOW the life-safety overlay
+ * (2147483600) — and the component also renders nothing while a takeover is
+ * active, so the ordering is enforced twice.
+ *
+ * Accessibility: never color-alone (each row carries a distinct glyph SHAPE + an
+ * explicit WORD); honors prefers-reduced-motion.
+ * ===========================================================================*/
+
+.wxs-scope {
+  --wxs-bg: rgba(18, 22, 30, 0.94);
+  --wxs-border: rgba(120, 150, 190, 0.34);
+  --wxs-text: #eef2f7;
+  --wxs-text-dim: rgba(238, 242, 247, 0.62);
+  --wxs-storm: #e0a23c;      /* amber — storm/wind (caution, NOT alarm red) */
+  --wxs-storm-rgb: 224, 162, 60;
+  --wxs-freeze: #6fb8e8;     /* ice blue — freeze */
+  --wxs-freeze-rgb: 111, 184, 232;
+  --wxs-accent: var(--wxs-storm);
+  --wxs-accent-rgb: var(--wxs-storm-rgb);
+  font-variant-numeric: tabular-nums;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+}
+/* Freeze-only → ice accent (storm present flips it to amber). */
+.wxs-scope.wxs-freeze-only { --wxs-accent: var(--wxs-freeze); --wxs-accent-rgb: var(--wxs-freeze-rgb); }
+
+/* Pinned top-center, below the life-safety overlay, above panels/header. */
+.wxs-scope {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147482000;          /* < life-safety (2147483600); > everything else */
+  width: min(720px, calc(100vw - 28px));
+  pointer-events: none;          /* only the card catches clicks */
+}
+
+.wxs-banner {
+  pointer-events: auto;
+  background: var(--wxs-bg);
+  border: 1px solid var(--wxs-border);
+  border-left: 4px solid var(--wxs-accent);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(var(--wxs-accent-rgb), 0.18);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+  color: var(--wxs-text);
+  padding: 14px 16px 12px;
+  animation: wxs-drop 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes wxs-drop {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wxs-banner-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 8px;
+}
+.wxs-kicker {
+  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--wxs-accent); font-weight: 700;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.wxs-kicker::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--wxs-accent);
+  box-shadow: 0 0 0 0 rgba(var(--wxs-accent-rgb), 0.55);
+  animation: wxs-pulse 2.6s ease-in-out infinite;
+}
+@keyframes wxs-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--wxs-accent-rgb), 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(var(--wxs-accent-rgb), 0); }
+}
+.wxs-title { font-size: 15px; font-weight: 650; letter-spacing: 0.01em; }
+.wxs-dismiss {
+  margin-left: auto; background: transparent; border: 0; cursor: pointer;
+  color: var(--wxs-text-dim); font-size: 20px; line-height: 1; padding: 0 4px;
+  border-radius: 8px;
+}
+.wxs-dismiss:hover { color: var(--wxs-text); background: rgba(255, 255, 255, 0.06); }
+
+.wxs-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.wxs-row:first-of-type { border-top: 0; }
+.wxs-row-storm { --wxs-accent: var(--wxs-storm); --wxs-accent-rgb: var(--wxs-storm-rgb); }
+.wxs-row-freeze { --wxs-accent: var(--wxs-freeze); --wxs-accent-rgb: var(--wxs-freeze-rgb); }
+
+.wxs-ico {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px;
+  display: grid; place-items: center;
+  color: var(--wxs-accent);
+  background: rgba(var(--wxs-accent-rgb), 0.14);
+  border: 1px solid rgba(var(--wxs-accent-rgb), 0.3);
+}
+.wxs-row-text { min-width: 0; flex: 1; }
+.wxs-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wxs-event { font-size: 14px; font-weight: 650; }
+.wxs-sev {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px;
+  color: var(--wxs-accent);
+  background: rgba(var(--wxs-accent-rgb), 0.16);
+  border: 1px solid rgba(var(--wxs-accent-rgb), 0.34);
+}
+.wxs-count {
+  font-size: 9.5px; font-weight: 600; color: var(--wxs-text-dim);
+  padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.06);
+}
+.wxs-headline { font-size: 12.5px; color: var(--wxs-text); opacity: 0.92; margin-top: 3px; line-height: 1.4; }
+.wxs-meta { font-size: 11px; color: var(--wxs-text-dim); margin-top: 4px; }
+.wxs-src { opacity: 0.8; }
+
+/* ── Recommended (confirm-gated, wires NOTHING) ── */
+.wxs-rec { margin-top: 8px; }
+.wxs-rec-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; cursor: pointer;
+  color: var(--wxs-accent);
+  background: rgba(var(--wxs-accent-rgb), 0.1);
+  border: 1px solid rgba(var(--wxs-accent-rgb), 0.32);
+  border-radius: 9px; padding: 5px 11px;
+}
+.wxs-rec-cta:hover { background: rgba(var(--wxs-accent-rgb), 0.18); }
+.wxs-rec-confirm { display: flex; flex-direction: column; gap: 7px; margin-top: 4px; }
+.wxs-rec-detail { font-size: 11px; color: var(--wxs-text-dim); line-height: 1.4; }
+.wxs-rec-row { display: flex; gap: 8px; }
+.wxs-rec-btn {
+  font-size: 11.5px; font-weight: 600; cursor: pointer; border-radius: 9px;
+  padding: 5px 13px; color: #0b0e14;
+  background: var(--wxs-accent); border: 1px solid var(--wxs-accent);
+}
+.wxs-rec-btn.ghost { background: transparent; color: var(--wxs-text-dim); border-color: rgba(255, 255, 255, 0.16); }
+.wxs-rec-note {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--wxs-text-dim); margin-top: 4px;
+}
+
+.wxs-foot {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; color: var(--wxs-text-dim); line-height: 1.4;
+  margin-top: 10px; padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.wxs-foot svg { flex: 0 0 auto; opacity: 0.7; }
+
+/* ── In-panel card variant (Home / Pool) — reuses the row markup ── */
+/* Inline scope: drop the fixed/pinned positioning so the card flows inside the
+   panel's own layout instead of floating top-center like the global banner. */
+.wxs-scope.wxs-scope-inline {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  z-index: auto;
+  width: 100%;
+  pointer-events: auto;
+}
+.wxs-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--wxs-border);
+  border-left: 4px solid var(--wxs-accent);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.wxs-card .wxs-banner-head { margin-bottom: 6px; }
+
+/* Light mode: lift the canvas + darken text so it reads on a white panel. */
+.light-mode .wxs-scope {
+  --wxs-bg: rgba(252, 253, 255, 0.96);
+  --wxs-border: rgba(80, 110, 150, 0.28);
+  --wxs-text: #16202c;
+  --wxs-text-dim: rgba(22, 32, 44, 0.6);
+  --wxs-storm: #b9731a;      /* deeper amber for contrast on white */
+  --wxs-freeze: #2b7fc4;
+}
+.light-mode .wxs-rec-btn { color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wxs-banner { animation: none; }
+  .wxs-kicker::before { animation: none; }
+}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePoolEntities, AKVO_PRESETS, type FixtureView, type BodyView } from './usePoolEntities';
 import PanelShell from '../shell/PanelShell';
+import { WeatherSafetyCard } from '../weather-safety/WeatherSafetyBanner';
 import './poolPanel.css';
 
 // ---------------------------------------------------------------------------
@@ -216,6 +217,12 @@ const PoolPanel = () => {
 
       {/* ── Content: 1 wide primary + 2 satellites ── */}
       <div className="pp-content">
+
+        {/* Freeze + storm protective card (feat/freeze-storm) — high relevance on
+            the pool view (outdoor pool + AKVO floor). Renders only when active;
+            display + notify/log only, protective actions stay IntelliCenter-/
+            shade-controller-mediated. Yields to a life-safety takeover. */}
+        <WeatherSafetyCard />
 
         {/* PRIMARY — Pool & Spa Controls (GATED) */}
         <div className="pp-card pp-card-primary">

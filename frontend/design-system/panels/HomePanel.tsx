@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../../hooks/useDashboard';
 import { useHomeEntities, SIGNATURE_SCENES, type SceneExperience } from './useHomeEntities';
 import PanelShell from '../shell/PanelShell';
+import { WeatherSafetyCard } from '../weather-safety/WeatherSafetyBanner';
 import './homePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -261,6 +262,12 @@ const HomePanel = () => {
             );
           })}
         </div>
+
+        {/* ── Freeze + storm protective card (feat/freeze-storm) — renders only
+            when a freeze and/or severe-weather alert is active AND no life-safety
+            takeover owns the screen. Display + notify/log only; protective
+            actions stay equipment-mediated. ── */}
+        <WeatherSafetyCard />
 
         {/* ── Area card grid ── */}
         <div className="hp-grid">
