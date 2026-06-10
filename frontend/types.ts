@@ -45,6 +45,14 @@ export enum DeviceType {
   // gated request path (select.select_option on the configuration-request
   // select). Self-driven via services/haClient.ts; never commands raw motion.
   AkvoFloor = 'AKVO_FLOOR',
+  // Sub-Zero / Wolf / Cove appliance composites (subzero_wolf integration). Each
+  // is a single composite card folding the appliance's per-zone / per-cavity /
+  // cycle entities into one ApplianceState. All three are DISPLAY-ONLY in
+  // b-panels; the Wolf oven WRITE path (set-temp / probe / light) stays
+  // equipment-gated and is NEVER actuated from these tiles.
+  Fridge = 'FRIDGE',
+  Oven = 'OVEN',
+  Dishwasher = 'DISHWASHER',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type
@@ -91,6 +99,7 @@ export enum DeviceService {
   Flair = 'Flair',
   CoolMaster = 'CoolMaster',
   PoolFloor = 'PoolFloor',
+  SubZeroWolf = 'SubZeroWolf',
 }
 
 export interface ColorTempRange {
@@ -589,6 +598,87 @@ export interface LitterRobotState {
   // switches; `reset` the reset button; `vacuum` the LR vacuum entity.
   haEntities?: { vacuum?: string; nightLight?: string; panelLock?: string; reset?: string; startCycle?: string };
 }
+
+// ── Sub-Zero / Wolf / Cove appliance state (subzero_wolf integration) ────────
+// Composite shapes the b-panels appliance tiles render. Mirror the integration's
+// entity model exactly (sensor.py / binary_sensor.py / light.py): fridge zone
+// temps/setpoints + door + filters; oven cavity temp/setpoint/mode/probe +
+// door/on/preheat; dishwasher cycle/status/time + door/running. ALL fields are
+// READ-ONLY projections — these tiles never expose a setpoint/probe/light WRITE.
+// The Wolf oven write entities stay equipment-gated in the integration and are
+// rendered here display/disabled only (no callService is ever issued).
+
+export type ApplianceKind = 'fridge' | 'oven' | 'dishwasher';
+
+// A fridge/freezer/wine/beverage cooling zone (Sub-Zero). measured temp may be
+// absent (some zones report only a setpoint); the tile shows an em-dash then.
+export interface FridgeZoneState {
+  name: string;            // "Refrigerator" / "Freezer" / "Wine" / "Beverage"
+  setpointF: number | null;
+  measuredF: number | null;
+  doorAjar?: boolean;      // per-zone door state when the source exposes it
+}
+
+// A Wolf oven/range cavity. cookMode/probe may be absent. lightOn is the
+// READ-BACK of the (gated) oven light — display only here.
+export interface OvenCavityState {
+  name: string;            // "Oven" / "Upper" / "Lower"
+  measuredF: number | null;
+  setpointF: number | null;
+  cookMode: string | null; // e.g. "bake" / "convection" / "broil" / null=off
+  probeF: number | null;   // meat-probe temperature, when a probe is inserted
+  ovenOn?: boolean;
+  doorAjar?: boolean;
+  preheatComplete?: boolean;
+  lightOn?: boolean | null; // gated write read-back; null when no light state
+}
+
+export interface ApplianceCommonState {
+  id: string;
+  serial: string;
+  name: string;
+  model?: string;
+  isOnline: boolean;
+  serviceRequired?: boolean;
+}
+
+export interface FridgeApplianceState extends ApplianceCommonState {
+  kind: 'fridge';
+  zones: FridgeZoneState[];
+  anyDoorAjar?: boolean;
+  waterFilterPct?: number | null;
+  airFilterPct?: number | null;
+  iceMakerOn?: boolean;
+  sabbathMode?: boolean;
+}
+
+export interface OvenApplianceState extends ApplianceCommonState {
+  kind: 'oven';
+  cavities: OvenCavityState[];
+  // SAFETY: oven set-temp / probe / light writes are equipment-gated in the
+  // subzero_wolf integration (`enable_oven_writes`, default-off + inert +
+  // safety-ack). b-panels renders these READ-ONLY and issues ZERO actuation.
+  // This is the surface-side backstop; the integration default-off gate is the
+  // authority. The flag is informational only — the tile never writes either way.
+  ovenWritesGated: true;
+}
+
+export interface DishwasherApplianceState extends ApplianceCommonState {
+  kind: 'dishwasher';
+  washStatus: string | null;      // free-text status from the appliance
+  washCycle: string | null;       // selected cycle name
+  timeRemainingMin: number | null;
+  running?: boolean;
+  doorAjar?: boolean;
+  rinseAidLow?: boolean;
+  heatedDry?: boolean;
+  saniRinse?: boolean;
+}
+
+export type ApplianceState =
+  | FridgeApplianceState
+  | OvenApplianceState
+  | DishwasherApplianceState;
 
 export interface ForecastDay {
     date: string;

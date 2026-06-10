@@ -25,6 +25,9 @@ import GeneratorTile from './tiles/GeneratorTile';
 import PanicTile from './tiles/PanicTile';
 import AlarmHistoryTile from './tiles/AlarmHistoryTile';
 import AkvoFloorSurface from './tiles/AkvoFloorSurface';
+import GlassFridgeTile from '../design-system/tiles/GlassFridgeTile';
+import GlassOvenTile from '../design-system/tiles/GlassOvenTile';
+import GlassDishwasherTile from '../design-system/tiles/GlassDishwasherTile';
 import { resolveTileTypeComponent } from './tileTypes';
 
 // Shared prop contract every tile understands. `device` is guaranteed here
@@ -80,6 +83,11 @@ export const tileByType: Partial<Record<DeviceType, TileComponent>> = {
   [DeviceType.PanicButton]: PanicTile,
   [DeviceType.AlarmHistory]: AlarmHistoryTile,
   [DeviceType.AkvoFloor]: AkvoFloorSurface,
+  // Sub-Zero / Wolf / Cove appliance composites (display-only; the Wolf oven
+  // write path stays equipment-gated and is never actuated from these tiles).
+  [DeviceType.Fridge]: GlassFridgeTile,
+  [DeviceType.Oven]: GlassOvenTile,
+  [DeviceType.Dishwasher]: GlassDishwasherTile,
   [DeviceType.Folder]: FolderTile,
 
   // Capability-driven fallback for HA entities whose domain isn't mapped to a

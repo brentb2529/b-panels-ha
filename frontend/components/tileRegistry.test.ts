@@ -21,6 +21,9 @@ import GlassCameraTile from '../design-system/tiles/GlassCameraTile';
 import GlassLightGroupTile from '../design-system/tiles/GlassLightGroupTile';
 import GlassArmingStatusTile from '../design-system/tiles/GlassArmingStatusTile';
 import GlassLitterRobotTile from '../design-system/tiles/GlassLitterRobotTile';
+import GlassFridgeTile from '../design-system/tiles/GlassFridgeTile';
+import GlassOvenTile from '../design-system/tiles/GlassOvenTile';
+import GlassDishwasherTile from '../design-system/tiles/GlassDishwasherTile';
 import { Device, DeviceType, DeviceService, TileConfig } from '../types';
 
 // Minimal real Device fixtures. `id === entity_id` for HA-sourced devices.
@@ -46,6 +49,7 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
       'arming-status',
       'camera',
       'climate',
+      'cove-dishwasher',
       'cover',
       'dimmer',
       'garage-cover',
@@ -55,7 +59,9 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
       'media-player',
       'scene',
       'sensor',
+      'subzero-fridge',
       'switch',
+      'wolf-oven',
     ]);
     expect(tileTypeCatalog.switch.component).toBe(GlassSwitchTile);
     expect(tileTypeCatalog.dimmer.component).toBe(GlassDimmerTile);
@@ -69,6 +75,11 @@ describe('tileTypes catalog (Admin Stage 1 — Inc 11)', () => {
     expect(tileTypeCatalog.alarm.component).toBe(GlassArmingStatusTile);
     expect(tileTypeCatalog['arming-status'].component).toBe(GlassArmingStatusTile);
     expect(tileTypeCatalog['litter-robot'].component).toBe(GlassLitterRobotTile);
+    expect(tileTypeCatalog['subzero-fridge'].component).toBe(GlassFridgeTile);
+    expect(tileTypeCatalog['wolf-oven'].component).toBe(GlassOvenTile);
+    expect(tileTypeCatalog['cove-dishwasher'].component).toBe(GlassDishwasherTile);
+    // SAFETY: the Wolf oven tile is GATED in the contract (oven write gate).
+    expect(tileTypeCatalog['wolf-oven'].contractStatus).toBe('GATED');
   });
 
   it('no longer points the catalog at the legacy tile components', () => {

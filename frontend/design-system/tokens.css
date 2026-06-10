@@ -327,6 +327,25 @@ body.light-mode .bp-scene-pill {
   animation: bp-pulse-dot 3s ease-in-out infinite;
 }
 
+/* =============================================================================
+ * Appliance tiles (Sub-Zero / Wolf / Cove) — live widget animations
+ * ===========================================================================*/
+/* Sub-Zero fridge frost shimmer (drifting cold haze while cooling). */
+@keyframes bpFridgeShimmer {
+  0%, 100% { opacity: 0.25; transform: translateY(2%); }
+  50%      { opacity: 0.5;  transform: translateY(-4%); }
+}
+/* Wolf oven flame flicker while preheating. */
+@keyframes bpOvenFlame {
+  0%, 100% { opacity: 0.85; transform: scale(1) translateY(0); }
+  50%      { opacity: 1;    transform: scale(1.12) translateY(-1px); }
+}
+/* Cove dishwasher wash shimmer (water sloshing while running). */
+@keyframes bpDishWash {
+  0%, 100% { opacity: 0.45; transform: scale(0.96); }
+  50%      { opacity: 0.8;  transform: scale(1.04); }
+}
+
 /* Honor reduced-motion (mirrors index.html). */
 @media (prefers-reduced-motion: reduce) {
   .bp-glass-card, .bp-glass-card.bp-fade-in, .bp-status-dot.is-pulsing,

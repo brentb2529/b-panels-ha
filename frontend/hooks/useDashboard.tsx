@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, AreaConfig, ThemeMode } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, AreaConfig, ThemeMode, ApplianceState } from '../types';
+import { buildApplianceComposites } from './applianceComposites';
 import { resolveTileEntityId, type SelectableEntity } from '../services/entitySelector';
 import { buildAreasFromRegistry, mergeImportedAreas } from './areaSeed';
 import { produce } from 'immer';
@@ -1458,21 +1459,32 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { flairComposites: [comp], flairMemberIds: members };
   }, [serviceDevices]);
 
+  // Sub-Zero / Wolf / Cove appliances: fold each appliance's per-zone / per-
+  // cavity / cycle entities into ONE composite card (ApplianceState). Pure
+  // assembly in `applianceComposites.ts` (unit-tested); DISPLAY-ONLY — the Wolf
+  // oven write path stays equipment-gated in the integration and is never
+  // surfaced as actionable here.
+  const { applianceComposites, applianceMemberIds } = useMemo(() => {
+    const { composites, memberIds } = buildApplianceComposites(serviceDevices, entityDeviceMap);
+    return { applianceComposites: composites, applianceMemberIds: memberIds };
+  }, [serviceDevices, entityDeviceMap]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
     // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !applianceMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
     // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    applianceComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, applianceComposites, applianceMemberIds]);
 
   // id -> Device lookup, derived directly from `devices`. Memoized (not a
   // useState + effect) so it updates in the same render as `devices` — no extra

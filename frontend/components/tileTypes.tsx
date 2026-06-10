@@ -21,6 +21,9 @@ import GlassCameraTile from '../design-system/tiles/GlassCameraTile';
 import GlassLightGroupTile from '../design-system/tiles/GlassLightGroupTile';
 import GlassArmingStatusTile from '../design-system/tiles/GlassArmingStatusTile';
 import GlassLitterRobotTile from '../design-system/tiles/GlassLitterRobotTile';
+import GlassFridgeTile from '../design-system/tiles/GlassFridgeTile';
+import GlassOvenTile from '../design-system/tiles/GlassOvenTile';
+import GlassDishwasherTile from '../design-system/tiles/GlassDishwasherTile';
 
 export type ContractStatus = 'LOCKED' | 'PROPOSED' | 'GATED';
 
@@ -197,6 +200,44 @@ export const tileTypeCatalog: Record<string, TileTypeDefinition> = {
     alwaysEquipmentGated: false,
     contractStatus: 'LOCKED',
     component: GlassLitterRobotTile,
+  },
+  // ── Sub-Zero / Wolf / Cove appliances (subzero_wolf integration) ───────
+  // All three bind to an appliance COMPOSITE device (the integration's per-zone
+  // / per-cavity / cycle entities folded into one ApplianceState by
+  // useDashboard). Display-only; the composite anchors on the appliance's
+  // sensor entities, so `acceptsDomains: ['sensor']` lets the picker suggest
+  // them. Binding is by deviceId (the `appliance:*` composite).
+  'subzero-fridge': {
+    key: 'subzero-fridge',
+    label: 'Fridge / Freezer (Sub-Zero)',
+    description: 'Rich Sub-Zero fridge/freezer tile: per-zone set-point + measured temperature with an animated cool/frost indicator, door-open state, and water/air filter alerts. Display-only — Sub-Zero set-points are read-only at the appliance, so this tile exposes no writes.',
+    acceptsDomains: ['sensor'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassFridgeTile,
+  },
+  'wolf-oven': {
+    key: 'wolf-oven',
+    label: 'Oven / Range (Wolf)',
+    description: 'Rich Wolf oven/range tile: per-cavity measured temp with an animated heating ring, cook mode, probe temperature, oven light read-back. Controls are READ-ONLY — the oven set-temp / probe / light WRITES are equipment-gated (enable in the integration options after hardware verification); this tile renders them disabled and issues no actuation.',
+    acceptsDomains: ['sensor'],
+    // SAFETY: the oven write path is equipment-gated. This tile is display-only
+    // and issues ZERO actuation, so it is NOT marked alwaysEquipmentGated (which
+    // governs Tile.tsx confirm/PIN for tiles that COULD actuate) — instead the
+    // tile itself has no write code path. Marked GATED so the contract label is
+    // honest about the oven write gate.
+    alwaysEquipmentGated: false,
+    contractStatus: 'GATED',
+    component: GlassOvenTile,
+  },
+  'cove-dishwasher': {
+    key: 'cove-dishwasher',
+    label: 'Dishwasher (Cove)',
+    description: 'Rich Cove dishwasher tile: cycle status with an animated wash/progress ring, time-remaining, and clean/running/door state. Display-only.',
+    acceptsDomains: ['sensor'],
+    alwaysEquipmentGated: false,
+    contractStatus: 'LOCKED',
+    component: GlassDishwasherTile,
   },
 
   // ── Equipment-gated / life-safety surfaces ─────────────────────────────
