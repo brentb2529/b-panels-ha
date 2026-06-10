@@ -238,8 +238,10 @@ export interface DashboardPanel {
   // the grid path is unchanged — additive/non-breaking. Increment 2 ships
   // 'kitchen'; Increment 3 ships 'home' (the scene-forward landing overview);
   // Increment 4 ships 'pool' (the Pool & Spa flagship compilation panel);
-  // Increment 5 ships 'climate' (the whole-home HVAC compilation panel).
-  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate';
+  // Increment 5 ships 'climate' (the whole-home HVAC compilation panel);
+  // Increment 6 ships 'primary-suite' (the Primary Suite room view, sibling of
+  // the Kitchen room view).
+  compilationKind?: 'kitchen' | 'home' | 'pool' | 'climate' | 'primary-suite';
 }
 
 export interface ServiceConnection {
