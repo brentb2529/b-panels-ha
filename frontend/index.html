@@ -177,6 +177,12 @@
       }
       .animate-shake { animation: tp-shake 0.4s ease-in-out; }
 
+      /* Audio-unlock hint pill fade-in (Polish #2) */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
       /* Respect reduced-motion: kill decorative loops (pulsing alarm screens,
          shake, bounce) for users/panels that ask for less animation. */
       @media (prefers-reduced-motion: reduce) {

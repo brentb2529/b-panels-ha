@@ -8,6 +8,14 @@ npm-debug.log*
 # The integration recreates this dir at runtime, so no placeholder is tracked.
 custom_components/b_panels/frontend/
 
+# Dev deploy backups of the served bundle. Regenerable from git (the served
+# bundle is just `vite build` output), so never tracked. Prefer the single
+# rolling name `frontend.bak`; the dated `frontend.bak-*` and `frontend.restored`
+# are legacy/safety-net copies that must not accrue in source.
+custom_components/b_panels/frontend.bak
+custom_components/b_panels/frontend.bak-*
+custom_components/b_panels/frontend.restored
+
 # Release artifacts
 *.zip
 

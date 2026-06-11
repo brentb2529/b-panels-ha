@@ -148,6 +148,32 @@ def test_project_fleet_mixed_statuses_sorted():
     assert by_id["kiosk-c"]["lastSeenAgeS"] == 10
 
 
+def test_project_fleet_offline_by_age_and_absent_lastseen():
+    # Polish #3: the OFFLINE pill via the freshness-threshold path (very-old
+    # lastSeen) AND the absent-lastSeen path — distinct from the online:false
+    # graceful-shutdown branch. Both must classify offline.
+    beats = {
+        "kiosk-darkroom": {  # very old beat → offline by age
+            "installationId": "kiosk-darkroom", "online": True,
+            "lastSeen": _iso_ago(HEARTBEAT_OFFLINE_AFTER_S + 20),
+        },
+        "kiosk-noseen": {  # no lastSeen at all → offline
+            "installationId": "kiosk-noseen", "online": True,
+        },
+        "kiosk-foyer": {  # fresh → online (so the rollup is mixed)
+            "installationId": "kiosk-foyer", "online": True, "lastSeen": _iso_ago(8),
+        },
+    }
+    rows = project_fleet(beats, NOW_EPOCH)
+    by_id = {r["installationId"]: r for r in rows}
+    assert by_id["kiosk-darkroom"]["status"] == "offline"
+    assert by_id["kiosk-noseen"]["status"] == "offline"
+    assert by_id["kiosk-foyer"]["status"] == "online"
+    # the admin UI rollup counts offline from these statuses
+    offline = sum(1 for r in rows if r["status"] == "offline")
+    assert offline == 2
+
+
 def test_project_fleet_empty_and_bad_input():
     assert project_fleet({}, NOW_EPOCH) == []
     assert project_fleet("nope", NOW_EPOCH) == []  # type: ignore[arg-type]

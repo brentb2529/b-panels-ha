@@ -14,16 +14,32 @@
 import { useEffect, useRef, useState } from 'react';
 import type { HassEntities } from 'home-assistant-js-websocket';
 import { subscribeEntities, subscribeConnectionState } from '../../services/haClient';
-import { projectTakeover, type TakeoverView } from './lifeSafety';
+import { findAlarmEntity, projectTakeover, type TakeoverView } from './lifeSafety';
 
 const STALE_AFTER_MS = 45000;
 // Re-project on a coarse tick so relative ages ("40s ago"), the entry-delay
 // countdown, and the stale→signal-lost flip advance even with no new HA push.
 const TICK_MS = 1000;
 
+// Sticky "an alarm entity exists in this deployment" latch. Once we've seen an
+// alarm_control_panel.* in the live feed, we remember it for the session so a
+// later page reload (which starts with an empty feed + a momentarily-down socket)
+// still treats a real disconnect as signal-lost, not a false "no alarm". On a
+// deployment that genuinely has no alarm (bare demo/admin panel) this never sets,
+// so those panels stay quiet. sessionStorage (not local) so it does not leak a
+// false "alarm expected" across truly different deployments/long-dead sessions.
+const ALARM_SEEN_KEY = 'bpanels.lifeSafety.alarmSeen';
+const readAlarmSeen = (): boolean => {
+  try { return window.sessionStorage.getItem(ALARM_SEEN_KEY) === '1'; } catch { return false; }
+};
+const persistAlarmSeen = () => {
+  try { window.sessionStorage.setItem(ALARM_SEEN_KEY, '1'); } catch { /* private mode — ignore */ }
+};
+
 export function useLifeSafetyTakeover(): TakeoverView {
+  const alarmSeenRef = useRef<boolean>(readAlarmSeen());
   const [view, setView] = useState<TakeoverView>(() =>
-    projectTakeover({}, true, null, Date.now(), STALE_AFTER_MS));
+    projectTakeover({}, true, null, Date.now(), STALE_AFTER_MS, alarmSeenRef.current));
 
   const entsRef = useRef<HassEntities>({});
   const connectedRef = useRef<boolean>(true);
@@ -42,6 +58,7 @@ export function useLifeSafetyTakeover(): TakeoverView {
         lastSeenRef.current,
         Date.now(),
         STALE_AFTER_MS,
+        alarmSeenRef.current,
       ));
     };
 
@@ -63,11 +80,21 @@ export function useLifeSafetyTakeover(): TakeoverView {
           entsRef.current = ents;
           lastSeenRef.current = Date.now();
           connectedRef.current = true; // a push means we're live
+          // Latch "an alarm exists here" the first time we actually see the
+          // entity in the feed (even unavailable — its presence proves wiring).
+          // From then on a dropped feed reads signal-lost, never no-alarm.
+          if (!alarmSeenRef.current && findAlarmEntity(ents)) {
+            alarmSeenRef.current = true;
+            persistAlarmSeen();
+          }
           reproject();
         });
       } catch {
-        // Subscription failed → signal-lost (handled by projectTakeover: no
-        // entity + not connected → 'signal-lost', which reads UNKNOWN not clear).
+        // Subscription failed → not connected. If an alarm was previously seen
+        // this session (alarmSeenRef latched / persisted), projectTakeover reads
+        // 'signal-lost' (UNKNOWN, never "all clear") — the real safety case. On a
+        // deployment that never had an alarm it reads 'no-alarm' (quiet), so a
+        // bare panel doesn't flash a false "don't trust this panel" takeover.
         connectedRef.current = false;
         reproject();
       }

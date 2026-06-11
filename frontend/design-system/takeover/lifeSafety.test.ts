@@ -167,7 +167,7 @@ describe('projectTakeover — triggered panel + open_sensors parsing', () => {
 });
 
 describe('projectTakeover — three-state freshness (signal-lost / stale)', () => {
-  it('signal-lost when the WS is disconnected', () => {
+  it('signal-lost when the WS is disconnected (alarm present in feed)', () => {
     const f = feed(
       { 'binary_sensor.garage_smoke': 'on' },
       { 'binary_sensor.garage_smoke': { device_class: 'smoke' } },
@@ -179,11 +179,7 @@ describe('projectTakeover — three-state freshness (signal-lost / stale)', () =
     expect(v.active).toBe(false);
   });
 
-  it('signal-lost when the alarm entity is missing', () => {
-    expect(projectTakeover({}, true, NOW, NOW).freshness).toBe('signal-lost');
-  });
-
-  it('signal-lost when the alarm entity is unavailable', () => {
+  it('signal-lost when the alarm entity is unavailable (present but dropped)', () => {
     const f: any = { [ALARM_ENTITY_ID]: ent('unavailable') };
     expect(projectTakeover(f, true, NOW, NOW).freshness).toBe('signal-lost');
   });
@@ -202,14 +198,74 @@ describe('projectTakeover — three-state freshness (signal-lost / stale)', () =
   });
 
   it('signal-lost reports last-known label + iso (not "clear")', () => {
-    const v = projectTakeover({}, false, NOW, NOW);
-    expect(v.lastKnownLabel).toBeNull(); // no entity → null, NOT a green "clear"
     // with an entity present but disconnected, last-known is surfaced
     const f: any = { [ALARM_ENTITY_ID]: ent('disarmed', {}, '2026-06-09T19:39:00') };
     const v2 = projectTakeover(f, false, NOW, NOW);
     expect(v2.freshness).toBe('signal-lost');
     expect(v2.lastKnownLabel).toBe('Disarmed');
     expect(v2.lastKnownIso).toBe('2026-06-09T19:39:00');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ABSENT vs DROPPED — the safety-adjacent fix (task #23.1). The Signal-Lost
+// "don't trust this panel" takeover must distinguish:
+//   (a) an alarm KNOWN to the deployment but currently unavailable/dropped/
+//       disconnected → signal-lost MUST still fire (the real safety case), vs
+//   (b) NO alarm entity in this deployment at all (bare demo/admin panel) →
+//       no-alarm, quiet, NO life-safety takeover.
+// CRITICAL: "absent" (never present) and "dropped" (was present, now gone) must
+// NOT collapse. The Bensten home runs Alarmo, so its real-disconnect Signal-Lost
+// must be preserved.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('projectTakeover — ABSENT (no alarm) vs DROPPED (known alarm) freshness', () => {
+  // (b) No alarm entity, never seen, connected → no-alarm (NOT signal-lost).
+  it('no-alarm when there is NO alarm entity and none was ever expected', () => {
+    const v = projectTakeover({}, true, NOW, NOW, 45000, /* alarmExpected */ false);
+    expect(v.freshness).toBe('no-alarm');
+    expect(v.active).toBe(false);
+    expect(v.lastKnownLabel).toBeNull(); // not a green "clear"
+  });
+
+  // (b') Even with the socket down, a deployment that never had an alarm stays
+  // quiet — we have no evidence an alarm exists to have "lost".
+  it('no-alarm when no alarm was ever expected, even while disconnected', () => {
+    const v = projectTakeover({}, false, NOW, NOW, 45000, /* alarmExpected */ false);
+    expect(v.freshness).toBe('no-alarm');
+  });
+
+  // (a) The real safety case: an alarm WAS present (alarmExpected latched), now
+  // absent from the feed → signal-lost MUST still fire. Absent != no-alarm here.
+  it('signal-lost when an EXPECTED alarm has dropped out of the feed (present-then-gone)', () => {
+    const v = projectTakeover({}, true, NOW, NOW, 45000, /* alarmExpected */ true);
+    expect(v.freshness).toBe('signal-lost');
+    expect(v.active).toBe(false); // unknown, never "all clear"
+  });
+
+  // (a') Disconnect after the alarm was present → signal-lost regardless of
+  // whether the (now-stale) feed still carries the entity.
+  it('signal-lost when an expected alarm is present but the socket is down', () => {
+    const f: any = { [ALARM_ENTITY_ID]: ent('disarmed') };
+    const v = projectTakeover(f, false, NOW, NOW, 45000, /* alarmExpected */ true);
+    expect(v.freshness).toBe('signal-lost');
+  });
+
+  // (a'') Present-then-STALE: a known alarm that goes stale (connected, no fresh
+  // push) reads 'stale', and if it then drops/goes unavailable → signal-lost.
+  // The progression known-good → stale → signal-lost is preserved for a real alarm.
+  it('present-then-stale then signal-lost for a known alarm (progression preserved)', () => {
+    const fresh: any = { [ALARM_ENTITY_ID]: ent('disarmed') };
+    expect(projectTakeover(fresh, true, NOW - 1000, NOW, 45000, true).freshness).toBe('known-good');
+    expect(projectTakeover(fresh, true, NOW - 60000, NOW, 45000, true).freshness).toBe('stale');
+    const gone: any = { [ALARM_ENTITY_ID]: ent('unavailable') };
+    expect(projectTakeover(gone, true, NOW, NOW, 45000, true).freshness).toBe('signal-lost');
+  });
+
+  // A present-but-unavailable entity is "known + dropped" even if never latched
+  // as expected — its presence in the feed proves wiring → signal-lost, not quiet.
+  it('signal-lost for a present-but-unavailable alarm even when alarmExpected=false', () => {
+    const f: any = { [ALARM_ENTITY_ID]: ent('unknown') };
+    expect(projectTakeover(f, true, NOW, NOW, 45000, false).freshness).toBe('signal-lost');
   });
 });
 

@@ -383,8 +383,18 @@ const LifeSafetyTakeover = ({ onActiveChange }: Props) => {
   // away from an active annunciation.
   useEffect(() => { onActiveChange?.(view.active); }, [view.active, onActiveChange]);
 
+  // NO-ALARM: this deployment has no alarm entity at all (bare demo/admin panel).
+  // This is NOT the safety case — render nothing. We must never show the
+  // life-safety "don't trust this panel" takeover where there is simply no alarm
+  // wiring to lose. (Distinct from signal-lost below, which is a KNOWN alarm we
+  // can no longer trust and MUST keep firing.)
+  if (view.freshness === 'no-alarm') {
+    return null;
+  }
+
   // SIGNAL LOST: show the UNKNOWN banner (never "all clear"). No modal, no
   // scope-class type tinting needed — the banner is its own neutral overlay.
+  // Fires when a KNOWN alarm's feed drops/disconnects — the real safety case.
   if (view.freshness === 'signal-lost') {
     return <SignalLostBanner view={view} nowMs={nowMs} />;
   }

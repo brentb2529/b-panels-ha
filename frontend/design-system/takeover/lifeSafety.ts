@@ -44,7 +44,17 @@ const UNAVAILABLE = new Set(['unavailable', 'unknown', '']);
 // ── Branch types ────────────────────────────────────────────────────────────
 export type TakeoverType = 'fire' | 'co' | 'gas' | 'evacuate' | 'intrusion';
 export type TakeoverTier = 1 | 2; // 1 = life-safety, 2 = security/intrusion
-export type Freshness = 'known-good' | 'stale' | 'signal-lost';
+// Freshness states:
+//   known-good   — connected + a fresh, available alarm state.
+//   stale        — connected but no fresh push within the window.
+//   signal-lost  — the alarm entity is KNOWN to this deployment (seen at least
+//                  once, or expected per config) but we cannot currently trust it:
+//                  WS disconnected, entity dropped from the feed, or unavailable.
+//                  THIS IS THE REAL SAFETY CASE — it must keep firing.
+//   no-alarm     — no alarm entity exists in this deployment at all (never seen,
+//                  not expected per config). NOT a safety case: a bare demo/admin
+//                  panel with no alarm wiring. Renders quiet (no takeover banner).
+export type Freshness = 'known-good' | 'stale' | 'signal-lost' | 'no-alarm';
 
 // device_class → branch. Anything life-safety is Tier 1; door/window/motion is
 // Tier 2 intrusion; unknown is the EVACUATE fallback (still Tier 1 — we never
@@ -160,6 +170,13 @@ const labelForArmState = (state: string): string => {
  * @param lastSeenMs    epoch ms of the last fresh entity push (for staleness)
  * @param nowMs         current epoch ms (injectable for deterministic tests)
  * @param staleAfterMs  age beyond which a still-connected feed reads 'stale'
+ * @param alarmExpected has an alarm entity EVER been seen in this deployment (or
+ *                      is one declared/expected per config)? This is the pivot
+ *                      that separates the REAL safety case (a known alarm whose
+ *                      feed dropped → signal-lost) from a bare panel that simply
+ *                      has no alarm wiring at all (never seen → no-alarm, quiet).
+ *                      CRITICAL: "absent" and "dropped" must NOT collapse — an
+ *                      alarm that was present and then disappears stays signal-lost.
  */
 export const projectTakeover = (
   ents: HassEntities,
@@ -167,26 +184,51 @@ export const projectTakeover = (
   lastSeenMs: number | null,
   nowMs: number,
   staleAfterMs = 45000,
+  alarmExpected = false,
 ): TakeoverView => {
   const e = findAlarmEntity(ents);
 
-  // ── Freshness: signal-lost > stale > known-good ──
-  // signal-lost: WS disconnected, OR no entity at all, OR entity unavailable.
-  // stale: connected but no fresh push within the window.
+  // ── Freshness: signal-lost > no-alarm > stale > known-good ──
+  // We split the "no fresh, available alarm state" condition into two distinct
+  // outcomes so a bare demo/admin panel (no alarm at all) does NOT raise the
+  // life-safety "don't trust this panel" takeover, while a KNOWN alarm whose feed
+  // dropped STILL does (the real safety case — never weaken it).
   let freshness: Freshness = 'known-good';
   const entAvailable = !!e && !UNAVAILABLE.has(String(e.state).toLowerCase());
-  if (!connected || !e || !entAvailable) {
-    freshness = 'signal-lost';
-  } else if (lastSeenMs != null && nowMs - lastSeenMs > staleAfterMs) {
-    freshness = 'stale';
+  // "Is there an alarm in this deployment at all?" — true if one is in the feed
+  // now (even unavailable: its presence proves wiring) OR was seen/declared before.
+  const alarmKnown = !!e || alarmExpected;
+
+  if (alarmKnown) {
+    // A KNOWN alarm. This is the safety domain — any loss of trust is signal-lost,
+    // never quiet. (a) socket down, (b) entity dropped out of the feed, or (c)
+    // present but unavailable/unknown all read signal-lost. Only a fresh, available
+    // state is known-good (and a connected-but-old feed is stale). Absent != quiet
+    // here: an alarm that WAS present and then disappears stays signal-lost.
+    if (!connected || !e || !entAvailable) {
+      freshness = 'signal-lost';
+    } else if (lastSeenMs != null && nowMs - lastSeenMs > staleAfterMs) {
+      freshness = 'stale';
+    }
+  } else {
+    // NO alarm in this deployment — never seen, not expected. This is NOT a
+    // safety case (bare demo/admin panel). Stay quiet regardless of connection;
+    // there is no alarm signal to have "lost".
+    freshness = 'no-alarm';
   }
 
   const lastKnownIso = e?.last_changed ?? e?.last_updated ?? null;
   const lastKnownLabel = e && entAvailable ? labelForArmState(String(e.state).toLowerCase()) : null;
 
+  // no-alarm: there is no alarm in this deployment — quiet, no takeover, no
+  // banner. The consumer renders nothing (or a subtle "no alarm configured" note).
+  if (freshness === 'no-alarm') {
+    return { ...STILL_BLANK, freshness, lastKnownIso: null, lastKnownLabel: null };
+  }
+
   // Signal-lost: a takeover-tier UNKNOWN state — NOT "all clear". active stays
   // false (no triggered panel we can trust), but the consumer raises the
-  // signal-lost banner from `freshness`.
+  // signal-lost banner from `freshness`. THIS IS THE REAL SAFETY CASE.
   if (freshness === 'signal-lost') {
     return { ...STILL_BLANK, freshness, lastKnownIso, lastKnownLabel };
   }

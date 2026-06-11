@@ -1214,6 +1214,37 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }
   }, []);
 
+  // Auto-arm audio on the FIRST real user interaction anywhere (Polish #2).
+  // Browsers only let us prime the audio/TTS engine inside a user gesture; the old
+  // full-screen "tap to enable audio" overlay satisfied that but obscured content
+  // on every fresh kiosk load. Instead we listen, once, for the first genuine
+  // gesture (pointer/touch/key) and unlock then — so normal use (tapping any tile)
+  // arms audio transparently, and the small affordance the user sees is purely a
+  // hint they can dismiss. This does NOT regress the unlock the gesture provides.
+  useEffect(() => {
+      if (isAudioUnlocked) return;
+      const onFirstGesture = () => {
+          console.log('[Audio] First user gesture — auto-unlocking audio.');
+          setAudioUnlocked(true);
+          // Prime speechSynthesis inside the gesture (same as explicit unlock).
+          if (typeof window !== 'undefined' && window.speechSynthesis) {
+              const u = new SpeechSynthesisUtterance(' ');
+              u.volume = 0;
+              window.speechSynthesis.speak(u);
+          }
+      };
+      const opts = { capture: true, passive: true } as AddEventListenerOptions;
+      // pointerdown covers mouse+touch+pen; keydown covers keyboard kiosks.
+      window.addEventListener('pointerdown', onFirstGesture, opts);
+      window.addEventListener('keydown', onFirstGesture, opts);
+      window.addEventListener('touchstart', onFirstGesture, opts);
+      return () => {
+          window.removeEventListener('pointerdown', onFirstGesture, opts);
+          window.removeEventListener('keydown', onFirstGesture, opts);
+          window.removeEventListener('touchstart', onFirstGesture, opts);
+      };
+  }, [isAudioUnlocked]);
+
   // Handle side effects of toggling TTS (saving setting, stopping audio) in an effect
   // to prevent race conditions or blocking UI updates in the WebView.
   useEffect(() => {
