@@ -3075,9 +3075,15 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       }
     };
     const onVisible = () => { if (document.visibilityState === 'visible') reconcileAlarm(); };
+    // Reconcile the instant someone touches the panel (throttled), so a person
+    // walking up to a just-woken kiosk gets the true state BEFORE they act —
+    // covering the case where wake events don't fire and the 30s tick hasn't hit.
+    let lastInteract = 0;
+    const onInteract = () => { const t = Date.now(); if (t - lastInteract < 4000) return; lastInteract = t; reconcileAlarm(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     window.addEventListener('online', reconcileAlarm);
+    for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, onInteract, { passive: true });
     // 30s cadence: a security tile must not display a stale arm state for long,
     // and this is the backstop when wake events don't fire on the kiosk.
     const poll = window.setInterval(reconcileAlarm, 30000);
@@ -3086,6 +3092,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
       window.removeEventListener('online', reconcileAlarm);
+      for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.removeEventListener(ev, onInteract);
       clearInterval(poll);
     };
   }, [useDemoMode]);
