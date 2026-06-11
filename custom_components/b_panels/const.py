@@ -42,6 +42,11 @@ WS_CONFIG_SAVE = "b_panels/config/save"
 WS_KIOSK_INFO = "b_panels/kiosk/info"
 # Server-side RSS/Atom fetch proxy (CORS-safe; SSRF-guarded) for the News tile.
 WS_RSS = "b_panels/rss"
+# Returns the per-device heartbeat registry projected into fleet status rows
+# (online/stale/offline freshness, version, IP, battery, current panel) for the
+# ADMIN Panels & Data-Sources fleet view. Admin-gated — it reuses the existing
+# heartbeat store and adds NO unauthenticated endpoint. Read-only diagnostics.
+WS_FLEET_GET = "b_panels/fleet/get"
 # Server-side JSON fetch proxy for the Generator tile. Unlike WS_RSS this
 # deliberately allows LAN/private hosts, because generator/local-device APIs
 # (e.g. an EnergyTrak/genmon poller) live on the local network. It is gated by

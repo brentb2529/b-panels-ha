@@ -1,0 +1,117 @@
+/* Admin Panels & Data-Sources fleet status view (task #25).
+ *
+ * Scoped under `.fleet-scope` so it never restyles the rest of the admin shell
+ * or any dashboard. Subtle liquid-glass accents layered over the locked admin
+ * gray theme (the admin pages use the gray/brand palette; we add glass cards +
+ * animated status dots to match the design bar without diverging from admin).
+ * READ-ONLY diagnostics — nothing here actuates anything. */
+
+.fleet-scope {
+  --fl-ok: #34d399;
+  --fl-attn: #fbbf24;
+  --fl-crit: #f87171;
+  --fl-unknown: #94a3b8;
+}
+
+/* glass card surface for each fleet/source row */
+.fleet-scope .fl-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.fleet-scope .fl-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* animated status dot */
+.fleet-scope .fl-dot {
+  display: inline-block;
+  border-radius: 9999px;
+  flex: 0 0 auto;
+}
+.fleet-scope .fl-dot-online,
+.fleet-scope .fl-dot-connected,
+.fleet-scope .fl-dot-ok {
+  background: var(--fl-ok);
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  animation: fl-pulse-ok 2.4s ease-out infinite;
+}
+.fleet-scope .fl-dot-stale {
+  background: var(--fl-attn);
+  animation: fl-pulse-attn 1.4s ease-out infinite;
+}
+.fleet-scope .fl-dot-offline,
+.fleet-scope .fl-dot-erroring {
+  background: var(--fl-crit);
+  animation: fl-pulse-crit 0.9s ease-out infinite;
+}
+.fleet-scope .fl-dot-not-configured,
+.fleet-scope .fl-dot-unknown {
+  background: var(--fl-unknown);
+  opacity: 0.7;
+}
+
+@keyframes fl-pulse-ok {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+@keyframes fl-pulse-attn {
+  0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.6); }
+  70% { box-shadow: 0 0 0 5px rgba(251, 191, 36, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0); }
+}
+@keyframes fl-pulse-crit {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7); }
+  70% { box-shadow: 0 0 0 5px rgba(248, 113, 113, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-scope .fl-dot { animation: none !important; }
+}
+
+/* status pill */
+.fleet-scope .fl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.fleet-scope .fl-pill-online,
+.fleet-scope .fl-pill-connected,
+.fleet-scope .fl-pill-ok {
+  color: var(--fl-ok);
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.fleet-scope .fl-pill-stale {
+  color: var(--fl-attn);
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.fleet-scope .fl-pill-offline,
+.fleet-scope .fl-pill-erroring {
+  color: var(--fl-crit);
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.fleet-scope .fl-pill-not-configured,
+.fleet-scope .fl-pill-unknown {
+  color: var(--fl-unknown);
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.fleet-scope .fl-meta {
+  font-variant-numeric: tabular-nums;
+}

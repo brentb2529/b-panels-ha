@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDashboard } from '../hooks/useDashboard';
 import { Device, DeviceService, DashboardPanel, TileConfig, DeviceType, MediaItem, AllowedIP, ServiceConnection, TileDisplayOverride, TileAnimationConfig, HighlightSectionConfig, SonosNotification, SonosNotificationEventType, IdleMode, ThemeMode, EntityBindings } from '../types';
-import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves, IconLayers } from './icons';
+import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves, IconLayers, IconActivity } from './icons';
 import { produce } from 'immer';
 import Tile from './Tile';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -10,6 +10,7 @@ import AdminDeploy from './AdminDeploy';
 import { IconRocket } from './icons';
 import KioskScheduleEditor from './KioskScheduleEditor';
 import SystemStatusManager from './SystemStatusManager';
+import FleetStatusManager from './fleet/FleetStatusManager';
 import { apiSendTestWebhook, apiTestHomeAssistant, apiBroadcastTts, apiGetHomeAssistantStates } from '../services/api';
 import { suggestTileType, isAlwaysEquipmentGated, getTileTypeDefinition, getCompatibleTileTypes, getCompatibleTileTypesForDevice, type TileTypeDefinition } from './tileTypes';
 import Modal from './Modal';
@@ -2606,6 +2607,7 @@ const Admin = () => {
         { id: 'notifications', label: 'Notifications', icon: IconVolume2 },
         { id: 'access', label: 'Access Control', icon: IconUsers },
         { id: 'system', label: 'System', icon: IconServer },
+        { id: 'fleet', label: 'Fleet Status', icon: IconActivity },
         { id: 'deploy', label: 'Deploy', icon: IconRocket },
     ];
 
@@ -2648,6 +2650,7 @@ const Admin = () => {
                     </>
                 )}
                 {activeTab === 'system' && <SystemStatusManager />}
+                {activeTab === 'fleet' && <FleetStatusManager />}
                 {activeTab === 'deploy' && <AdminDeploy />}
             </div>
         </div>

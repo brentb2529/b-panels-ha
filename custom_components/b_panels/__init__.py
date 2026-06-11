@@ -54,11 +54,13 @@ from .const import (
     INTERCOM_SIGNAL_KINDS,
     WS_CONFIG_GET,
     WS_CONFIG_SAVE,
+    WS_FLEET_GET,
     WS_GENERATOR,
     WS_INTERCOM_SIGNAL,
     WS_KIOSK_INFO,
     WS_RSS,
 )
+from .fleet import build_heartbeat_record, derive_remote_ip, project_fleet
 from .gating import enforce_equipment_gating, evaluate_config_save, strip_secret_keys
 from .kiosk_auth import (
     extract_presented_token,
@@ -78,6 +80,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_rss)
     websocket_api.async_register_command(hass, websocket_generator)
     websocket_api.async_register_command(hass, websocket_kiosk_info)
+    websocket_api.async_register_command(hass, websocket_fleet_get)
     websocket_api.async_register_command(hass, websocket_intercom_signal)
     # HTTP endpoints the native iPad kiosk app uses (it has no HA token, so these
     # are gated by a per-install KIOSK TOKEN — H-2 — instead of HA auth, and
@@ -196,16 +199,23 @@ class BPanelsHeartbeatView(HomeAssistantView):
         if not isinstance(body, dict):
             body = {}
         iid = str(body.get("installationId") or "unknown")
-        # H-2: bound what we store — only a small, known set of status fields,
-        # never the attacker's whole arbitrary JSON, and cap the number of
-        # tracked installations.
-        record = {
-            "installationId": iid,
-            "online": bool(body.get("online", True)),
-            "battery": body.get("battery"),
-            "version": str(body.get("version"))[:64] if body.get("version") is not None else None,
-            "lastSeen": dt_util.utcnow().isoformat(),
-        }
+        # Capture the kiosk's source IP for the admin fleet view: prefer the
+        # panel's own self-report (`ip` in the body); else derive it from the
+        # request (X-Forwarded-For when HA sits behind a trusted proxy, else the
+        # raw peer address). Display-only diagnostics.
+        remote_ip = derive_remote_ip(
+            request.headers.get("X-Forwarded-For"),
+            request.remote,
+        )
+        # H-2: bound what we store — build_heartbeat_record keeps only a small,
+        # known set of status fields with capped string lengths, never the
+        # attacker's whole arbitrary JSON. The number of tracked installations is
+        # capped below.
+        record = build_heartbeat_record(
+            body,
+            now_iso=dt_util.utcnow().isoformat(),
+            remote_ip=remote_ip,
+        )
         beats: dict = hass.data.setdefault(DOMAIN, {}).setdefault("heartbeats", {})
         if iid not in beats and len(beats) >= MAX_TRACKED_PANELS:
             return self.json({"ok": False, "error": "too_many_panels"}, status_code=429)
@@ -577,6 +587,40 @@ async def websocket_kiosk_info(
             "header": KIOSK_TOKEN_HEADER,
             "query_param": KIOSK_TOKEN_QUERY,
         },
+    )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): WS_FLEET_GET})
+@websocket_api.async_response
+async def websocket_fleet_get(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Return the panel fleet status rows for the ADMIN fleet view (task #25).
+
+    Projects the existing per-device heartbeat registry (stored by the
+    H-2-token-gated heartbeat POST) into rows with a derived online/stale/offline
+    status from heartbeat freshness, plus version, IP, battery, current panel,
+    and screen state. ADMIN-ONLY: it exposes the fleet diagnostics over the
+    admin's authenticated HA websocket — it adds NO unauthenticated endpoint and
+    the kiosk runtime never depends on it (least-privilege). Read-only.
+
+    `connectedIds` lists installation ids with a live command-channel socket so
+    the admin can distinguish "heartbeating" from "command-reachable".
+    """
+    beats: dict = hass.data.get(DOMAIN, {}).get("heartbeats", {})
+    command_panels: dict = hass.data.get(DOMAIN, {}).get("command_panels", {})
+    connected_ids = [
+        iid for iid, ws in command_panels.items() if ws is not None and not ws.closed
+    ]
+    panels = project_fleet(beats, dt_util.utcnow().timestamp())
+    for row in panels:
+        row["commandConnected"] = row.get("installationId") in connected_ids
+    connection.send_result(
+        msg["id"],
+        {"panels": panels, "connectedIds": connected_ids},
     )
 
 

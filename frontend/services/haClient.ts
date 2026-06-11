@@ -387,6 +387,41 @@ export async function fetchGeneratorData(url: string): Promise<any> {
     return res?.data ?? null;
 }
 
+// --- Admin fleet status (task #25) --------------------------------------------
+// Fetch the panel fleet status rows from the b_panels integration. This is the
+// ADMIN-only `b_panels/fleet/get` websocket command — it projects the existing
+// per-device heartbeat registry into online/stale/offline rows. It is gated
+// `@require_admin` server-side; the kiosk runtime never calls it (least
+// privilege). Read-only diagnostics; throws if the caller is not an admin.
+export interface FleetPanelRow {
+    installationId: string;
+    name?: string | null;
+    online?: boolean;
+    battery?: number | null;
+    version?: string | null;
+    ip?: string | null;
+    ipSource?: 'reported' | 'remote-addr' | null;
+    currentPanelId?: string | null;
+    currentPanelName?: string | null;
+    screenState?: string | null;
+    lastSeen?: string | null;
+    status: 'online' | 'stale' | 'offline';
+    lastSeenAgeS: number | null;
+    commandConnected?: boolean;
+}
+export interface FleetResult {
+    panels: FleetPanelRow[];
+    connectedIds: string[];
+}
+export async function fetchFleet(): Promise<FleetResult> {
+    const conn = await getConnection();
+    const res: any = await conn.sendMessagePromise({ type: 'b_panels/fleet/get' });
+    return {
+        panels: Array.isArray(res?.panels) ? res.panels : [],
+        connectedIds: Array.isArray(res?.connectedIds) ? res.connectedIds : [],
+    };
+}
+
 // --- Panel-to-panel intercom signaling (feat/panel-intercom) ------------------
 // A thin WebRTC signaling relay that rides the SPA's AUTHENTICATED HA websocket
 // (the same `getConnection()` used everywhere else). A panel sends a small
@@ -532,6 +567,40 @@ export async function fetchEntityAreaRegistry(): Promise<HaEntityArea[]> {
             }));
     } catch (e) {
         console.warn('[B-Panels] entity_registry/list unavailable (non-admin?):', e);
+        return [];
+    }
+}
+
+// --- Config entries (ADMIN-ONLY — fleet data-sources enrichment, task #25) ----
+// HA's `config_entries/get` lists every configured integration with its setup
+// `state` (loaded / setup_error / setup_retry / not_loaded …). This is
+// admin-only and used ONLY by the admin fleet Data-Sources view to show a true
+// integration status (connected/erroring) alongside the entity-availability
+// rollup. The kiosk runtime NEVER calls this (least-privilege); it degrades to
+// the entity-availability signal alone if unavailable. Returns [] on failure.
+export interface HaConfigEntry {
+    entry_id: string;
+    domain: string;
+    title: string;
+    state: string; // 'loaded' | 'setup_error' | 'setup_retry' | 'not_loaded' | ...
+    reason?: string | null;
+}
+export async function fetchConfigEntries(): Promise<HaConfigEntry[]> {
+    try {
+        const conn = await getConnection();
+        const res: any = await conn.sendMessagePromise({ type: 'config_entries/get' });
+        const entries: any[] = Array.isArray(res) ? res : Array.isArray(res?.entries) ? res.entries : [];
+        return entries
+            .filter(e => e && e.domain)
+            .map(e => ({
+                entry_id: e.entry_id,
+                domain: e.domain,
+                title: e.title || e.domain,
+                state: e.state || 'unknown',
+                reason: e.reason ?? null,
+            }));
+    } catch (e) {
+        console.warn('[B-Panels] config_entries/get unavailable (non-admin?):', e);
         return [];
     }
 }
