@@ -56,6 +56,12 @@ WS_GENERATOR = "b_panels/generator"
 # be an authenticated HA user) — it adds NO unauthenticated endpoint and reuses
 # no LAN-token kiosk channel. It carries ONLY signaling (SDP/ICE/call control);
 # it actuates NO home equipment.
+# Fired after a successful config/save so every OTHER open panel live-refreshes
+# its in-memory copy (and auto-reloads on a `_rev` bump) instead of holding a
+# stale doc it could later save back over newer edits (the config-clobber wipe).
+# Carries { rev, source } — the saving panel's own source id lets it ignore its
+# own broadcast (no save→broadcast→refetch feedback loop).
+EVENT_CONFIG_UPDATED = "b_panels_config_updated"
 WS_INTERCOM_SIGNAL = "b_panels/intercom/signal"
 # The HA event the relay re-fires; every panel subscribes and filters on `to`.
 EVENT_INTERCOM_SIGNAL = "b_panels_intercom_signal"

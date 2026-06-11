@@ -117,7 +117,10 @@ export const projectArm = (e: HassEntity | undefined): ArmView => {
         sub: open.length ? `Triggered · ${open.length} sensor${open.length === 1 ? '' : 's'}` : 'Alarm triggered',
         tone: 'triggered', changedBy, lastChanged,
       };
-    default: {
+    case 'armed_vacation':
+    case 'armed_custom_bypass':
+      return { available: true, word: 'Armed · Away', sub: 'Perimeter + interior armed', tone: 'away', changedBy, lastChanged };
+    case 'disarmed': {
       // disarmed → ready unless something is open
       const ready = open.length === 0;
       return {
@@ -128,6 +131,18 @@ export const projectArm = (e: HassEntity | undefined): ArmView => {
         changedBy, lastChanged,
       };
     }
+    default:
+      // SAFETY (production-failure lessons A): only an EXPLICIT `disarmed`
+      // renders the green "Disarmed · Ready" look. An unrecognized state string
+      // (a new Alarmo mode, a malformed value) is uncertain — show "Status
+      // Unknown" with the neutral notready tone, NEVER an implied-safe Disarmed.
+      return {
+        available: false,
+        word: 'Unavailable',
+        sub: 'Alarm state unknown',
+        tone: 'unavailable',
+        changedBy, lastChanged,
+      };
   }
 };
 

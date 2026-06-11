@@ -131,8 +131,15 @@ const ArmingBar = () => {
     return open > 0 ? `${open} sensor${open === 1 ? '' : 's'} open` : 'Some sensors open';
   };
 
-  if (!alarmState) {
-    cls = 'bps-arm-notready'; state = 'Alarm · Unavailable'; sub = 'No alarm panel connected'; pulse = false;
+  if (!alarmState || arm === 'unknown') {
+    // SAFETY (production-failure lessons A): no alarm state, or a state we could
+    // not determine (entity unavailable/unknown/stale) → show uncertainty, NEVER
+    // the green "Disarmed · Ready" look. A frozen/zombie panel must read as
+    // unknown, not implied-safe.
+    cls = 'bps-arm-notready';
+    state = 'Status Unknown';
+    sub = alarmState ? 'Alarm state unavailable' : 'No alarm panel connected';
+    pulse = false;
   } else if (phase === 'triggered' || alarmState.securityState === 'VIOLATION') {
     cls = 'bps-arm-triggered'; state = 'Intrusion';
     sub = alarmState.trigger?.name ? `Triggered · ${alarmState.trigger.name}` : 'Alarm triggered';

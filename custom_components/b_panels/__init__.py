@@ -48,6 +48,7 @@ from .const import (
     PANEL_URL_PATH,
     STORAGE_KEY,
     STORAGE_VERSION,
+    EVENT_CONFIG_UPDATED,
     EVENT_INTERCOM_SIGNAL,
     INTERCOM_PAYLOAD_MAX_BYTES,
     INTERCOM_SIGNAL_KINDS,
@@ -58,7 +59,7 @@ from .const import (
     WS_KIOSK_INFO,
     WS_RSS,
 )
-from .gating import enforce_equipment_gating, strip_secret_keys
+from .gating import enforce_equipment_gating, evaluate_config_save, strip_secret_keys
 from .kiosk_auth import (
     extract_presented_token,
     generate_kiosk_token,
@@ -646,6 +647,11 @@ async def websocket_intercom_signal(
         vol.Required("type"): WS_CONFIG_SAVE,
         vol.Required("config"): dict,
         vol.Optional("source"): vol.Any(str, None),
+        # The `_rev` the saving panel last loaded/saw. Used to REFUSE a stale
+        # overwrite: if the stored `_rev` has advanced past this, another panel
+        # saved newer edits and this save would clobber them. Omit (or None) to
+        # opt out (legacy clients) — the empty-guard still protects them.
+        vol.Optional("client_rev"): vol.Any(int, None),
     }
 )
 @websocket_api.async_response
@@ -675,14 +681,20 @@ async def websocket_save_config(
 
     new_cfg = msg["config"]
     current = await store.async_load() or {}
+    stored_rev = current.get("_rev") or 0
 
-    # Safety net: never let a panel wipe a populated config to empty.
-    if not new_cfg.get("panels") and current.get("panels"):
-        connection.send_error(
-            msg["id"],
-            "stale_empty",
-            "Refused: incoming config has no panels but the stored config does.",
-        )
+    # Config-clobber guards (empty-over-populated + stale-rev). Pure decision in
+    # gating.evaluate_config_save so it is unit-testable without a live socket.
+    verdict = evaluate_config_save(new_cfg, current, msg.get("client_rev"))
+    if verdict["action"] == "refuse":
+        if verdict["code"] == "stale_rev":
+            _LOGGER.warning(
+                "b_panels config/save: refused a STALE save (client_rev=%s < stored _rev=%s); "
+                "a newer config exists. The stale panel must re-fetch before saving.",
+                msg.get("client_rev"),
+                stored_rev,
+            )
+        connection.send_error(msg["id"], verdict["code"], verdict["message"])
         return
 
     # Defense-in-depth: re-force equipment gating + strip secrets before persist.
@@ -702,12 +714,20 @@ async def websocket_save_config(
             stripped,
         )
 
-    new_cfg["_rev"] = (current.get("_rev") or 0) + 1
+    new_cfg["_rev"] = verdict["next_rev"]
     await store.async_save(new_cfg)
     connection.send_result(msg["id"], {"success": True, "rev": new_cfg["_rev"]})
 
-    # NOTE: deliberately NOT firing a `b_panels_config_updated` broadcast. It
-    # created a save feedback loop (panel saves -> broadcast -> other panels
-    # re-fetch -> their setConfig auto-saves -> broadcast -> ...). Clobber
-    # protection is now the empty-save guard above + the client only saving on
-    # real user edits (never on a load).
+    # Config-updated broadcast: tell every OTHER open panel a newer config exists
+    # so it re-fetches + reapplies in React (and version-reloads on the `_rev`
+    # bump) rather than holding a stale copy it could later save back over the
+    # newer one (the clobber/wipe cause). The original feedback-loop risk (panel
+    # saves -> broadcast -> other panels re-fetch -> auto-save -> broadcast -> …)
+    # is broken on BOTH ends now: (1) the SPA ignores the broadcast carrying its
+    # OWN `source` id, and (2) a config that came from a load never triggers a
+    # save (justLoadedRef). So this is safe and is the missing live-sync half.
+    source = msg.get("source")
+    hass.bus.async_fire(
+        EVENT_CONFIG_UPDATED,
+        {"rev": new_cfg["_rev"], "source": source},
+    )

@@ -452,7 +452,12 @@ export interface AllowedIP {
 export interface AlarmState {
     locationId: string;
     locationName: string;
-    armState: 'disarmed' | 'armedStay' | 'armedAway';
+    // 'unknown' = the alarm's true state could not be determined (entity
+    // unavailable/unknown/absent/stale, or an unrecognized state string). On a
+    // SECURITY surface we must render uncertainty (neutral grey "Status
+    // Unknown"), NEVER an implied-safe "Disarmed". See production-failure
+    // lessons A (alarm false-"disarmed").
+    armState: 'disarmed' | 'armedStay' | 'armedAway' | 'unknown';
     securityState: 'OK' | 'VIOLATION' | null;
     violatingSensors: { name: string }[];
     trigger?: { name: string; type: string } | null;

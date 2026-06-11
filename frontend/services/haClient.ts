@@ -196,6 +196,46 @@ export async function getStates(): Promise<any[]> {
     return Array.isArray(states) ? states : Object.values(states ?? {});
 }
 
+// SAFETY (production-failure lessons A — alarm false-"disarmed"): the proven
+// root fix for a zombie websocket (one that answers ping() yet has MISSED the
+// arm push, leaving a stale snapshot) is a full RESYNC. `forceReconnect` tears
+// the socket down and back up so home-assistant-js-websocket re-fetches the
+// entire entity collection — re-anchoring every subscriber to the live truth.
+//
+// We do NOT rely on this connection's own auto-reconnect or its ping timer:
+// both can freeze when a kiosk device sleeps. The caller invokes this on a
+// DEFINITE state mismatch detected by the independent truth-reconcile.
+export async function forceReconnect(): Promise<void> {
+    try {
+        const conn = await getConnection();
+        // `reconnect(true)` forces a fresh socket + re-subscribes everything,
+        // which re-emits the full state to subscribeEntities consumers.
+        (conn as any).reconnect?.(true);
+    } catch (e) {
+        // If we can't even reach the cached connection, drop it so the next
+        // getConnection() rebuilds from scratch.
+        console.warn('[HA] forceReconnect failed; dropping cached connection.', e);
+        connectionPromise = null;
+    }
+}
+
+// Liveness probe used as a SECONDARY signal only. A request/response getStates()
+// (the truth-reconcile) is the primary check because a zombie socket can answer
+// a bare ping while having missed pushes. Resolves true if the socket round-
+// trips within `timeoutMs`, false otherwise (never throws).
+export async function pingAlive(timeoutMs = 5000): Promise<boolean> {
+    try {
+        const conn = await getConnection();
+        const ping = (conn as any).ping?.() ?? (conn as any).sendMessagePromise?.({ type: 'ping' });
+        if (!ping) return !!(conn as any).connected;
+        const timeout = new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), timeoutMs));
+        const result = await Promise.race([ping.then(() => 'ok' as const), timeout]);
+        return result === 'ok';
+    } catch {
+        return false;
+    }
+}
+
 // Send a raw websocket command and return its result (for integration WS
 // commands without a dedicated wrapper, e.g. Alarmo's read-only `alarmo/users`).
 export async function haSendMessage(msg: Record<string, any>): Promise<any> {
@@ -547,19 +587,38 @@ export async function getDashboardConfig(): Promise<any | null> {
 export const PANEL_SOURCE_ID =
     Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-export async function saveDashboardConfig(config: any): Promise<void> {
+// Persist the config. Pass `clientRev` = the `_rev` this config was loaded from
+// so the server can REFUSE a stale overwrite (config-clobber guard) and so two
+// panels editing concurrently can't silently clobber each other. Returns the new
+// stored `_rev` on success (so the caller can advance its tracked rev). On a
+// stale-rev refusal the server sends an error and this REJECTS — the caller must
+// re-fetch before retrying.
+export async function saveDashboardConfig(
+    config: any,
+    clientRev?: number,
+): Promise<number | undefined> {
     try {
         const conn = await getConnection();
-        await conn.sendMessagePromise({
+        const rev = typeof clientRev === 'number'
+            ? clientRev
+            : (typeof config?._rev === 'number' ? config._rev : undefined);
+        const res: any = await conn.sendMessagePromise({
             type: 'b_panels/config/save',
             config,
             source: PANEL_SOURCE_ID,
+            ...(rev !== undefined ? { client_rev: rev } : {}),
         });
-    } catch {
+        return typeof res?.rev === 'number' ? res.rev : undefined;
+    } catch (e: any) {
+        // A stale_rev / stale_empty refusal must PROPAGATE (the caller re-fetches);
+        // only the no-backend standalone-dev path falls back to localStorage.
+        const code = e?.code || e?.error?.code;
+        if (code === 'stale_rev' || code === 'stale_empty') throw e;
         try {
             localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config));
+            return undefined;
         } catch {
-            /* ignore */
+            throw e;
         }
     }
 }

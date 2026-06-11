@@ -39,6 +39,17 @@ describe('projectArm (display-only Alarmo state)', () => {
     expect(projectArm(ent('armed_away')).word).toBe('Armed · Away');
   });
 
+  // SAFETY (production-failure lessons A): an UNRECOGNIZED state string must
+  // NOT render the green "Disarmed · Ready" look. Only an EXPLICIT 'disarmed'
+  // is disarmed; anything else is uncertain → unavailable/notready tone.
+  it('NEVER renders a green "Disarmed" for an unrecognized state', () => {
+    const v = projectArm(ent('some_future_mode'));
+    expect(v.word).not.toBe('Disarmed');
+    expect(v.tone).not.toBe('ready');
+    expect(v.tone).toBe('unavailable');
+    expect(v.available).toBe(false);
+  });
+
   it('maps arming/pending/triggered phases', () => {
     expect(projectArm(ent('arming')).tone).toBe('pending');
     expect(projectArm(ent('pending')).tone).toBe('pending');

@@ -77,6 +77,51 @@ def strip_secret_keys(new_cfg: dict) -> int:
     return stripped
 
 
+def evaluate_config_save(
+    new_cfg: dict,
+    current: dict | None,
+    client_rev,
+) -> dict:
+    """PURE decision for a config/save (config-clobber guards, lessons D).
+
+    No HA, no I/O — returns the verdict so `websocket_save_config` can act on it
+    and unit tests can assert it without a live websocket.
+
+    Guards, in order:
+      1. EMPTY-OVER-POPULATED: refuse a save that would blank a populated config
+         (a stale kiosk once wiped the whole config to panels:0).
+      2. STALE-REV: refuse a save whose `client_rev` is OLDER than the stored
+         `_rev` — another panel saved newer edits; this would clobber them.
+
+    Returns one of:
+      {"action": "refuse", "code": "stale_empty", "message": ...}
+      {"action": "refuse", "code": "stale_rev",   "message": ..., "stored_rev": N}
+      {"action": "accept", "next_rev": N}
+    """
+    current = current or {}
+    stored_rev = current.get("_rev") or 0
+
+    if not (new_cfg or {}).get("panels") and current.get("panels"):
+        return {
+            "action": "refuse",
+            "code": "stale_empty",
+            "message": "Refused: incoming config has no panels but the stored config does.",
+        }
+
+    if client_rev is not None and isinstance(client_rev, int) and client_rev < stored_rev:
+        return {
+            "action": "refuse",
+            "code": "stale_rev",
+            "message": (
+                f"Refused: your config is stale (rev {client_rev} < current {stored_rev}). "
+                "Reload the panel to get the latest before saving."
+            ),
+            "stored_rev": stored_rev,
+        }
+
+    return {"action": "accept", "next_rev": stored_rev + 1}
+
+
 def config_has_secrets(cfg: dict) -> bool:
     """True if any connection in the config carries a secret-bearing key.
 

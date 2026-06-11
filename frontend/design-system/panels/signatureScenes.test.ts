@@ -20,8 +20,19 @@ import { dirname, join, resolve } from 'node:path';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const here = dirname(fileURLToPath(import.meta.url));
-// frontend/design-system/panels → repo bensten-ha root → dev-ha/config/packages
-const pkgPath = resolve(here, '../../../../dev-ha/config/packages/signature_scenes.yaml');
+// The six scene scripts live in the coordinator-owned dev-ha package
+// (dev-ha/config/packages/signature_scenes.yaml), which is NOT present in a
+// b-panels-ha-only checkout. A version-controlled REFERENCE COPY of the exact
+// same file is committed in this repo at dev-ha-config/signature_scenes.yaml so
+// this safety proof always runs against the real script source. Prefer the
+// coordinator path when present (full integration checkout), else fall back to
+// the in-repo reference copy. repo root = frontend/design-system/panels → ../../..
+const repoRoot = resolve(here, '../../..');
+const candidatePaths = [
+  resolve(repoRoot, '../dev-ha/config/packages/signature_scenes.yaml'), // coordinator checkout
+  join(repoRoot, 'dev-ha-config/signature_scenes.yaml'),                // in-repo reference copy
+];
+const pkgPath = candidatePaths.find((p) => existsSync(p)) ?? candidatePaths[0];
 
 // Forbidden in any scene script body: services/domains that drive gated actors.
 const FORBIDDEN_SERVICE = [

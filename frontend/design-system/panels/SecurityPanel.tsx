@@ -158,13 +158,16 @@ const SecurityPanel = () => {
     : s.arm.tone === 'triggered' ? 'var(--sem-triggered)'
     : s.arm.tone === 'pending' ? 'var(--sem-pending)'
     : s.arm.tone === 'notready' ? 'var(--sem-notready)'
+    // SAFETY (production-failure lessons A): an unavailable/unknown alarm must
+    // NOT render the green ready colour — show the neutral notready tone.
+    : s.arm.tone === 'unavailable' ? 'var(--sem-notready)'
     : 'var(--sem-ready)';
 
   const heroTone =
     s.arm.tone === 'away' ? 'secp-hero-away'
     : s.arm.tone === 'stay' || s.arm.tone === 'night' ? 'secp-hero-stay'
     : s.arm.tone === 'triggered' ? 'secp-hero-triggered'
-    : s.arm.tone === 'notready' ? 'secp-hero-notready'
+    : s.arm.tone === 'notready' || s.arm.tone === 'unavailable' ? 'secp-hero-notready'
     : '';
 
   return (

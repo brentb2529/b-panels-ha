@@ -15,8 +15,11 @@ export const apiGetConfig = async (): Promise<StoredConfig | null> => {
     return (await haClient.getDashboardConfig()) as StoredConfig | null;
 };
 
-export const apiSaveConfig = async (config: StoredConfig): Promise<void> => {
-    await haClient.saveDashboardConfig(config);
+export const apiSaveConfig = async (
+    config: StoredConfig,
+    clientRev?: number,
+): Promise<number | undefined> => {
+    return haClient.saveDashboardConfig(config, clientRev);
 };
 
 // --- HA entity states ---------------------------------------------------------

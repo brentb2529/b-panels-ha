@@ -154,7 +154,7 @@ export interface StoredConfig {
     primaryAlarmProvider?: 'st' | 'ha';
 }
 
-const getDefaultConfig = (): StoredConfig => ({
+export const getDefaultConfig = (): StoredConfig => ({
   schema_version: CONFIG_SCHEMA_VERSION,
   panels: [{id: 'default-panel', name: 'Main Dashboard', tiles: [], highlights: [], columns: 8, rowHeight: 120, showAlarmAlerts: false, showArmingStatus: false, themeMode: 'dark', showTileBorders: true }],
   // H-1 (Inc 11): no plaintext credential fields are seeded here anymore — the
@@ -567,15 +567,78 @@ const parseRelayState = (type: DeviceType, relayState: Record<string, any>): Par
     return updates;
 };
 
-const normalizeArmState = (raw?: string): AlarmState['armState'] => {
+export const normalizeArmState = (raw?: string): AlarmState['armState'] => {
     const a = String(raw || '').toLowerCase();
+    // SAFETY (production-failure lessons A): a security surface must NEVER imply
+    // "safe" when the truth is unknown. Map unavailable/unknown/empty/
+    // unrecognized → 'unknown' (rendered neutral grey "Status Unknown"), NOT
+    // 'disarmed'. Only an EXPLICIT disarmed/armed_* state passes through; a
+    // zombie socket or absent entity reporting unavailable previously mapped to
+    // a false green "Disarmed" while the house was really armed.
+    if (a === 'unavailable' || a === 'unknown' || a === '') return 'unknown';
+    if (a === 'disarmed') return 'disarmed';
     // Alarmo / HA-specific modes
     if (a === 'armed_home' || a === 'armed_night' || a === 'armed_custom_bypass') return 'armedStay';
     if (a === 'armed_vacation') return 'armedAway';
     // Generic matching (covers ST strings like 'ARMED_STAY', 'armedStay', and HA 'armed_away')
     if (a.includes('armed') && (a.includes('stay') || a.includes('home') || a.includes('night'))) return 'armedStay';
     if (a.includes('armed') && (a.includes('away') || a.includes('vacation'))) return 'armedAway';
-    return 'disarmed';
+    // Any unrecognized non-empty string is also uncertain → never imply safe.
+    return 'unknown';
+};
+
+// Derive the alarm phase straight from a raw alarm_control_panel state string.
+// Mirrors the WS handler's phase mapping; pulled out so the truth-reconcile can
+// compute "expected" from a getStates() snapshot and unit tests can assert it.
+const phaseFromHaState = (haState?: string): AlarmState['phase'] => {
+    const s = String(haState || '').toLowerCase();
+    return s === 'arming' ? 'arming'
+        : s === 'pending' ? 'pending'
+        : s === 'triggered' ? 'triggered'
+        : 'idle';
+};
+
+// SAFETY (production-failure lessons A): given a raw alarm entity from a
+// request/response getStates() snapshot and the currently CACHED alarm state,
+// decide whether they DEFINITELY disagree — meaning our pushed/cached view is
+// stale (a zombie socket missed a push) and we must forceReconnect().
+//
+// Rules (only act on a DEFINITE mismatch — never on first mount / null cache):
+//   • cached is null OR we have no live entity → NOT a mismatch (nothing proven).
+//   • compare the normalized arm state AND the phase; either differing is a
+//     definite mismatch.
+// `entity` shape: { state, attributes? }. Returns true ⇒ reconnect.
+export const isAlarmTruthMismatch = (
+    entity: { state?: string; attributes?: Record<string, any> } | undefined | null,
+    cached: AlarmState | null,
+): boolean => {
+    if (!cached) return false;               // first mount / nothing to compare
+    if (!entity || entity.state == null) return false;  // entity absent in snapshot — not a definite mismatch
+    const haState = String(entity.state).toLowerCase();
+    const attrs = entity.attributes || {};
+
+    // A snapshot that is itself UNCERTAIN (unavailable/unknown/empty) is not a
+    // definite mismatch — don't thrash a reconnect on it (the freshness /
+    // Signal-Lost path renders that uncertainty). This is distinct from a
+    // transient phase like 'pending'/'arming', which IS a definite truth.
+    if (haState === 'unavailable' || haState === 'unknown' || haState === '') return false;
+
+    const expectedPhase = phaseFromHaState(haState);
+    // PHASE is a definite truth for every recognized state (idle vs arming vs
+    // pending vs triggered). If the live phase disagrees with the cached phase,
+    // our snapshot is stale — reconnect. (Covers triggered/pending/arming, whose
+    // arm string is not itself an arm mode.)
+    if (expectedPhase !== (cached.phase ?? 'idle')) return true;
+
+    // Steady-state (idle) arm comparison: resolve the destination arm mode (from
+    // arm_mode during a transient, else the state). An unrecognized steady arm
+    // string normalizes to 'unknown' → treat as uncertain (no thrash).
+    const isTransient = haState === 'arming' || haState === 'pending';
+    const expectedArm = isTransient
+        ? normalizeArmState(attrs.arm_mode || haState)
+        : normalizeArmState(haState);
+    if (expectedArm === 'unknown') return false;
+    return expectedArm !== cached.armState;
 };
 
 const getMessageLocationId = (message: any): string | undefined => {
@@ -1112,6 +1175,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // guard, which must not reload mid-alarm).
   const alarmStateRef = useRef<AlarmState | null>(null);
   useEffect(() => { alarmStateRef.current = alarmState; }, [alarmState]);
+  // SAFETY (production-failure lessons A): the entity_id of the alarm panel we
+  // last saw a real state for. The independent truth-reconcile uses it to find
+  // the alarm in a getStates() snapshot and compare against alarmStateRef.
+  const alarmEntityIdRef = useRef<string | null>(null);
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
@@ -2123,6 +2190,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // load triggers a save -> which (with the broadcast) made other panels reload
   // -> save -> a config-save feedback LOOP across panels (and a reconnect clobber).
   const justLoadedRef = useRef(false);
+  // CONFIG-CLOBBER guard (production-failure lessons D): the `_rev` of the config
+  // we last loaded/saved. Sent as `client_rev` on save so the server can refuse a
+  // STALE overwrite (a panel saving over newer edits from another panel). Tracked
+  // in a ref (not config state) so advancing it after save doesn't re-trigger the
+  // save effect.
+  const latestRevRef = useRef<number | undefined>(undefined);
 
   // FIX: Added loadConfig function definition and initial load effect.
   const loadConfig = useCallback((silent: boolean = false) => {
@@ -2132,6 +2205,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     apiGetConfig()
         .then(loadedConfig => {
             const defaultConfig = getDefaultConfig();
+            // Capture the loaded `_rev` for the config-clobber guard (lessons D).
+            if (loadedConfig && typeof (loadedConfig as any)._rev === 'number') {
+                latestRevRef.current = (loadedConfig as any)._rev;
+            }
             if (loadedConfig) {
                 const mergedConfig = produce(defaultConfig, draft => {
                     Object.assign(draft, loadedConfig);
@@ -2315,10 +2392,30 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       loadConfig();
   }, [loadConfig]);
 
-  // (Removed) the live-config-sync broadcast subscription — it created a save
-  // feedback loop (broadcast -> reload -> auto-save -> broadcast -> ...). The
-  // clobber it was meant to prevent is now handled at the source by justLoadedRef
-  // (a load never triggers a save) plus the integration's empty-save guard.
+  // Live-config-sync (production-failure lessons D): when ANOTHER panel saves
+  // the config, re-fetch + reapply it so this panel never holds a stale copy it
+  // could later save back over the newer one (the clobber/wipe cause). The old
+  // feedback loop (broadcast -> reload -> auto-save -> broadcast -> …) is now
+  // broken on both ends: the server tags each broadcast with the saver's
+  // `source` id (so we ignore our OWN save here via PANEL_SOURCE_ID), and a
+  // config that came from a load never triggers a save (justLoadedRef). The
+  // `loadConfig(true)` reapplies in React state (no full reload, no lost focus);
+  // the rev bump is captured so our next save isn't stale.
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    haClient.subscribeConfigUpdates((ev) => {
+      // The broadcast already excludes our own PANEL_SOURCE_ID server-side; this
+      // is a belt-and-braces no-op for any echo. If the broadcast rev is newer
+      // than what we hold, pull it.
+      if (typeof ev.rev === 'number' && latestRevRef.current !== undefined && ev.rev <= latestRevRef.current) return;
+      console.log(`[B-Panels] config updated by another panel (rev=${ev.rev}); reloading.`);
+      loadConfig(true);
+    }).then((u) => {
+      if (cancelled) { try { u(); } catch { /* ignore */ } } else { unsub = u; }
+    }).catch((e) => console.warn('[B-Panels] config-updated subscription unavailable:', e));
+    return () => { cancelled = true; if (unsub) try { unsub(); } catch { /* ignore */ } };
+  }, [loadConfig]);
 
   // Unobtrusive build auto-reload: if a NEW frontend build is deployed (the
   // hashed bundle filename changes), reload to pick it up — but ONLY when the
@@ -2353,6 +2450,91 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return () => window.clearInterval(id);
   }, []);
 
+  // ── SAFETY: independent alarm TRUTH-RECONCILE (production-failure lessons A) ──
+  // The proven root fix for the false-"Disarmed" incident. A zombie websocket
+  // can answer ping() yet have MISSED the arm push, so the cached/pushed snapshot
+  // shows "Disarmed" while the house is really armed. Healing on push /
+  // visibilitychange / ping ALONE is insufficient (a kiosk webview may never fire
+  // visibilitychange on sleep; a zombie socket pings fine).
+  //
+  // So, independently of the push stream: every ~30s, on wake/focus/online, and
+  // on touch/keypress (throttled ~4s), do a request/response `getStates()` (works
+  // even if push delivery is dead; 5s timeout → forceReconnect()), find the alarm
+  // entity, derive the expected arm+phase, and on a DEFINITE mismatch vs the
+  // cached state → forceReconnect() (full resync). Only acts on a definite
+  // mismatch — never on first mount / null cache.
+  const lastReconcileRef = useRef<number>(0);
+  useEffect(() => {
+    let cancelled = false;
+    const RECONCILE_THROTTLE_MS = 4000;
+    const GETSTATES_TIMEOUT_MS = 5000;
+
+    const reconcile = async (reason: string) => {
+      const now = Date.now();
+      if (now - lastReconcileRef.current < RECONCILE_THROTTLE_MS) return;
+      lastReconcileRef.current = now;
+      try {
+        const timeout = new Promise<'timeout'>((res) =>
+          setTimeout(() => res('timeout'), GETSTATES_TIMEOUT_MS));
+        const raced = await Promise.race([haClient.getStates(), timeout]);
+        if (cancelled) return;
+        if (raced === 'timeout') {
+          // Request/response itself failed to round-trip in time → the socket is
+          // dead/zombie. Force a full resync regardless of cached state.
+          console.warn(`[HA TRUTH] getStates() timed out (${reason}); forcing reconnect.`);
+          haClient.forceReconnect();
+          return;
+        }
+        const states = raced as any[];
+        // Locate the alarm entity: the one we last saw, else the configured one,
+        // else any alarm_control_panel.* (robust to deviceMap not yet populated).
+        const configured = haConnectionRef.current?.haAlarmEntityId;
+        const wantId = alarmEntityIdRef.current || configured || null;
+        const entity = wantId
+          ? states.find((s) => s?.entity_id === wantId)
+          : states.find((s) => typeof s?.entity_id === 'string' && s.entity_id.startsWith('alarm_control_panel.'));
+        if (entity?.entity_id) alarmEntityIdRef.current = entity.entity_id;
+        if (isAlarmTruthMismatch(entity, alarmStateRef.current)) {
+          console.warn(
+            `[HA TRUTH] DEFINITE alarm mismatch (${reason}): snapshot=${entity?.state} ` +
+            `vs cached arm=${alarmStateRef.current?.armState}/phase=${alarmStateRef.current?.phase} — forcing reconnect.`,
+          );
+          haClient.forceReconnect();
+        }
+      } catch (e) {
+        if (cancelled) return;
+        // getStates() threw (connection unreachable) → resync.
+        console.warn(`[HA TRUTH] getStates() failed (${reason}); forcing reconnect.`, e);
+        haClient.forceReconnect();
+      }
+    };
+
+    const interval = window.setInterval(() => reconcile('interval'), 30_000);
+    const onWake = () => reconcile('wake/focus/online');
+    const onTouch = () => reconcile('touch/keypress');
+    window.addEventListener('focus', onWake);
+    window.addEventListener('online', onWake);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reconcile('visibility'); });
+    for (const ev of ['pointerdown', 'keydown', 'touchstart']) {
+      window.addEventListener(ev, onTouch, { passive: true });
+    }
+    // Kick one shortly after mount so a panel that woke into a stale snapshot
+    // heals quickly (still gated by the definite-mismatch rule).
+    const kick = window.setTimeout(() => reconcile('mount'), 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.clearTimeout(kick);
+      window.removeEventListener('focus', onWake);
+      window.removeEventListener('online', onWake);
+      for (const ev of ['pointerdown', 'keydown', 'touchstart']) {
+        window.removeEventListener(ev, onTouch);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (isConfigLoading || configLoadError) return;
     // Don't persist a config that came straight from a load — it's identical to
@@ -2363,22 +2545,30 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
     saveTimeoutRef.current = window.setTimeout(async () => {
         try {
-            await apiSaveConfig(config);
-            
-            // FIX: Removed internal broadcast of 'config_updated' here.
-            // This prevented a feedback loop where the client saving the config
-            // would receive its own update via SSE and trigger a reload/refresh,
-            // which caused UI disruption (e.g., losing focus in input fields).
-        } catch (err) {
-            // This can happen for read-only users.
-            console.warn('Config save failed (might be read-only access):', err);
+            // Pass the rev we loaded so the server can refuse a STALE overwrite
+            // (config-clobber guard, lessons D). On success, advance our tracked
+            // rev so the next save isn't itself seen as stale.
+            const newRev = await apiSaveConfig(config, latestRevRef.current);
+            if (typeof newRev === 'number') latestRevRef.current = newRev;
+        } catch (err: any) {
+            const code = err?.code || err?.error?.code;
+            if (code === 'stale_rev') {
+                // Another panel saved newer edits. Re-load the latest so we don't
+                // keep trying to clobber it; the user's pending edit is dropped in
+                // favour of the newer authoritative config (clobber prevention).
+                console.warn('Config save refused (stale rev) — reloading the newer config.');
+                loadConfig(true);
+            } else {
+                // Read-only user / no backend — benign.
+                console.warn('Config save failed (might be read-only access):', err);
+            }
         }
     }, 1500);
     
     return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
-  }, [config, isConfigLoading, configLoadError]);
+  }, [config, isConfigLoading, configLoadError, loadConfig]);
 
-  const stConnection = useMemo(() => 
+  const stConnection = useMemo(() =>
     connections.find(c => c.id === DeviceService.SmartThings && c.enabled && c.cloudEndpoint),
     [connections]
   );
@@ -2453,6 +2643,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     connections.find(c => c.id === DeviceService.HomeAssistant && c.enabled),
     [connections]
   );
+  // Non-render mirror so the truth-reconcile (lessons A) can read the configured
+  // alarm entity id without re-subscribing the effect on every connections tick.
+  const haConnectionRef = useRef(haConnection);
+  useEffect(() => { haConnectionRef.current = haConnection; }, [haConnection]);
 
   const stSseUrl = useMemo(() => {
       if (useDemoMode || !stConnection) return null;
@@ -2932,6 +3126,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     : typeof entity_id === 'string' && entity_id.startsWith('alarm_control_panel.');
 
                 if (isAlarmEntity) {
+                    // Remember which entity is the alarm so the truth-reconcile
+                    // can locate it in a getStates() snapshot (lessons A).
+                    alarmEntityIdRef.current = entity_id;
                     const haState = new_state.state as string;
                     const attrs = new_state.attributes || {};
 
