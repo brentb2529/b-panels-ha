@@ -48,9 +48,13 @@ from .const import (
     PANEL_URL_PATH,
     STORAGE_KEY,
     STORAGE_VERSION,
+    EVENT_INTERCOM_SIGNAL,
+    INTERCOM_PAYLOAD_MAX_BYTES,
+    INTERCOM_SIGNAL_KINDS,
     WS_CONFIG_GET,
     WS_CONFIG_SAVE,
     WS_GENERATOR,
+    WS_INTERCOM_SIGNAL,
     WS_KIOSK_INFO,
     WS_RSS,
 )
@@ -73,6 +77,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, websocket_rss)
     websocket_api.async_register_command(hass, websocket_generator)
     websocket_api.async_register_command(hass, websocket_kiosk_info)
+    websocket_api.async_register_command(hass, websocket_intercom_signal)
     # HTTP endpoints the native iPad kiosk app uses (it has no HA token, so these
     # are gated by a per-install KIOSK TOKEN — H-2 — instead of HA auth, and
     # carry only non-sensitive data). These replace the old Node api-server the
@@ -572,6 +577,67 @@ async def websocket_kiosk_info(
             "query_param": KIOSK_TOKEN_QUERY,
         },
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_INTERCOM_SIGNAL,
+        vol.Required("to"): str,            # target panel installation_id
+        vol.Required("from"): str,          # caller panel installation_id
+        vol.Required("kind"): vol.In(list(INTERCOM_SIGNAL_KINDS)),
+        vol.Required("callId"): str,        # correlates a single call's messages
+        vol.Optional("fromName"): vol.Any(str, None),  # caller room label (display)
+        vol.Optional("payload"): vol.Any(dict, str, None),  # SDP / ICE / control
+    }
+)
+@websocket_api.async_response
+async def websocket_intercom_signal(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Relay a panel-to-panel intercom signal (feat/panel-intercom).
+
+    This is a THIN signaling fan-out for WebRTC call-setup between b-panels
+    panels. The SPA is connected over its AUTHENTICATED Home Assistant
+    websocket, so this command is gated by HA auth itself — no new
+    unauthenticated endpoint, no LAN-token kiosk channel. It carries ONLY
+    signaling (SDP/ICE/call-control) and actuates NO home equipment.
+
+    Security posture:
+      * Authenticated: only a signed-in HA session can reach this command.
+      * Shape-validated + size-capped: `kind` is a fixed enum and the payload is
+        bounded (SDP blobs are a few KB) so it can't be used to spray huge
+        events onto the bus.
+      * Addressed: the server stamps the verified envelope and re-fires it as
+        the `b_panels_intercom_signal` event; every panel subscribes and only
+        reacts to messages whose `to` matches its own installation_id.
+
+    NO mic is opened here and nothing always-on is established — the receiving
+    panel still requires an explicit human Accept before any audio (see the SPA
+    privacy model). This is the control plane only.
+    """
+    payload = msg.get("payload")
+    # Bound the payload size (SDP/ICE are small; reject anything large).
+    try:
+        approx = len(json.dumps(payload)) if payload is not None else 0
+    except (TypeError, ValueError):
+        connection.send_error(msg["id"], "bad_payload", "Payload is not serializable.")
+        return
+    if approx > INTERCOM_PAYLOAD_MAX_BYTES:
+        connection.send_error(msg["id"], "payload_too_large", "Signaling payload too large.")
+        return
+
+    event = {
+        "to": str(msg["to"]),
+        "from": str(msg["from"]),
+        "kind": msg["kind"],
+        "callId": str(msg["callId"]),
+        "fromName": (str(msg["fromName"])[:80] if msg.get("fromName") else None),
+        "payload": payload,
+    }
+    hass.bus.async_fire(EVENT_INTERCOM_SIGNAL, event)
+    connection.send_result(msg["id"], {"relayed": True})
 
 
 @websocket_api.require_admin

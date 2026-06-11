@@ -47,3 +47,32 @@ WS_RSS = "b_panels/rss"
 # (e.g. an EnergyTrak/genmon poller) live on the local network. It is gated by
 # Home Assistant auth (admin-only) and restricted to http(s).
 WS_GENERATOR = "b_panels/generator"
+
+# --- Panel-to-panel intercom signaling relay (feat/panel-intercom) -----------
+# A thin WebRTC signaling fan-out: a panel sends a small envelope over its
+# AUTHENTICATED Home Assistant websocket (the SPA's own HA session) and the
+# server re-fires it as an HA event addressed to the target panel's
+# `installation_id`. This is token-gated by HA auth itself (the connection must
+# be an authenticated HA user) — it adds NO unauthenticated endpoint and reuses
+# no LAN-token kiosk channel. It carries ONLY signaling (SDP/ICE/call control);
+# it actuates NO home equipment.
+WS_INTERCOM_SIGNAL = "b_panels/intercom/signal"
+# The HA event the relay re-fires; every panel subscribes and filters on `to`.
+EVENT_INTERCOM_SIGNAL = "b_panels_intercom_signal"
+# Allowed signal kinds (presence + call-control + WebRTC negotiation). Fixed set
+# so the relay can never be coerced into carrying arbitrary message types.
+#   presence : lightweight roster announce (to:"*") so panels can list each other
+#   invite/accept/decline/busy/bye : call control
+#   ice : WebRTC ICE candidate exchange
+INTERCOM_SIGNAL_KINDS = (
+    "presence",
+    "invite",
+    "accept",
+    "decline",
+    "ice",
+    "bye",
+    "busy",
+)
+# Cap the signaling payload (SDP blobs are a few KB; ICE candidates tiny). Bound
+# it so an authenticated-but-buggy/hostile client can't spray huge events.
+INTERCOM_PAYLOAD_MAX_BYTES = 64_000

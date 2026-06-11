@@ -347,6 +347,53 @@ export async function fetchGeneratorData(url: string): Promise<any> {
     return res?.data ?? null;
 }
 
+// --- Panel-to-panel intercom signaling (feat/panel-intercom) ------------------
+// A thin WebRTC signaling relay that rides the SPA's AUTHENTICATED HA websocket
+// (the same `getConnection()` used everywhere else). A panel sends a small
+// envelope via the `b_panels/intercom/signal` command; the b_panels component
+// re-fires it as the `b_panels_intercom_signal` HA event, which every panel
+// subscribes to (filtering on `to`). This is token-gated by HA auth itself —
+// NO new unauthenticated endpoint, NO LAN-token kiosk channel. It carries ONLY
+// signaling (SDP/ICE/call control) and actuates NO home equipment.
+
+export type IntercomSignalKind =
+  | 'presence' | 'invite' | 'accept' | 'decline' | 'ice' | 'bye' | 'busy';
+
+export interface IntercomSignal {
+  /** target panel installation id */
+  to: string;
+  /** caller panel installation id */
+  from: string;
+  kind: IntercomSignalKind;
+  /** correlates all messages of one call */
+  callId: string;
+  /** caller's room label (display only) */
+  fromName?: string | null;
+  /** SDP / ICE candidate / call-control payload */
+  payload?: Record<string, any> | string | null;
+}
+
+/** Send one intercom signaling envelope over the authenticated HA websocket. */
+export async function sendIntercomSignal(sig: IntercomSignal): Promise<void> {
+  const conn = await getConnection();
+  await conn.sendMessagePromise({ type: 'b_panels/intercom/signal', ...sig });
+}
+
+/**
+ * Subscribe to inbound intercom signals. The callback fires for EVERY relayed
+ * signal; the caller is responsible for filtering on `to === myId` (the hook
+ * does this). Returns an unsubscribe function.
+ */
+export async function subscribeIntercomSignals(
+  cb: (sig: IntercomSignal) => void,
+): Promise<() => void> {
+  const conn = await getConnection();
+  return conn.subscribeEvents((ev: any) => {
+    const d = ev?.data;
+    if (d && typeof d === 'object' && d.kind && d.callId) cb(d as IntercomSignal);
+  }, 'b_panels_intercom_signal');
+}
+
 // --- Weather forecast ---------------------------------------------------------
 // Daily forecast for a HA `weather.*` entity via the get_forecasts service
 // (response-returning). Returns [] if unavailable.

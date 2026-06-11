@@ -23,8 +23,33 @@ import LifeSafetyTakeover from './design-system/takeover/LifeSafetyTakeover';
 import { setTakeoverActive } from './design-system/takeover/takeoverSignal';
 import WeatherSafetyBanner from './design-system/weather-safety/WeatherSafetyBanner';
 import DoorbellRingOverlay from './design-system/entry/DoorbellRingOverlay';
+import IntercomOverlay from './design-system/intercom/IntercomOverlay';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
+
+// Resolve a friendly room label for THIS panel (the device's home-panel name,
+// else a generic fallback) and decide whether to show the "call a room"
+// launcher. The launcher is OPT-IN (a ?intercom=launch query, or a future
+// header button) — never always-on clutter; incoming-ring always works.
+const IntercomMount = () => {
+  const { panels } = useDashboard();
+  const location = useLocation();
+  const selfName = useMemo(() => {
+    try {
+      const id = localStorage.getItem('bPanelsDeviceDefaultPanel');
+      const p = id ? panels.find((x) => x.id === id) : null;
+      return p?.name || 'This Panel';
+    } catch { return 'This Panel'; }
+  }, [panels]);
+  const launch = useMemo(() => {
+    const fromHash = location.hash.includes('?')
+      ? new URLSearchParams(location.hash.split('?')[1]).get('intercom')
+      : null;
+    const fromSearch = new URLSearchParams(location.search).get('intercom');
+    return (fromHash ?? fromSearch) === 'launch';
+  }, [location]);
+  return <IntercomOverlay selfName={selfName} showLauncher={launch} />;
+};
 
 const GlobalSoundPlayer = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -555,6 +580,23 @@ function App() {
                   AUTO-DETECTED generically (no site id hardcoded); the camera is an
                   honest poster / "feed unavailable" (UniFi Protect not in dev). */}
               <DoorbellRingOverlay />
+              {/* PANEL-TO-PANEL INTERCOM (feat/panel-intercom · §K2) — a sibling
+                  mounted below the doorbell ring so an incoming call rings on
+                  EVERY panel/device. It is a calm call card (the doorbell-ring
+                  language), NOT the red life-safety wash, and YIELDS to BOTH
+                  higher tiers (life-safety takeover + weather-safety), enforced
+                  via the takeover-active signal AND the same source entities.
+                  PRIVACY: explicit call → ring → ACCEPT; the mic opens ONLY on an
+                  accepted call (no auto-answer, no passive mic); a persistent
+                  ON-AIR indicator + End-call show whenever the mic is hot.
+                  Signaling rides the AUTHENTICATED HA websocket relay
+                  (b_panels/intercom/signal) — HA-auth gated, no unauthenticated
+                  endpoint. ZERO home-equipment actuation. Live audio needs a
+                  secure context (HTTPS) + a top-level (native-kiosk) load; in the
+                  http/headless dev container the control plane + signaling
+                  round-trip are exercised and the media leg stays inert behind
+                  the secure-context gate. */}
+              <IntercomMount />
               <AppContent />
           </HashRouter>
         </SessionUnlockProvider>
