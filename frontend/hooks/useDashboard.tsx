@@ -1072,6 +1072,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // guard, which must not reload mid-alarm).
   const alarmStateRef = useRef<AlarmState | null>(null);
   useEffect(() => { alarmStateRef.current = alarmState; }, [alarmState]);
+  // The resolved alarm entity_id (learned from the first alarm state_changed) so
+  // the independent reconcile poll can fetch its authoritative state.
+  const alarmEntityIdRef = useRef<string | null>(null);
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
@@ -2774,6 +2777,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     : typeof entity_id === 'string' && entity_id.startsWith('alarm_control_panel.');
 
                 if (isAlarmEntity) {
+                    alarmEntityIdRef.current = entity_id; // remember for the reconcile poll
                     const haState = new_state.state as string;
                     const attrs = new_state.attributes || {};
 
@@ -3015,40 +3019,74 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [haConnection, useDemoMode]);
 
-  // Stale-state guard for the HA socket (the cause of the "armed but the panel
-  // showed disarmed" incident). home-assistant-js-websocket auto-reconnects, but
-  // on a kiosk that sleeps the socket can go zombie and its ping timer freezes,
-  // so the snapshot (incl. the alarm tile) silently goes stale. We actively
-  // detect this and force a reconnect (which re-syncs the full entity collection)
-  // on: tab/app becoming visible (the wake case), the network coming back, and a
-  // periodic liveness ping. A ping-based check (not "no events in N seconds")
-  // avoids false alarms when the house is simply idle overnight.
+  // SAFETY — independent alarm-truth reconcile (root fix for "armed but the panel
+  // showed disarmed"). A ping-only check was insufficient: a kiosk webview may not
+  // fire visibilitychange on screen-sleep, and a "zombie" socket can still answer
+  // ping() while having MISSED the arm event — so ping says "alive" and the stale
+  // snapshot persists. Instead, on a timer (and on wake/online) we fetch the REAL
+  // alarm state via a request/response call and compare it to what the tile shows.
+  // If they disagree (subscription went stale) OR the socket won't answer (dead),
+  // we force a full reconnect+resync. This does NOT depend on push delivery, on
+  // visibilitychange firing, or on ping — it independently verifies the truth.
   useEffect(() => {
     if (useDemoMode) return;
-    let checking = false;
-    const checkAndHeal = async () => {
-      if (checking) return;
-      checking = true;
+    let running = false;
+    const expectedFromEntity = (ent: any) => {
+      const raw = String(ent?.state ?? '');
+      const phase: AlarmState['phase'] =
+        raw === 'arming' ? 'arming' : raw === 'pending' ? 'pending' : raw === 'triggered' ? 'triggered' : 'idle';
+      const useArmMode = phase !== 'idle';
+      const arm = normalizeArmState(useArmMode ? (ent?.attributes?.arm_mode || raw) : raw);
+      return { arm, phase };
+    };
+    const reconcileAlarm = async () => {
+      if (running) return;
+      running = true;
       try {
-        const alive = await haClient.pingAlive(3000);
-        if (!alive) {
-          setHaWsState('connecting'); // surface "reconnecting" so the tile isn't trusted
+        let states: any[] | null = null;
+        try {
+          states = await Promise.race([
+            haClient.getStates(),
+            new Promise<any[]>((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+          ]);
+        } catch {
+          // Socket won't even answer a request → it's dead/zombie → reconnect.
+          setHaWsState('connecting');
+          await haClient.forceReconnect();
+          return;
+        }
+        if (!states) return;
+        const id = alarmEntityIdRef.current;
+        const ent = states.find((s: any) =>
+          id ? s.entity_id === id : (typeof s.entity_id === 'string' && s.entity_id.startsWith('alarm_control_panel.')));
+        if (!ent) return;
+        const want = expectedFromEntity(ent);
+        const cur = alarmStateRef.current;
+        // Only act on a DEFINITE mismatch (we already show a state, and it
+        // disagrees with the authoritative one). If cur is null the subscription
+        // simply hasn't populated yet — let it, don't reconnect spuriously.
+        if (cur && (cur.armState !== want.arm || (cur.phase || 'idle') !== want.phase)) {
+          console.warn('[Alarm] tile state out of sync with HA — forcing resync', { shown: cur.armState, actual: want.arm });
+          setHaWsState('connecting');
           await haClient.forceReconnect();
         }
       } finally {
-        checking = false;
+        running = false;
       }
     };
-    const onVisible = () => { if (document.visibilityState === 'visible') checkAndHeal(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') reconcileAlarm(); };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', checkAndHeal);
     window.addEventListener('focus', onVisible);
-    const watchdog = window.setInterval(checkAndHeal, 45000);
+    window.addEventListener('online', reconcileAlarm);
+    // 30s cadence: a security tile must not display a stale arm state for long,
+    // and this is the backstop when wake events don't fire on the kiosk.
+    const poll = window.setInterval(reconcileAlarm, 30000);
+    reconcileAlarm(); // run once on mount
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', checkAndHeal);
       window.removeEventListener('focus', onVisible);
-      clearInterval(watchdog);
+      window.removeEventListener('online', reconcileAlarm);
+      clearInterval(poll);
     };
   }, [useDemoMode]);
 
