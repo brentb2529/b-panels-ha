@@ -75,6 +75,7 @@ export type Capability =
   | 'color'
   | 'colorTemp'
   | 'position'
+  | 'tilt'
   | 'setpoint'
   | 'mode-select'
   | 'number'

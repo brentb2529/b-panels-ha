@@ -106,6 +106,14 @@ export function inferCapabilityProfile(entity: HaEntityLike): CapabilityProfile 
       const hasPosition = typeof attrs.current_position === 'number';
       if (hasPosition) caps.push('position');
       caps.push('toggle');
+      // Tilt (venetian/plantation blinds, Lutron tilt shades, ST window-shade
+      // tilt): advertised via `current_tilt_position` OR the tilt bits in
+      // HA CoverEntityFeature (OPEN_TILT=16, CLOSE_TILT=32, STOP_TILT=64,
+      // SET_TILT_POSITION=128). Additive — position-only covers are unchanged.
+      const features = typeof attrs.supported_features === 'number' ? attrs.supported_features : 0;
+      const TILT_BITS = 16 | 32 | 64 | 128;
+      const hasTilt = typeof attrs.current_tilt_position === 'number' || (features & TILT_BITS) !== 0;
+      if (hasTilt) caps.push('tilt');
       primary = hasPosition ? 'position' : 'toggle';
       break;
     }

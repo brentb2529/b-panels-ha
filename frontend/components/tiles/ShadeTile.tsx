@@ -19,9 +19,20 @@ const ShadeTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
     const level = getNumericValue(device.state);
     const isLocked = !!tile.isLocked;
 
+    // TILT (additive): only covers that advertise the `tilt` capability render a
+    // tilt control; position-only covers are completely unchanged. The tilt
+    // value lives in capabilityData (state stays the position number).
+    const supportsTilt = Array.isArray(device.capabilities) && device.capabilities.includes('tilt');
+    const tiltLevel = getNumericValue(device.capabilityData?.tiltPosition);
+
+    // Local drag value so the slider tracks the finger smoothly and only
+    // commits on release (avoids flooding HA with set_cover_tilt_position).
+    const [tiltDrag, setTiltDrag] = React.useState<number | null>(null);
+    const tiltDisplay = tiltDrag ?? Math.round(tiltLevel);
+
     const handleUpdate = (newLevel: number) => {
         if (isEditor || isLocked) return;
-        
+
         // Clamp the value between 0 and 100
         const clampedLevel = Math.max(0, Math.min(100, newLevel));
         const action = () => updateDeviceState(device.id, clampedLevel);
@@ -31,6 +42,14 @@ const ShadeTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
         } else {
             action();
         }
+    };
+
+    const handleTilt = (newTilt: number) => {
+        if (isEditor || isLocked) return;
+        const clamped = Math.max(0, Math.min(100, Math.round(newTilt)));
+        const action = () => updateDeviceState(device.id, { tilt: clamped });
+        if (tile.requirePin) requestPin(action);
+        else action();
     };
 
     const getStatusText = () => {
@@ -101,8 +120,9 @@ const ShadeTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                 </div>
 
                 {/* RIGHT: Control Grid (60% width) */}
-                <div className="w-3/5 h-full grid grid-cols-2 grid-rows-3 gap-1">
-                    
+                <div className="w-3/5 h-full flex flex-col gap-1">
+                  <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-1 min-h-0">
+
                     {/* Row 1: Open & Up */}
                     <button
                         onClick={() => handleUpdate(100)}
@@ -152,7 +172,36 @@ const ShadeTile = ({ device, tile, isEditor, cornerClassName }: { device: Device
                     >
                         <IconArrowDown className="w-4 h-4" />
                     </button>
-                    
+
+                  </div>
+
+                  {/* TILT (additive): only for covers advertising the `tilt`
+                      capability. Slats slider — does not affect the position
+                      visualizer/controls above. */}
+                  {supportsTilt && (
+                    <div
+                        className="shrink-0 flex items-center gap-1.5 px-0.5"
+                        data-testid="shade-tilt"
+                        title="Tilt slats"
+                    >
+                        <span className="text-gray-400 tabular-nums" style={fluidTextXs}>Tilt</span>
+                        <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={tiltDisplay}
+                            disabled={isEditor || isLocked}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setTiltDrag(Number(e.target.value))}
+                            onMouseUp={() => { if (tiltDrag !== null) { handleTilt(tiltDrag); setTiltDrag(null); } }}
+                            onTouchEnd={() => { if (tiltDrag !== null) { handleTilt(tiltDrag); setTiltDrag(null); } }}
+                            aria-label={`${tile.label || device.name} tilt`}
+                            className={`tp-range flex-1 ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        />
+                        <span className="text-gray-300 tabular-nums w-7 text-right" style={fluidTextXs}>{tiltDisplay}%</span>
+                    </div>
+                  )}
                 </div>
             </div>
         </TileWrapper>

@@ -36,10 +36,25 @@ const GlassShadeTile = ({
   const isLocked = !!tile.isLocked;
   const isUnavailable = device.isOnline === false;
 
+  // TILT (additive): only covers advertising the `tilt` capability render a tilt
+  // slider; position-only covers are unchanged. Tilt lives in capabilityData.
+  const supportsTilt = Array.isArray(device.capabilities) && device.capabilities.includes('tilt');
+  const tiltLevel = Math.max(0, Math.min(100, Math.round(numeric(device.capabilityData?.tiltPosition))));
+  const [tiltDrag, setTiltDrag] = React.useState<number | null>(null);
+  const tiltDisplay = tiltDrag ?? tiltLevel;
+
   const move = (next: number) => {
     if (isEditor || isLocked) return;
     const clamped = Math.max(0, Math.min(100, next));
     const action = () => updateDeviceState(device.id, clamped);
+    if (tile.requirePin) requestPin(action);
+    else action();
+  };
+
+  const tilt = (next: number) => {
+    if (isEditor || isLocked) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(next)));
+    const action = () => updateDeviceState(device.id, { tilt: clamped });
     if (tile.requirePin) requestPin(action);
     else action();
   };
@@ -115,6 +130,32 @@ const GlassShadeTile = ({
               <IconArrowDown style={fluidIcon(0.85)} />
             </button>
           </div>
+          {supportsTilt && (
+            <div
+              className="flex items-center"
+              style={{ gap: 'clamp(0.2rem, 2cqmin, 0.4rem)' }}
+              data-testid="glass-shade-tilt"
+              title="Tilt slats"
+            >
+              <span style={{ ...fluidTextXs, color: 'var(--bp-text-secondary)' }}>Tilt</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={tiltDisplay}
+                disabled={isEditor || isLocked}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setTiltDrag(Number(e.target.value))}
+                onMouseUp={() => { if (tiltDrag !== null) { tilt(tiltDrag); setTiltDrag(null); } }}
+                onTouchEnd={() => { if (tiltDrag !== null) { tilt(tiltDrag); setTiltDrag(null); } }}
+                aria-label={`${tile.label || device.name} tilt`}
+                className={`tp-range flex-1 ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                style={{ minWidth: 0 }}
+              />
+              <span className="tabular-nums" style={{ ...fluidTextXs, color: 'var(--bp-text-primary)' }}>{tiltDisplay}%</span>
+            </div>
+          )}
         </div>
       </div>
     </GlassCard>

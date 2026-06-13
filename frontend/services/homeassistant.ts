@@ -70,8 +70,32 @@ class HomeAssistantService {
                 service = 'turn_on';
                 break;
             case 'cover':
-                service = 'set_cover_position';
-                serviceData.position = newState as number;
+                // TILT (additive): a structured payload selects a tilt service.
+                //   { tilt: number }            -> set_cover_tilt_position
+                //   { tiltAction: 'open'|'close'|'stop' } -> *_cover_tilt
+                // A plain number stays the position path — position-only covers
+                // and existing position commands are completely unchanged.
+                if (newState && typeof newState === 'object') {
+                    const s = newState as any;
+                    if (typeof s.tilt === 'number') {
+                        service = 'set_cover_tilt_position';
+                        serviceData.tilt_position = s.tilt;
+                    } else if (s.tiltAction === 'open') {
+                        service = 'open_cover_tilt';
+                    } else if (s.tiltAction === 'close') {
+                        service = 'close_cover_tilt';
+                    } else if (s.tiltAction === 'stop') {
+                        service = 'stop_cover_tilt';
+                    } else if (typeof s.position === 'number') {
+                        service = 'set_cover_position';
+                        serviceData.position = s.position;
+                    } else {
+                        throw new Error(`Unsupported cover action for ${deviceId}`);
+                    }
+                } else {
+                    service = 'set_cover_position';
+                    serviceData.position = newState as number;
+                }
                 break;
             case 'valve':
                 service = newState ? 'open_valve' : 'close_valve';

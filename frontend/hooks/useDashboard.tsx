@@ -659,7 +659,7 @@ export const isMovementSensor = (d: Device): boolean =>
     d.type === DeviceType.OccupancySensor ||
     MOVEMENT_DEVICE_CLASSES.has(String((d.capabilityData as any)?.deviceClass || '').toLowerCase());
 
-const mapHaEntityToInternalDevice = (entity: any): Device | null => {
+export const mapHaEntityToInternalDevice = (entity: any): Device | null => {
     const { entity_id, state, attributes } = entity;
     if (!entity_id || !attributes || attributes.hidden) return null;
 
@@ -901,6 +901,19 @@ const mapHaEntityToInternalDevice = (entity: any): Device | null => {
             min: getNumericValue(attributes.min) ?? undefined,
             max: getNumericValue(attributes.max) ?? undefined,
             step: getNumericValue(attributes.step) ?? undefined,
+            // Cover TILT (additive): current tilt 0..100 and whether tilt is
+            // settable to an arbitrary position (SET_TILT_POSITION=128) vs
+            // only open/close/stop tilt. Read by ShadeTile / GlassShadeTile to
+            // render a tilt control. Absent/undefined for position-only covers,
+            // so their rendering and control are unchanged.
+            tiltPosition: typeof attributes.current_tilt_position === 'number'
+                ? attributes.current_tilt_position
+                : undefined,
+            tiltSettable: domain === 'cover'
+                ? (typeof attributes.supported_features === 'number'
+                    ? (attributes.supported_features & 128) !== 0
+                    : typeof attributes.current_tilt_position === 'number')
+                : undefined,
         },
     };
 };
@@ -4057,13 +4070,33 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             // Optimistic: apply the new state immediately so the tile responds
             // on tap, then reconcile/roll back from the WS echo or on error.
             const prevState = device.state;
-            const mergedState = (prevState && typeof prevState === 'object' && newState && typeof newState === 'object')
-                ? { ...(prevState as any), ...(newState as any) }
-                : newState;
-            setServiceDevices(current => produce(current, draft => {
-                const dev = draft.find(d => d.id === deviceId);
-                if (dev) dev.state = mergedState;
-            }));
+            // Cover TILT is carried in a structured payload ({ tilt } /
+            // { tiltAction }) but the cover's `state` is the POSITION number.
+            // A tilt command must NOT replace the position state optimistically
+            // (that would zero the position visualizer); update the tilt readout
+            // in capabilityData instead and leave `state` untouched. Position
+            // commands (plain number) are unaffected — same path as before.
+            const isCoverTilt =
+                device.type === DeviceType.Shade &&
+                !!newState && typeof newState === 'object' &&
+                ('tilt' in (newState as any) || 'tiltAction' in (newState as any));
+            if (isCoverTilt) {
+                const tiltVal = (newState as any).tilt;
+                setServiceDevices(current => produce(current, draft => {
+                    const dev = draft.find(d => d.id === deviceId);
+                    if (dev && typeof tiltVal === 'number') {
+                        dev.capabilityData = { ...(dev.capabilityData || {}), tiltPosition: tiltVal };
+                    }
+                }));
+            } else {
+                const mergedState = (prevState && typeof prevState === 'object' && newState && typeof newState === 'object')
+                    ? { ...(prevState as any), ...(newState as any) }
+                    : newState;
+                setServiceDevices(current => produce(current, draft => {
+                    const dev = draft.find(d => d.id === deviceId);
+                    if (dev) dev.state = mergedState;
+                }));
+            }
             try {
                 await homeAssistantService.setDeviceState(deviceId, newState);
             } catch (error) {

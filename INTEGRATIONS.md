@@ -55,9 +55,9 @@ A device renders in B-Panels when it maps to one of these capabilities
 (inferred from HA domain + `device_class` + attributes in
 `frontend/services/haCapabilities.ts`):
 
-`toggle` · `brightness` · `color` · `colorTemp` · `position` · `setpoint` ·
-`mode-select` · `number` · `press` · `media-transport` · `sensor-readonly` ·
-`lock` · `alarm`
+`toggle` · `brightness` · `color` · `colorTemp` · `position` · `tilt` ·
+`setpoint` · `mode-select` · `number` · `press` · `media-transport` ·
+`sensor-readonly` · `lock` · `alarm`
 
 A future plugin only needs to expose its data as **HA entities** with the right
 domain/`device_class`/attributes; B-Panels then renders it with zero changes.
@@ -115,6 +115,65 @@ domain we don't yet render generically (`fan` % / `humidifier` target /
 > The dividing line: **read-only + the five common controllable patterns are
 > free**; anything fancier is a contained ~4-file addition, never a refactor of
 > the ingestion module.
+
+---
+
+## SmartThings
+
+SmartThings is supported **exclusively through Home Assistant's core
+`smartthings` integration** — there is no SmartThings code path in B-Panels and
+no direct SmartThings API client. The homeowner adds the integration in HA
+(Settings → Devices & Services → Add Integration → **SmartThings**), which is a
+cloud OAuth, **config-flow-only** setup against their Samsung/SmartThings
+account. No credentials are ever stored in B-Panels config or in YAML; HA owns
+the token and the cloud subscription (iot_class `cloud_push`).
+
+Once configured, SmartThings devices appear in HA as ordinary domain entities
+(`light.*` / `cover.*` / `switch.*` / `sensor.*` / `binary_sensor.*` /
+`climate.*` / `fan.*` / `lock.*` / `scene.*` / …). B-Panels picks them up on its
+next device fetch and renders/controls them through the **same generic
+map → infer → resolve pipeline** as every other HA entity — the pipeline keys on
+the HA *domain* + `device_class` + attributes and is completely
+**provider-agnostic** (it never inspects the integration of origin). There is
+**no per-SmartThings code** and nothing to configure in B-Panels.
+
+### Device classes covered
+
+| SmartThings device | HA domain / device_class | B-Panels rendering & control |
+| --- | --- | --- |
+| On/off light | `light` | Light tile — on/off |
+| Dimmable / color / CT light | `light` (brightness/hs/rgb/color_temp) | Dimmer tile — brightness + color + color-temp |
+| Switch / plug / outlet | `switch` | Switch tile — on/off |
+| Shade / blind (position) | `cover` (`current_position`) | Shade tile — set position %, open/close/stop |
+| **Venetian / tilt blind** | `cover` (`current_tilt_position` / tilt features) | Shade tile — position **+ a tilt slider** (`set_cover_tilt_position`) |
+| Open/close-only cover | `cover` (no position) | Shade tile — open/close toggle |
+| Contact sensor | `binary_sensor` (`door`/`window`/`opening`) | Contact sensor tile — **display only** |
+| Motion / occupancy | `binary_sensor` (`motion`/`occupancy`) | Motion sensor tile — **display only** |
+| Leak / moisture | `binary_sensor` (`moisture`/`water`) | Water sensor tile — **display only** |
+| Temperature | `sensor` (`temperature`) | Temperature tile — display only |
+| Humidity / power / energy | `sensor` (`humidity`/`power`/`energy`) | Generic value tile — display only, with unit |
+| Thermostat / AC | `climate` | Thermostat tile — mode + setpoint |
+| Lock | `lock` | Lock tile — lock/unlock |
+| Scene | `scene` | Scene tile — activate |
+| Button / number / select | `button` / `number` / `select` | Generic capability tile (press / slider / tap-to-cycle) |
+
+Cover **tilt** is a generic capability of the pipeline (added to
+`inferCapabilityProfile`, `setDeviceState`, and the shade tiles), so it benefits
+**every** tilt-capable `cover` — Lutron tilt shades and ST venetian blinds
+alike — not just SmartThings. Covers without tilt are unchanged (position only).
+
+### Boundary — NO ALARM, nothing direct
+
+- **No SmartThings alarm / security path.** SmartThings security/contact devices
+  are **display sensors only**; they are never routed into an arm/disarm path.
+  The alarm system stays **HA-native (Alarmo)** and arm/disarm is wired
+  exclusively to the `alarmo.*` services. HA core `smartthings` does not create
+  any `alarm_control_panel` entity, and B-Panels forces `primaryAlarmProvider`
+  to `'ha'` and strips any persisted SmartThings connection at config load
+  (load-bearing anti-regression guards).
+- **Nothing direct.** B-Panels does not implement a SmartThings API client,
+  SmartThings cloud auth, or SmartThings Home Monitor (SHM/STHM). The only
+  supported route is the HA core `smartthings` integration.
 
 ---
 
