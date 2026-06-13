@@ -2299,6 +2299,27 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     [connections]
   );
 
+  // The ONE alarm entity this dashboard represents. CRITICAL: never match "any
+  // alarm_control_panel.*" — HA can expose several (e.g. UniFi Protect's
+  // "UDM-Pro Alarm Manager"), and a second, disarmed panel will hijack/overwrite
+  // the real Alarmo state (this caused "armed but the panel shows disarmed").
+  // Resolution order: explicit config → the entity the alarm TILE points at →
+  // Alarmo's canonical entity. Always an EXACT id, never a prefix.
+  const resolvedAlarmEntityId = useMemo(() => {
+    if (haConnection?.haAlarmEntityId) return haConnection.haAlarmEntityId as string;
+    const alarmTileIds: string[] = [];
+    for (const p of (config.panels || [])) {
+      for (const t of (p.tiles || [])) {
+        if (typeof t.deviceId === 'string' && t.deviceId.startsWith('alarm_control_panel.')) alarmTileIds.push(t.deviceId);
+      }
+    }
+    if (alarmTileIds.includes('alarm_control_panel.alarmo')) return 'alarm_control_panel.alarmo';
+    if (alarmTileIds.length) return alarmTileIds[0];
+    return 'alarm_control_panel.alarmo';
+  }, [haConnection, config.panels]);
+  const resolvedAlarmEntityIdRef = useRef(resolvedAlarmEntityId);
+  useEffect(() => { resolvedAlarmEntityIdRef.current = resolvedAlarmEntityId; }, [resolvedAlarmEntityId]);
+
   const stSseUrl = useMemo(() => {
       if (useDemoMode || !stConnection) return null;
       try {
@@ -2767,14 +2788,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     setLastHaEventAt(new Date());
                 }
 
-                // HA-only: match the alarm panel by configured entity if set,
-                // otherwise treat any alarm_control_panel entity as the panel
-                // (robust to naming and to deviceMap not yet being populated when
-                // this handler closure was created). HA is always the provider.
-                const configuredAlarm = haConnection?.haAlarmEntityId;
-                const isAlarmEntity = configuredAlarm
-                    ? entity_id === configuredAlarm
-                    : typeof entity_id === 'string' && entity_id.startsWith('alarm_control_panel.');
+                // Match ONLY the resolved alarm entity (exact). Never "any
+                // alarm_control_panel.*" — a second panel (e.g. UniFi Protect's
+                // UDM-Pro Alarm Manager) would otherwise overwrite the real Alarmo
+                // state with its own (disarmed) value. See resolvedAlarmEntityId.
+                const isAlarmEntity = entity_id === resolvedAlarmEntityIdRef.current;
 
                 if (isAlarmEntity) {
                     alarmEntityIdRef.current = entity_id; // remember for the reconcile poll
@@ -3056,9 +3074,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           return;
         }
         if (!states) return;
-        const id = alarmEntityIdRef.current;
-        const ent = states.find((s: any) =>
-          id ? s.entity_id === id : (typeof s.entity_id === 'string' && s.entity_id.startsWith('alarm_control_panel.')));
+        // Reconcile against the SAME exact entity the tile tracks — never any
+        // other alarm_control_panel (which could read disarmed and mask the truth).
+        const id = resolvedAlarmEntityIdRef.current;
+        const ent = states.find((s: any) => s.entity_id === id);
         if (!ent) return;
         const want = expectedFromEntity(ent);
         const cur = alarmStateRef.current;
