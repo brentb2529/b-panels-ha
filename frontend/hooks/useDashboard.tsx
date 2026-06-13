@@ -4039,7 +4039,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       const armState = status === 'ARMED_STAY' ? 'armedStay' : status === 'ARMED_AWAY' ? 'armedAway' : 'disarmed';
       try {
           // The entered PIN is forwarded as the Alarmo code; Alarmo validates it.
-          const result = await apiHomeAssistantArm(armState, options);
+          // Target the SAME resolved entity the tile reads (not a hardcoded id).
+          const result = await apiHomeAssistantArm(armState, { ...options, entityId: resolvedAlarmEntityIdRef.current });
           if (!result.ok) {
               setServiceError(`[Home Assistant] Alarm command failed: ${result.error || 'Unknown error'}`);
           }
