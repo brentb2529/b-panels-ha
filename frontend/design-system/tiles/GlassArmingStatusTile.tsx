@@ -23,9 +23,16 @@ interface View {
   icon: typeof IconShield;
   accent: GlassAccent;
   glow: boolean;
+  // SAFETY (production-failure lessons A): when the arm state is uncertain
+  // (`unknown` — unavailable/zombie/unrecognized) the tile must render the
+  // neutral, dimmed "uncertain" look (grey, no glow), NEVER the green positive
+  // "Disarmed" — a security surface must never imply "safe" when the truth is
+  // unknown. `uncertain` routes through GlassCard's isUnavailable presentation.
+  uncertain?: boolean;
 }
 
-const viewFor = (armState: string, rawState: string): View => {
+// Exported for unit testing the SAFETY mapping (never green-Disarmed on unknown).
+export const viewFor = (armState: string, rawState: string): View => {
   const raw = String(rawState || '').toLowerCase();
   if (raw === 'triggered') return { label: 'Triggered', icon: IconShieldAlert, accent: 'critical', glow: true };
   if (raw === 'arming') return { label: 'Arming…', icon: IconShield, accent: 'warning', glow: true };
@@ -33,8 +40,11 @@ const viewFor = (armState: string, rawState: string): View => {
   switch (armState) {
     case 'armedAway': return { label: 'Armed — Away', icon: IconShieldCheck, accent: 'security', glow: true };
     case 'armedStay': return { label: 'Armed — Stay', icon: IconShieldCheck, accent: 'security', glow: true };
-    case 'disarmed':
-    default: return { label: 'Disarmed', icon: IconShieldOff, accent: 'positive', glow: false };
+    case 'disarmed': return { label: 'Disarmed', icon: IconShieldOff, accent: 'positive', glow: false };
+    // SAFETY: 'unknown' (and any unrecognized state) → neutral "Status Unknown",
+    // NEVER an implied-safe green Disarmed. normalizeArmState() produces
+    // 'unknown' for unavailable/zombie/unrecognized alarm states (lessons A).
+    default: return { label: 'Status Unknown', icon: IconShieldAlert, accent: 'warning', glow: false, uncertain: true };
   }
 };
 
@@ -49,10 +59,12 @@ const GlassArmingStatusTile = ({
   isEditor?: boolean;
   cornerClassName?: string;
 }) => {
-  const isUnavailable = device.isOnline === false;
   const armState = typeof device.state === 'string' ? device.state : 'disarmed';
   const rawState = String((device.capabilityData as any)?.rawState ?? '');
   const view = viewFor(armState, rawState);
+  // SAFETY (lessons A): an uncertain arm state renders the neutral/dimmed
+  // "unavailable" presentation (grey, no glow) — never the green Disarmed.
+  const isUnavailable = device.isOnline === false || !!view.uncertain;
   const Icon = view.icon;
   const accentVar = `var(--bp-accent-${view.accent === 'security' ? 'security' : view.accent === 'critical' ? 'critical' : view.accent === 'warning' ? 'warning' : 'positive'})`;
 
@@ -76,7 +88,9 @@ const GlassArmingStatusTile = ({
           }}
         />
         <p className="bp-readout" style={{ ...fluidTextLg, fontWeight: 500, color: 'var(--bp-text-primary)' }}>
-          {isUnavailable ? '—' : view.label}
+          {/* Uncertain still shows "Status Unknown" (safety: be explicit about
+              the uncertainty); a genuinely offline device shows the em-dash. */}
+          {device.isOnline === false && !view.uncertain ? '—' : view.label}
         </p>
         <p className="bp-meta" style={{ ...fluidTextXs, color: 'var(--bp-text-dim)' }}>
           Status only

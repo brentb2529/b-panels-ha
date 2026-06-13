@@ -587,6 +587,66 @@ export const normalizeArmState = (raw?: string): AlarmState['armState'] => {
     return 'unknown';
 };
 
+// The fallback alarm entity id when nothing more specific can be resolved.
+// Alarmo's default panel id. NEVER `startsWith('alarm_control_panel.')`: a
+// SECOND alarm_control_panel (UniFi Protect `udm_pro_alarm_manager`,
+// SmartThings STHM, etc.) must not be able to hijack the tile.
+export const DEFAULT_ALARM_ENTITY_ID = 'alarm_control_panel.alarmo';
+
+const ALARM_DOMAIN_PREFIX = 'alarm_control_panel.';
+
+// SAFETY (production-failure lessons A2; prod v0.1.59/60; 3012 triage):
+// resolve the SINGLE alarm entity id the panel reads AND writes, with a clear
+// precedence. This is the one source of truth — both the state_changed read
+// path and the truth-reconcile EXACT-match against it (never `startsWith`), and
+// the arm/disarm write path targets it (never a hardcoded `alarmo`).
+//
+// Precedence (first defined wins):
+//   1. An explicitly CONFIGURED alarm entity id (connection.haAlarmEntityId).
+//      Read regardless of `enabled` — config is config; the HA connection ships
+//      `enabled:false` in this fork (lessons B), so an enabled-gated read would
+//      always miss it. Must look like an alarm_control_panel id to count.
+//   2. The alarm TILE the user actually placed on a panel — its bound entity id
+//      (bindings.primary → entityId → deviceId) when that is an
+//      alarm_control_panel, OR, for a tile explicitly typed `alarm`, its bound
+//      id even via a literal binding. First such tile across all panels wins.
+//   3. Fallback DEFAULT_ALARM_ENTITY_ID (`alarm_control_panel.alarmo`).
+//
+// Pure + exported for unit testing. Takes only plain config (no live states) —
+// a selector-bound alarm tile is resolved later by the caller if needed; here
+// we honor the literal binding/entityId/deviceId, which covers the homeowner
+// "picked the alarm panel" case the precedence targets.
+const isAlarmControlPanelId = (id: unknown): id is string =>
+  typeof id === 'string' && id.startsWith(ALARM_DOMAIN_PREFIX);
+
+// The literal entity id a tile is bound to, ignoring runtime selectors
+// (precedence step 2 only honors a concrete id the user picked).
+const literalTileEntityId = (tile: TileConfig): string | undefined =>
+  tile.bindings?.primary || tile.entityId || tile.deviceId || undefined;
+
+export const resolveAlarmEntityId = (args: {
+  configuredId?: string | null;
+  panels?: DashboardPanel[] | null;
+}): string => {
+  // (1) explicitly configured id (only if it's a real alarm panel id)
+  const configured = args.configuredId;
+  if (isAlarmControlPanelId(configured)) return configured;
+
+  // (2) the alarm tile the user placed on a panel
+  for (const panel of args.panels || []) {
+    for (const tile of panel?.tiles || []) {
+      const bound = literalTileEntityId(tile);
+      // An explicitly alarm-typed tile, or any tile bound to an
+      // alarm_control_panel entity, identifies the user's chosen panel.
+      if (tile.tileType === 'alarm' && isAlarmControlPanelId(bound)) return bound!;
+      if (isAlarmControlPanelId(bound)) return bound!;
+    }
+  }
+
+  // (3) fallback
+  return DEFAULT_ALARM_ENTITY_ID;
+};
+
 // Derive the alarm phase straight from a raw alarm_control_panel state string.
 // Mirrors the WS handler's phase mapping; pulled out so the truth-reconcile can
 // compute "expected" from a getStates() snapshot and unit tests can assert it.
@@ -1192,6 +1252,12 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // last saw a real state for. The independent truth-reconcile uses it to find
   // the alarm in a getStates() snapshot and compare against alarmStateRef.
   const alarmEntityIdRef = useRef<string | null>(null);
+  // SAFETY (production-failure lessons A2; prod v0.1.59/60): the resolved alarm
+  // entity id (config → placed tile → fallback). Both read paths EXACT-match it
+  // and the write path targets it — never `startsWith` / hardcoded `alarmo`.
+  // Initialized to the fallback so it is never null before the resolve effect
+  // runs (a definite, safe default — Alarmo's own id).
+  const resolvedAlarmEntityIdRef = useRef<string>(DEFAULT_ALARM_ENTITY_ID);
   /// Tracks the previous arm state so the next effect can detect when
   /// the alarm transitions externally (SmartThings app, hub schedule,
   /// voice command, second panel pressing arm) and append the event
@@ -2530,13 +2596,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           return;
         }
         const states = raced as any[];
-        // Locate the alarm entity: the one we last saw, else the configured one,
-        // else any alarm_control_panel.* (robust to deviceMap not yet populated).
-        const configured = haConnectionRef.current?.haAlarmEntityId;
-        const wantId = alarmEntityIdRef.current || configured || null;
-        const entity = wantId
-          ? states.find((s) => s?.entity_id === wantId)
-          : states.find((s) => typeof s?.entity_id === 'string' && s.entity_id.startsWith('alarm_control_panel.'));
+        // SAFETY (lessons A2): locate the alarm entity by EXACT match against the
+        // single resolved alarm id (config → placed alarm tile → fallback). NEVER
+        // `startsWith('alarm_control_panel.')` — a SECOND alarm_control_panel
+        // (UniFi Protect `udm_pro_alarm_manager`, SmartThings STHM) could win that
+        // and reconcile us TO the wrong entity, masking the real armed state.
+        const wantId = resolvedAlarmEntityIdRef.current;
+        const entity = states.find((s) => s?.entity_id === wantId);
         if (entity?.entity_id) alarmEntityIdRef.current = entity.entity_id;
         if (isAlarmTruthMismatch(entity, alarmStateRef.current)) {
           console.warn(
@@ -2691,6 +2757,18 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // alarm entity id without re-subscribing the effect on every connections tick.
   const haConnectionRef = useRef(haConnection);
   useEffect(() => { haConnectionRef.current = haConnection; }, [haConnection]);
+
+  // SAFETY (production-failure lessons A2; prod v0.1.59/60): resolve the SINGLE
+  // alarm entity id (config → placed alarm tile → fallback). Read the configured
+  // id from the HA connection REGARDLESS of `enabled` — config is config, and
+  // the HA connection ships `enabled:false` in this fork (lessons B), so the
+  // `enabled`-gated `haConnection` memo above would always miss it.
+  const resolvedAlarmEntityId = useMemo(() => {
+    const configuredId =
+      connections.find(c => c.id === DeviceService.HomeAssistant)?.haAlarmEntityId ?? null;
+    return resolveAlarmEntityId({ configuredId, panels });
+  }, [connections, panels]);
+  useEffect(() => { resolvedAlarmEntityIdRef.current = resolvedAlarmEntityId; }, [resolvedAlarmEntityId]);
 
   const stSseUrl = useMemo(() => {
       if (useDemoMode || !stConnection) return null;
@@ -3160,14 +3238,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     setLastHaEventAt(new Date());
                 }
 
-                // HA-only: match the alarm panel by configured entity if set,
-                // otherwise treat any alarm_control_panel entity as the panel
-                // (robust to naming and to deviceMap not yet being populated when
-                // this handler closure was created). HA is always the provider.
-                const configuredAlarm = haConnection?.haAlarmEntityId;
-                const isAlarmEntity = configuredAlarm
-                    ? entity_id === configuredAlarm
-                    : typeof entity_id === 'string' && entity_id.startsWith('alarm_control_panel.');
+                // SAFETY (lessons A2): match the alarm panel by EXACT id against
+                // the single resolved alarm entity (config → placed alarm tile →
+                // fallback). NEVER `startsWith('alarm_control_panel.')` — a SECOND
+                // alarm_control_panel (UniFi Protect `udm_pro_alarm_manager`,
+                // SmartThings STHM) blipping disarmed must NOT overwrite the real
+                // Alarmo armed state. HA is always the provider.
+                const isAlarmEntity = entity_id === resolvedAlarmEntityIdRef.current;
 
                 if (isAlarmEntity) {
                     // Remember which entity is the alarm so the truth-reconcile
@@ -3270,6 +3347,24 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                             if (typeof f?.alarmOff === 'function') f.alarmOff();
                         } catch (e) { /* non-fatal */ }
                     }
+
+                    // SAFETY (lessons A/A2): keep the BOUND alarm serviceDevice in sync
+                    // with the resolved arm state so a placed GlassArmingStatusTile
+                    // (which reads `device.state`, not the global alarmState) reflects
+                    // the same truth — crucially, an `unavailable`/`unknown` alarm must
+                    // surface as 'unknown' on the tile (neutral "Status Unknown"),
+                    // never a stale green "Disarmed". The alarm branch returns early
+                    // and skips the generic device-update path below, so we apply the
+                    // device update here for the matched (resolved) alarm entity only.
+                    setServiceDevices(current => produce(current, draft => {
+                        const idx = draft.findIndex(d => d.id === entity_id);
+                        if (idx !== -1) {
+                            draft[idx].state = targetArmState; // 'unknown' | 'disarmed' | 'armedStay' | 'armedAway'
+                            const cd = (draft[idx].capabilityData as any) || {};
+                            cd.rawState = haState;
+                            draft[idx].capabilityData = cd;
+                        }
+                    }));
 
                     return;
                 }
@@ -4493,8 +4588,15 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       // disarm — never gate HA actions on it.)
       const armState = status === 'ARMED_STAY' ? 'armedStay' : status === 'ARMED_AWAY' ? 'armedAway' : 'disarmed';
       try {
+          // SAFETY (lessons A2): write to the SAME resolved alarm entity the tile
+          // READS (config → placed alarm tile → fallback) — never a hardcoded
+          // `alarm_control_panel.alarmo`. On a renamed entity / multiple Alarmo
+          // areas this prevents reading one entity and arming/disarming another.
           // The entered PIN is forwarded as the Alarmo code; Alarmo validates it.
-          const result = await apiHomeAssistantArm(armState, options);
+          const result = await apiHomeAssistantArm(armState, {
+              ...options,
+              entityId: resolvedAlarmEntityIdRef.current,
+          });
           if (!result.ok) {
               setServiceError(`[Home Assistant] Alarm command failed: ${result.error || 'Unknown error'}`);
           }

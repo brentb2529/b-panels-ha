@@ -86,10 +86,16 @@ export const apiBroadcastTts = async (_text: string, _panelId?: string): Promise
 // --- Alarmo arm/disarm (now via HA WebSocket) ---------------------------------
 export const apiHomeAssistantArm = async (
     armState: 'armedAway' | 'armedStay' | 'disarmed',
-    options?: { skipDelay?: boolean; force?: boolean; pin?: string }
+    options?: { skipDelay?: boolean; force?: boolean; pin?: string; entityId?: string }
 ): Promise<{ ok: boolean; error?: string }> => {
     try {
-        const data: Record<string, any> = { entity_id: 'alarm_control_panel.alarmo' };
+        // SAFETY (lessons A2; prod v0.1.60): target the SAME entity the tile reads
+        // (threaded in by useDashboard's setHAAlarmStatus from resolvedAlarmEntityId)
+        // — never a hardcoded `alarm_control_panel.alarmo`. Falls back to the
+        // default only if no resolved id was provided.
+        const data: Record<string, any> = {
+            entity_id: options?.entityId || 'alarm_control_panel.alarmo',
+        };
         if (options?.pin) data.code = options.pin;
         let service: string;
         if (armState === 'disarmed') {
