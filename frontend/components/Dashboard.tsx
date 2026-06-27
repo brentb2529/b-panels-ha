@@ -355,13 +355,16 @@ const Dashboard = () => {
 
       {enlargedCamera && <CameraControlModal device={enlargedCamera} onClose={() => setEnlargedCamera(null)} />}
       {enlargedCameraGroup && <CameraGroupModal device={enlargedCameraGroup} onClose={() => setEnlargedCameraGroup(null)} />}
-      {!activeDevicePanel && activePanel.tiles.length === 0 && (
+      {activePanel.tiles.length === 0 && (
          <div className="text-center text-gray-400 p-8 bg-gray-800 rounded-lg">
             <p>This folder is empty. Go to the <Link to="/admin" className="text-brand-blue underline">Admin page</Link> to add tiles.</p>
         </div>
       )}
 
-      {!activeDevicePanel && <div
+      {/* The grid always renders. (A prior "device detail panel" feature hid the
+          whole grid via !activeDevicePanel but never rendered anything in its
+          place — a black-screen trap. It's gone; the grid is unconditional.) */}
+      {<div
         className={`grid gap-2.5 flex-1 min-h-0 ${fillScreen ? 'overflow-hidden' : 'overflow-y-auto'}`}
         style={{
             // Fill the screen: fluid columns always. Rows divide the available

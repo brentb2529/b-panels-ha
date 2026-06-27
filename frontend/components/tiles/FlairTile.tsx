@@ -1,6 +1,5 @@
 import React from 'react';
 import { Device, TileConfig, FlairState } from '../../types';
-import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
 import { IconThermometer, IconSnowflake, IconFlame, IconPower, IconCheck, IconAlertTriangle, IconHome } from '../icons';
 import { fluidTextSm, fluidTextLg, fluidText3xl, fluidIcon, fluidGap } from './tileScale';
@@ -87,7 +86,6 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
     isEditor?: boolean;
     cornerClassName?: string;
 }) => {
-    const { openDevicePanel } = useDashboardActions();
     const state = device.state as FlairState;
     const isLocked = !!tile.isLocked;
 
@@ -154,9 +152,10 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
     const modeGlow = modeGlowHex ? { filter: `drop-shadow(0 0 6px ${modeGlowHex})` } : undefined;
     const tempGlow = anyHeating ? '0 0 16px rgba(251,146,60,0.45)' : anyCooling ? '0 0 16px rgba(56,189,248,0.45)' : undefined;
 
-    const handleClick = () => {
-        if (!isEditor && !isLocked) openDevicePanel(device.id);
-    };
+    // NOTE: no onClick. The old tap opened a device-detail panel that was never
+    // implemented — it just hid the whole dashboard grid with nothing in its
+    // place (black screen / "killed session"). The tile is informational; a real
+    // Flair control modal can be added later, wired through onEnlarge like cameras.
 
     return (
         <TileWrapper
@@ -167,7 +166,6 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
             isActive={isActive}
             accent="water"
             animation={animation}
-            onClick={handleClick}
         >
             <div className="flex flex-col h-full relative">
                 <FlairBackground mode={mode} active={anyHeating || anyCooling} />
