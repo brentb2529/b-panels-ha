@@ -5,6 +5,7 @@ import { useDashboard } from '../hooks/useDashboard';
 import Tile from './Tile';
 import { IconArrowLeft, IconRefreshCw, IconAlertTriangle } from './icons';
 import CameraControlModal from './CameraControlModal';
+import FlairControlModal from './FlairControlModal';
 import { Device, DeviceType, DeviceService } from '../types';
 import CameraGroupModal from './CameraGroupModal';
 import IntrusionModal from './IntrusionModal';
@@ -29,6 +30,9 @@ const Dashboard = () => {
   const [enlargedCamera, setEnlargedCamera] = useState<Device | null>(null);
   const [enlargedCameraGroup, setEnlargedCameraGroup] = useState<Device | null>(null);
   const [enlargedSonosPlayer, setEnlargedSonosPlayer] = useState<Device | null>(null);
+  // Flair enlarge tracks the composite id (not a snapshot) so the modal reads the
+  // live composite from context and current temps update while it's open.
+  const [enlargedFlairId, setEnlargedFlairId] = useState<string | null>(null);
 
   // Tick every 30s so stale-data warnings re-evaluate without waiting for a re-render trigger
   const [, setTick] = React.useState(0);
@@ -250,6 +254,8 @@ const Dashboard = () => {
         setEnlargedCameraGroup(device);
       } else if (device.type === DeviceType.SonosPlayer) {
         setEnlargedSonosPlayer(device);
+      } else if (device.type === DeviceType.Flair) {
+        setEnlargedFlairId(device.id);
       }
   }, []);
 
@@ -353,6 +359,7 @@ const Dashboard = () => {
         </div>
       )}
 
+      {enlargedFlairId && <FlairControlModal deviceId={enlargedFlairId} onClose={() => setEnlargedFlairId(null)} />}
       {enlargedCamera && <CameraControlModal device={enlargedCamera} onClose={() => setEnlargedCamera(null)} />}
       {enlargedCameraGroup && <CameraGroupModal device={enlargedCameraGroup} onClose={() => setEnlargedCameraGroup(null)} />}
       {activePanel.tiles.length === 0 && (

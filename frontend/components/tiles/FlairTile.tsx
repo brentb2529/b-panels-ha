@@ -80,11 +80,12 @@ const FlairBackground = ({ mode, active }: { mode: string; active: boolean }) =>
     );
 };
 
-const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
+const FlairTile = ({ device, tile, isEditor, cornerClassName, onEnlarge }: {
     device: Device;
     tile: TileConfig;
     isEditor?: boolean;
     cornerClassName?: string;
+    onEnlarge?: (device: Device) => void;
 }) => {
     const state = device.state as FlairState;
     const isLocked = !!tile.isLocked;
@@ -152,10 +153,12 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
     const modeGlow = modeGlowHex ? { filter: `drop-shadow(0 0 6px ${modeGlowHex})` } : undefined;
     const tempGlow = anyHeating ? '0 0 16px rgba(251,146,60,0.45)' : anyCooling ? '0 0 16px rgba(56,189,248,0.45)' : undefined;
 
-    // NOTE: no onClick. The old tap opened a device-detail panel that was never
-    // implemented — it just hid the whole dashboard grid with nothing in its
-    // place (black screen / "killed session"). The tile is informational; a real
-    // Flair control modal can be added later, wired through onEnlarge like cameras.
+    // Tap opens the Flair control modal (room selector + per-room thermostat),
+    // wired through onEnlarge like cameras — a safe overlay, never the old
+    // hide-the-whole-grid path that black-screened the session.
+    const handleClick = () => {
+        if (!isEditor && !isLocked) onEnlarge?.(device);
+    };
 
     return (
         <TileWrapper
@@ -166,6 +169,7 @@ const FlairTile = ({ device, tile, isEditor, cornerClassName }: {
             isActive={isActive}
             accent="water"
             animation={animation}
+            onClick={handleClick}
         >
             <div className="flex flex-col h-full relative">
                 <FlairBackground mode={mode} active={anyHeating || anyCooling} />

@@ -952,6 +952,7 @@ interface DashboardContextType {
   removeHighlightFromPanel: (panelId: string, highlightId: string) => void;
   updateHighlightConfig: (panelId: string, highlightId: string, updates: Partial<Omit<HighlightSectionConfig, 'id'>>) => void;
   updateDeviceState: (deviceId: string, newState: Device['state']) => void;
+  setClimate: (entityId: string, change: { setpoint?: number; mode?: string }) => Promise<void>;
   triggerScene: (deviceId: string) => void;
   updateConnectionConfig: (serviceId: DeviceService, field: keyof Omit<ServiceConnection, 'id'>, value: any) => void;
   fetchDevicesFromServices: () => Promise<void>;
@@ -1031,6 +1032,7 @@ export const useDashboard = () => {
 // re-renders only when its own device object changes, not on every WS event.
 export interface DashboardActions {
   updateDeviceState: DashboardContextType['updateDeviceState'];
+  setClimate: DashboardContextType['setClimate'];
   triggerScene: DashboardContextType['triggerScene'];
   triggerPanicAlarm: DashboardContextType['triggerPanicAlarm'];
   openDevicePanel: DashboardContextType['openDevicePanel'];
@@ -3793,6 +3795,32 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     setActiveDevicePanelId(null);
   }, []);
 
+  // Control a climate entity directly by entity_id (e.g. a Flair room climate
+  // that's folded into the structure composite, so it isn't in `devices` and
+  // can't go through updateDeviceState). Optimistically merges into the raw
+  // serviceDevices entry (so the composite — and the open modal — reflect it at
+  // once), shields it from the reconcile, then calls HA. Rolls back on error.
+  const setClimate = useCallback(async (entityId: string, change: { setpoint?: number; mode?: string }) => {
+    recentWriteRef.current.set(entityId, Date.now());
+    const prev = serviceDevices.find(d => d.id === entityId)?.state;
+    setServiceDevices(curr => produce(curr, draft => {
+      const dev = draft.find(d => d.id === entityId);
+      if (dev) {
+        const s = (dev.state && typeof dev.state === 'object') ? dev.state as any : {};
+        dev.state = { ...s, ...(change.setpoint != null ? { setpoint: change.setpoint } : {}), ...(change.mode ? { mode: change.mode } : {}) };
+      }
+    }));
+    try {
+      await homeAssistantService.setDeviceState(entityId, change.setpoint != null ? { setpoint: change.setpoint } : { mode: change.mode });
+    } catch (e) {
+      addNotification(`Failed to update ${entityId}: ${(e as Error).message}`, 'error');
+      setServiceDevices(curr => produce(curr, draft => {
+        const dev = draft.find(d => d.id === entityId);
+        if (dev && prev !== undefined) dev.state = prev as any;
+      }));
+    }
+  }, [serviceDevices, addNotification]);
+
   const activeDevicePanel = activeDevicePanelId ? (() => {
     const device = deviceMap.get(activeDevicePanelId);
     return device ? { deviceId: activeDevicePanelId, device } : null;
@@ -4295,6 +4323,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       removeHighlightFromPanel,
       updateHighlightConfig,
       updateDeviceState,
+      setClimate,
       triggerScene,
       updateConnectionConfig,
       fetchDevicesFromServices,
@@ -4359,12 +4388,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // re-render on device/alarm churn.
   const actions = useMemo<DashboardActions>(() => ({
       updateDeviceState,
+      setClimate,
       triggerScene,
       triggerPanicAlarm,
       openDevicePanel,
       requestPin,
       addNotification,
-  }), [updateDeviceState, triggerScene, triggerPanicAlarm, openDevicePanel, requestPin, addNotification]);
+  }), [updateDeviceState, setClimate, triggerScene, triggerPanicAlarm, openDevicePanel, requestPin, addNotification]);
 
   return (
     <DashboardContext.Provider value={value}>
