@@ -1393,6 +1393,10 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
 
   const allDevicesForUpdate = useRef<Device[]>([]);
+  // deviceId -> timestamp of the last optimistic write. The periodic device
+  // reconcile skips devices written within a short window so it never reverts a
+  // tile the user just tapped before its service call round-trips.
+  const recentWriteRef = useRef<Map<string, number>>(new Map());
   // Track selected locations for WebSocket handler (location filtering)
   const selectedLocationsRef = useRef<string[]>([]);
   // Track the "Triggering Sensors" list for the WebSocket handler so only
@@ -3074,21 +3078,54 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           return;
         }
         if (!states) return;
-        // Reconcile against the SAME exact entity the tile tracks — never any
-        // other alarm_control_panel (which could read disarmed and mask the truth).
+        // Reconcile the alarm against the SAME exact entity the tile tracks — never
+        // any other alarm_control_panel (which could read disarmed and mask truth).
+        // Guarded so a missing alarm entity doesn't skip the device reconcile below.
         const id = resolvedAlarmEntityIdRef.current;
         const ent = states.find((s: any) => s.entity_id === id);
-        if (!ent) return;
-        const want = expectedFromEntity(ent);
-        const cur = alarmStateRef.current;
-        // Only act on a DEFINITE mismatch (we already show a state, and it
-        // disagrees with the authoritative one). If cur is null the subscription
-        // simply hasn't populated yet — let it, don't reconnect spuriously.
-        if (cur && (cur.armState !== want.arm || (cur.phase || 'idle') !== want.phase)) {
-          console.warn('[Alarm] tile state out of sync with HA — forcing resync', { shown: cur.armState, actual: want.arm });
-          setHaWsState('connecting');
-          await haClient.forceReconnect();
+        if (ent) {
+          const want = expectedFromEntity(ent);
+          const cur = alarmStateRef.current;
+          // Only act on a DEFINITE mismatch (we already show a state, and it
+          // disagrees with the authoritative one). If cur is null the subscription
+          // simply hasn't populated yet — let it, don't reconnect spuriously.
+          if (cur && (cur.armState !== want.arm || (cur.phase || 'idle') !== want.phase)) {
+            console.warn('[Alarm] tile state out of sync with HA — forcing resync', { shown: cur.armState, actual: want.arm });
+            setHaWsState('connecting');
+            await haClient.forceReconnect();
+          }
         }
+
+        // Reconcile DEVICE tiles from the same snapshot. The live subscribeEntities
+        // diff can leave an individual tile stale — an optimistic write that never
+        // gets a distinguishable WS echo (virtual/momentary switches, scenes), or
+        // an attribute-only change that slips the diff. Overwrite each device's
+        // state with HA truth (composites recompute from serviceDevices via memo),
+        // except devices the user tapped within the last 8s (in-flight optimism).
+        try {
+          const now = Date.now();
+          const fresh = new Map<string, Device>();
+          for (const s of states) {
+            const d = mapHaEntityToInternalDevice(s);
+            if (d) fresh.set(d.id, d);
+          }
+          setServiceDevices(curr => {
+            let changed = false;
+            const next = curr.map(dev => {
+              if (now - (recentWriteRef.current.get(dev.id) || 0) < 8000) return dev;
+              const f = fresh.get(dev.id);
+              if (!f) return dev;
+              if (JSON.stringify(f.state) !== JSON.stringify(dev.state)) {
+                changed = true;
+                return { ...dev, state: f.state, capabilityData: f.capabilityData ?? dev.capabilityData };
+              }
+              return dev;
+            });
+            return changed ? next : curr;
+          });
+          // prune the recent-write map so it can't grow unbounded
+          for (const [k, t] of recentWriteRef.current) if (now - t > 30000) recentWriteRef.current.delete(k);
+        } catch { /* device reconcile is best-effort */ }
       } finally {
         running = false;
       }
@@ -3634,6 +3671,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
             // connection directly (the connection arg is unused).
             // Optimistic: apply the new state immediately so the tile responds
             // on tap, then reconcile/roll back from the WS echo or on error.
+            recentWriteRef.current.set(deviceId, Date.now()); // shield from reconcile revert
             const prevState = device.state;
             const mergedState = (prevState && typeof prevState === 'object' && newState && typeof newState === 'object')
                 ? { ...(prevState as any), ...(newState as any) }
