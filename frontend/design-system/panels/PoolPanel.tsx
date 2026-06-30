@@ -270,10 +270,13 @@ const PoolPanel = () => {
           </div>
         </div>
 
-        {/* SATELLITE — AKVO Movable Floor (PREVIEW / display-only) */}
-        <div className="pp-card pp-akvo-card is-preview">
+        {/* SATELLITE — AKVO Movable Floor (LIVE display-only monitor; gated for actuation).
+            Full live monitor when the AKVO read entities are present; a clean
+            "awaiting controller" state (NOT ghost axes) only when truly absent.
+            Presets are inert display chips — never actuated (equipment-gated). */}
+        <div className={`pp-card pp-akvo-card${p.akvo.available ? '' : ' is-preview'}`}>
           <div className="pp-card-content-wrap">
-            <div className="pp-card-label"><span>Movable Floor · AKVO</span><span>Display only</span></div>
+            <div className="pp-card-label"><span>Movable Floor · AKVO</span><span>{p.akvo.available ? 'Live · display only' : 'Display only'}</span></div>
 
             {/* cross-section */}
             <div className="pp-akvo-chart-wrap">
@@ -342,12 +345,14 @@ const PoolPanel = () => {
             </div>
           </div>
 
-          <div className="pp-akvo-preview-overlay">
-            <div className="pp-akvo-preview-chip">
-              <span className="pp-preview-kicker">Preview</span>
-              <span className="pp-preview-body">Hardware commissioning pending</span>
+          {!p.akvo.available && (
+            <div className="pp-akvo-preview-overlay">
+              <div className="pp-akvo-preview-chip">
+                <span className="pp-preview-kicker">AKVO Floor</span>
+                <span className="pp-preview-body">Awaiting controller connection</span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* SATELLITE — Lighting · Pool Area (LIVE, low-hazard) */}

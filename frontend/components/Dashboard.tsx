@@ -11,19 +11,36 @@ import IntrusionModal from './IntrusionModal';
 import EntryDelayModal from './EntryDelayModal';
 import ExitDelayModal from './ExitDelayModal';
 import TileErrorBoundary from './TileErrorBoundary';
+import ChunkErrorBoundary from './ChunkErrorBoundary';
+import { lazyWithRetry } from '../services/lazyWithRetry';
 import { startSiren, stopSiren } from '../services/alarmTones';
 
 // Bespoke design-system compilation panels (Increment 2+). Lazy so they never
 // weigh on the generic-grid first paint. Rendered only for panels carrying a
 // matching `compilationKind` — every existing grid panel is untouched.
-const KitchenPanel = React.lazy(() => import('../design-system/panels/KitchenPanel'));
-const HomePanel = React.lazy(() => import('../design-system/panels/HomePanel'));
-const PoolPanel = React.lazy(() => import('../design-system/panels/PoolPanel'));
-const ClimatePanel = React.lazy(() => import('../design-system/panels/ClimatePanel'));
-const PrimarySuitePanel = React.lazy(() => import('../design-system/panels/PrimarySuitePanel'));
-const SecurityPanel = React.lazy(() => import('../design-system/panels/SecurityPanel'));
-const LightingPanel = React.lazy(() => import('../design-system/panels/LightingPanel'));
-const HouseHealthPanel = React.lazy(() => import('../design-system/panels/HouseHealthPanel'));
+// `lazyWithRetry` (not bare React.lazy) so a stale chunk after a redeploy
+// self-heals instead of black-screening — see ChunkErrorBoundary / CompilationFrame.
+const KitchenPanel = lazyWithRetry(() => import('../design-system/panels/KitchenPanel'));
+const HomePanel = lazyWithRetry(() => import('../design-system/panels/HomePanel'));
+const PoolPanel = lazyWithRetry(() => import('../design-system/panels/PoolPanel'));
+const ClimatePanel = lazyWithRetry(() => import('../design-system/panels/ClimatePanel'));
+const PrimarySuitePanel = lazyWithRetry(() => import('../design-system/panels/PrimarySuitePanel'));
+const SecurityPanel = lazyWithRetry(() => import('../design-system/panels/SecurityPanel'));
+const LightingPanel = lazyWithRetry(() => import('../design-system/panels/LightingPanel'));
+const HouseHealthPanel = lazyWithRetry(() => import('../design-system/panels/HouseHealthPanel'));
+
+// Wraps every lazy compilation panel in an error boundary (catches a render
+// throw or a stale-chunk import rejection that Suspense lets bubble) + Suspense.
+// A chunk failure self-heals via a one-shot reload instead of a black screen.
+const CompilationFrame: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="relative h-full">
+    <ChunkErrorBoundary label={label}>
+      <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading {label}…</div>}>
+        {children}
+      </React.Suspense>
+    </ChunkErrorBoundary>
+  </div>
+);
 
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
@@ -275,76 +292,28 @@ const Dashboard = () => {
   // hook count is identical whether or not the active panel is a compilation
   // panel — navigating grid<->compilation must not change hook order.
   if (activePanel.compilationKind === 'kitchen') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Kitchen…</div>}>
-          <KitchenPanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Kitchen"><KitchenPanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'home') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Home…</div>}>
-          <HomePanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Home"><HomePanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'pool') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Pool &amp; Spa…</div>}>
-          <PoolPanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Pool & Spa"><PoolPanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'climate') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Climate…</div>}>
-          <ClimatePanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Climate"><ClimatePanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'primary-suite') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Primary Suite…</div>}>
-          <PrimarySuitePanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Primary Suite"><PrimarySuitePanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'security') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Security…</div>}>
-          <SecurityPanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Security"><SecurityPanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'lighting') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading Lighting…</div>}>
-          <LightingPanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="Lighting"><LightingPanel /></CompilationFrame>;
   }
   if (activePanel.compilationKind === 'house-health') {
-    return (
-      <div className="relative h-full">
-        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading House Health…</div>}>
-          <HouseHealthPanel />
-        </React.Suspense>
-      </div>
-    );
+    return <CompilationFrame label="House Health"><HouseHealthPanel /></CompilationFrame>;
   }
 
   if (activePanel.tiles.length === 0 && !parentPanel) {

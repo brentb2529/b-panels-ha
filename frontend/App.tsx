@@ -7,9 +7,12 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { useWeather } from './hooks/useWeather';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
+import ChunkErrorBoundary from './components/ChunkErrorBoundary';
+import { lazyWithRetry } from './services/lazyWithRetry';
 // Admin is the heavy settings UI and never renders on the kiosk dashboard path.
 // Lazy-load it so the first-paint bundle the iPad downloads stays small.
-const Admin = React.lazy(() => import('./components/Admin'));
+// lazyWithRetry → a stale chunk after a redeploy self-heals instead of black-screening.
+const Admin = lazyWithRetry(() => import('./components/Admin'));
 import AudioUnlockModal from './components/AudioUnlockModal';
 import AccessDenied from './components/AccessDenied';
 import NotificationHost from './components/NotificationHost';
@@ -165,6 +168,7 @@ const AppRoutes = () => {
   const firstPanelId = panels.length > 0 ? panels[0].id : null;
 
   return (
+    <ChunkErrorBoundary label="App">
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center h-full text-gray-500">
         <IconRefreshCw className="w-10 h-10 animate-spin mb-4" />
@@ -193,6 +197,7 @@ const AppRoutes = () => {
       />
     </Routes>
     </Suspense>
+    </ChunkErrorBoundary>
   );
 };
 
