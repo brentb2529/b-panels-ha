@@ -52,6 +52,12 @@
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   container-type: size;
+  /* Fit-to-window: the scope fills the ACTUAL viewport and lays out as a column —
+     hero (clamped, pinned at top) + body region (the column grid, scrolls within).
+     This replaces the old absolute-positioned fixed-height layout that clipped the
+     columns' tops/bottoms out of reach on viewports shorter than the 4:3 target. */
+  display: flex;
+  flex-direction: column;
 }
 .pp-scope .num { font-variant-numeric: tabular-nums; }
 
@@ -92,7 +98,11 @@ body.light-mode .pp-scope {
 }
 
 /* ══ Hero water canvas ══ */
-.pp-hero { position: absolute; top: 0; left: 0; right: 0; height: 400px; overflow: hidden; }
+/* Hero is a pinned, flex-shrink:0 row at the top. Clamped: exactly 400px at the
+   1366×1024 iPad target (and any viewport ≥860 tall), shrinking to a 300px floor
+   on shorter windows so the body region keeps usable height. Title block + canvas
+   stay anchored to the hero, so the look is unchanged at the design target. */
+.pp-hero { position: relative; flex: 0 0 auto; height: min(400px, max(300px, calc(100cqh - 460px))); overflow: hidden; }
 .pp-hero-caustics {
   position: absolute; inset: 0; opacity: 0.40;
   background-image:
@@ -181,8 +191,15 @@ body.light-mode .pp-metric { background: rgba(255,255,255,0.85); border-color: r
 
 /* ══ Content grid ══ */
 .pp-content {
-  position: absolute; top: 372px; left: 0; right: 0; bottom: 76px;
-  padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px; overflow: hidden;
+  /* Body region: takes the remaining height (flex:1 + min-height:0) and SCROLLS
+     within if the columns are taller than the space, instead of the whole panel
+     overflowing and clipping controls off-screen. margin-top:-28px preserves the
+     original 28px hero/content overlap (old top:372 over a 400px hero) so the 4:3
+     look is identical; margin-bottom:76px clears the pinned bottom nav/arming bar. */
+  position: relative; flex: 1 1 auto; min-height: 0;
+  margin-top: -28px; margin-bottom: 76px;
+  padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px;
+  overflow-y: auto; overflow-x: hidden;
 }
 .pp-card {
   background: var(--surface-glass); border: 1px solid var(--glass-border); border-radius: 20px;

@@ -53,7 +53,10 @@
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   container-type: inline-size;
-  padding: 26px 30px 22px;
+  /* Fit-to-window: this scope already scrolls (overflow-y:auto). The bottom
+     padding clears the pinned 76px nav/arming bar so the last cards can scroll
+     fully above it instead of staying clipped underneath on short viewports. */
+  padding: 26px 30px 90px;
 }
 .hh-scope .num { font-variant-numeric: tabular-nums; }
 

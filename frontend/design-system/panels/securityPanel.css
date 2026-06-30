@@ -49,6 +49,9 @@
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   container-type: size;
+  /* Fit-to-window: column layout — pinned hero + scrollable body region. */
+  display: flex;
+  flex-direction: column;
 }
 .secp-scope .num { font-variant-numeric: tabular-nums; }
 
@@ -70,7 +73,9 @@ body.light-mode .secp-scope {
 }
 
 /* ── Hero ─────────────────────────────────────────────────────────────────*/
-.secp-hero { position: absolute; top: 0; left: 0; right: 0; height: 380px; overflow: hidden; }
+/* Fit-to-window: pinned hero, exactly 380px at the iPad target, clamped on
+   shorter windows so the body region keeps usable height. */
+.secp-hero { position: relative; flex: 0 0 auto; height: min(380px, max(320px, calc(100cqh - 460px))); overflow: hidden; }
 .secp-hero-canvas { position: absolute; inset: 0; }
 .secp-hero-canvas::before {
   content: ''; position: absolute; inset: 0;
@@ -119,9 +124,11 @@ body.light-mode .secp-hero-title { text-shadow: none; }
 
 /* ── Content grid (three columns) ────────────────────────────────────────── */
 .secp-content {
-  position: absolute; top: 328px; left: 0; right: 0; bottom: 76px;
+  /* Fit-to-window: scrollable body region; margin-top:-52px preserves the
+     original hero/content overlap; margin-bottom:76px clears the pinned nav. */
+  position: relative; flex: 1 1 auto; min-height: 0; margin-top: -52px; margin-bottom: 76px;
   padding: 0 24px 20px; display: grid; grid-template-columns: 1.05fr 1.35fr 0.9fr;
-  gap: 16px; overflow: hidden;
+  gap: 16px; overflow-y: auto; overflow-x: hidden;
 }
 
 /* ── Glass card base ────────────────────────────────────────────────────── */

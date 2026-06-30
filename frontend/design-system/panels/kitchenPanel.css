@@ -46,6 +46,9 @@
   /* The exemplar is authored at 1366×1024; the panel fills its container and the
      internal proportions scale via the fixed px geometry within. */
   container-type: size;
+  /* Fit-to-window: column layout — pinned hero + scrollable body region. */
+  display: flex;
+  flex-direction: column;
 }
 .kp-scope .num { font-variant-numeric: tabular-nums; }
 
@@ -67,7 +70,9 @@ body.light-mode .kp-scope {
 }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
-.kp-hero { position: absolute; top: 0; left: 0; right: 0; height: 360px; overflow: hidden; }
+/* Fit-to-window: pinned hero, exactly 360px at the iPad target, clamped on
+   shorter windows so the body region keeps usable height. */
+.kp-hero { position: relative; flex: 0 0 auto; height: min(360px, max(260px, calc(100cqh - 460px))); overflow: hidden; }
 .kp-hero::before {
   content: ''; position: absolute; inset: 0;
   background:
@@ -116,8 +121,10 @@ body.light-mode .kp-metric { background: rgba(255,255,255,0.78); border-color: r
 
 /* ── Content grid ───────────────────────────────────────────────────────── */
 .kp-content {
-  position: absolute; top: 332px; left: 0; right: 0; bottom: 76px;
-  padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px; overflow: hidden;
+  /* Fit-to-window: scrollable body region; margin-top:-28px preserves the
+     original hero/content overlap; margin-bottom:76px clears the pinned nav. */
+  position: relative; flex: 1 1 auto; min-height: 0; margin-top: -28px; margin-bottom: 76px;
+  padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px; overflow-y: auto; overflow-x: hidden;
 }
 .kp-card {
   background: var(--surface-glass); border: 1px solid var(--glass-border); border-radius: 20px;

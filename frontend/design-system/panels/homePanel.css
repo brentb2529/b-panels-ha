@@ -76,7 +76,12 @@ body.light-mode .hp-canvas {
      child renders null/empty (graceful absence); the area grid always takes the
      remaining space (1fr). gap is 0 so collapsed rows add no whitespace; live
      rows space themselves via their own margins below. */
-  display: grid; grid-template-rows: auto auto auto auto 1fr; row-gap: 0; overflow: hidden;
+  /* Fit-to-window: the area grid keeps a usable minimum height (minmax) so its
+     cards never collapse/clip on short viewports; when the rows exceed the
+     available height the whole region scrolls (overflow-y:auto) within the
+     top:0/bottom:76px box (nav stays pinned + clear). At the 4:3 target the 1fr
+     expands past the min, so the look is unchanged. */
+  display: grid; grid-template-rows: auto auto auto auto minmax(340px, 1fr); row-gap: 0; overflow-y: auto; overflow-x: hidden;
 }
 /* Re-introduce the inter-row rhythm via margins so collapsed (null) rows leave
    no gap. Matches the original 22px cadence. */
