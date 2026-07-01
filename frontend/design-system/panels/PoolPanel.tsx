@@ -49,9 +49,9 @@ const GatedBodyRow = ({
 
   return (
     <div className="pp-body-row">
-      <div>
+      <div className="pp-body-info">
         <div className="pp-body-name">{name}</div>
-        <div className="pp-body-meta">{meta}<span className="pp-gated-tag">Gated</span></div>
+        <div className="pp-body-meta">{meta}</div>
       </div>
       <div className="pp-body-controls">
         {showSetpoint && (
@@ -79,6 +79,9 @@ const GatedBodyRow = ({
           </button>
           <div className="pp-toggle-cap">Run</div>
         </div>
+      </div>
+      <div className="pp-body-badge">
+        <span className="pp-gated-tag">Gated</span>
       </div>
     </div>
   );
@@ -181,6 +184,7 @@ const PoolPanel = () => {
           </svg>
         </div>
         <div className="pp-hero-vignette" />
+        <div className="pp-hero-scrim" />
 
         <div className="pp-title-block">
           <div className="pp-hero-left">
@@ -247,15 +251,15 @@ const PoolPanel = () => {
             </div>
             <div className={`pp-chem-chip pp-chem-${orpState}`}>
               <div className="pp-chem-value num">{p.chem.orp !== null ? Math.round(p.chem.orp) : '—'}</div>
-              <div className="pp-chem-label">ORP mV</div>
+              <div className="pp-chem-label">ORP</div>
             </div>
             <div className={`pp-chem-chip pp-chem-${saltState}`}>
               <div className="pp-chem-value num">{p.chem.salt !== null ? p.chem.salt.toLocaleString() : '—'}</div>
-              <div className="pp-chem-label">Salt ppm</div>
+              <div className="pp-chem-label">Salt</div>
             </div>
             <div className={`pp-chem-chip pp-chem-${swgState}`}>
               <div className="pp-chem-value num" style={swgState === 'warn' ? { color: 'var(--accent-warning)' } : undefined}>{p.chem.swg !== null ? `${Math.round(p.chem.swg)}%` : '—'}</div>
-              <div className="pp-chem-label">SWG Out</div>
+              <div className="pp-chem-label">SWG %</div>
             </div>
           </div>
 

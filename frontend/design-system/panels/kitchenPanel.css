@@ -21,7 +21,7 @@
   --text-dim: rgba(238,242,245,0.32);
   --accent-room: #C7D2DA;
   --accent-room-rgb: 199,210,218;
-  --accent-climate: #7A9BBF;
+  --accent-climate: #9DB5D0; /* lifted ~10% for iPad-distance legibility */
   --accent-climate-rgb: 122,155,191;
   --accent-positive: #5DC98A;
   --accent-shade: #9DB8D6;
@@ -64,7 +64,7 @@ body.light-mode .kp-scope {
   --text-dim: rgba(18,24,33,0.34);
   --accent-room: #6E7C88;
   --accent-room-rgb: 110,124,136;
-  --accent-climate: #4A78A8;
+  --accent-climate: #6891BC; /* lifted ~10% for iPad-distance legibility */
   --accent-climate-rgb: 74,120,168;
   --accent-shade: #5E82AE;
 }
@@ -197,7 +197,9 @@ body.light-mode .kp-track { background: rgba(18,24,33,0.12); }
 .kp-range::-moz-range-thumb { width: 16px; height: 16px; border: none; border-radius: 50%; background: #fff; }
 
 /* climate */
-.kp-zone-arc-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 4px 0 12px; }
+/* flex:1 + justify-content:center vertically centers the dial block in the card,
+   evening the climate column floor with the taller lights column (rule 3) */
+.kp-zone-arc-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 4px 0 12px; flex: 1; justify-content: center; }
 .kp-zone-arc { position: relative; width: 150px; height: 150px; }
 .kp-arc-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
 .kp-zone-cur { font-size: 46px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); }
@@ -225,13 +227,20 @@ body.light-mode .kp-zone-foot { border-top-color: rgba(0,0,0,0.07); }
 .kp-fixture-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.06); gap: 12px; }
 body.light-mode .kp-fixture-row { border-bottom-color: rgba(0,0,0,0.06); }
 .kp-fixture-row:last-child { border-bottom: none; }
-.kp-fixture-name { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+/* Off-state name at 0.70 floor (≥0.70 readability rule); .on overrides to full primary */
+.kp-fixture-name { font-size: 13px; color: rgba(238,242,245,0.70); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+body.light-mode .kp-scope .kp-fixture-name { color: rgba(18,24,33,0.70); }
 .kp-fixture-name.on { color: var(--text-primary); }
 .kp-fixture-kind { font-size: 9px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
 .kp-fixture-ctl { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
 .kp-mini { width: 70px; height: 7px; position: relative; }
 .kp-mini .kp-track { height: 7px; }
-.kp-mini-pct { font-size: 12px; font-weight: 500; color: var(--text-secondary); width: 38px; text-align: right; }
+/* Bumped to 14px (≥12px rule; at-a-glance metric); opacity 0.85 for on-state */
+.kp-mini-pct { font-size: 14px; font-weight: 500; color: rgba(238,242,245,0.85); width: 38px; text-align: right; }
+body.light-mode .kp-scope .kp-mini-pct { color: rgba(18,24,33,0.85); }
+/* Off-state percentage label — readable but visually subordinate to the on percentage */
+.kp-scope .kp-pct-off { color: rgba(238,242,245,0.70); }
+body.light-mode .kp-scope .kp-pct-off { color: rgba(18,24,33,0.70); }
 .kp-sub-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin: 14px 0 6px; }
 
 /* media */

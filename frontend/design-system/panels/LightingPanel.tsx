@@ -32,16 +32,26 @@ import './lightingPanel.css';
 // ── scene glyphs keyed by the curated icon name ─────────────────────────────
 const SceneIcon = ({ name, active }: { name: string; active: boolean }) => {
   const stroke = active ? 'var(--accent-lights)' : 'var(--text-secondary)';
-  const common = { className: 'ltp-scene-ico', viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: 1.6, strokeLinecap: 'round' as const };
+  // strokeWidth 1.5 normalised across all five for consistent visual weight
+  const common = { className: 'ltp-scene-ico', viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: 1.5, strokeLinecap: 'round' as const };
   switch (name) {
     case 'sun':
-      return (<svg {...common}><circle cx="12" cy="12" r="5" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="4" y1="12" x2="2" y2="12" /><line x1="22" y1="12" x2="20" y2="12" /></svg>);
+      return (<svg {...common}><circle cx="12" cy="12" r="5" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="22" /><line x1="4" y1="12" x2="2" y2="12" /><line x1="22" y1="12" x2="20" y2="12" /><line x1="4.93" y1="4.93" x2="6.34" y2="6.34" /><line x1="17.66" y1="17.66" x2="19.07" y2="19.07" /></svg>);
     case 'house':
       return (<svg {...common}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>);
     case 'moon':
+      // Evening — clean single crescent moon
       return (<svg {...common}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>);
     case 'crescent':
-      return (<svg {...common}><path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9z" /></svg>);
+      // Night — crescent moon + three filled star dots (distinct from Evening)
+      return (
+        <svg {...common}>
+          <path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9z" />
+          <circle cx="19.5" cy="4.5" r="0.9" fill={stroke} stroke="none" />
+          <circle cx="21.8" cy="8.2" r="0.72" fill={stroke} stroke="none" />
+          <circle cx="17.2" cy="2.8" r="0.65" fill={stroke} stroke="none" />
+        </svg>
+      );
     case 'power':
     default:
       return (<svg {...common}><circle cx="12" cy="12" r="9" /><line x1="12" y1="12" x2="12" y2="4" /></svg>);
@@ -127,6 +137,7 @@ const LightingPanel = () => {
   const [firedScene, setFiredScene] = useState<string | null>(null);
   const fireTimer = useRef<number | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [masterDrag, setMasterDrag] = useState<number | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000);
@@ -146,6 +157,19 @@ const LightingPanel = () => {
     const last = l.lastScene ? `Last scene: ${l.lastScene.name} · ${l.lastScene.clock}` : 'No scene activated yet';
     return last;
   }, [l.lastScene]);
+
+  // ── Whole-home master brightness (average of ON areas) ──
+  const masterBrightness = useMemo(() => {
+    const onAreas = l.areas.filter((a) => a.available && a.anyOn);
+    if (!onAreas.length) return 0;
+    return Math.round(onAreas.reduce((s, a) => s + a.brightness, 0) / onAreas.length);
+  }, [l.areas]);
+  const shownMaster = masterDrag ?? masterBrightness;
+  const masterOff = !l.areas.some((a) => a.anyOn);
+  const masterAvail = l.areas.some((a) => a.available);
+  const applyMasterBrightness = (level: number) => {
+    l.areas.filter((a) => a.available).forEach((a) => l.actions.setAreaBrightness(a.name, level));
+  };
 
   return (
     <PanelShell kind="lighting">
@@ -203,6 +227,32 @@ const LightingPanel = () => {
             })}
           </div>
 
+          {/* ── Whole-Home Brightness master row ── */}
+          <div className="ltp-master-row">
+            <span className="ltp-master-label">All Areas</span>
+            <div className="ltp-master-slider">
+              <div className="ltp-master-track">
+                <div
+                  className={masterOff ? 'ltp-master-fill-off' : 'ltp-master-fill'}
+                  style={{ width: masterOff ? 0 : `${shownMaster}%` }}
+                />
+              </div>
+              <input
+                className="ltp-master-range"
+                type="range" min={0} max={100}
+                value={masterOff ? 0 : shownMaster}
+                disabled={!masterAvail}
+                onChange={(e) => setMasterDrag(parseInt(e.target.value, 10))}
+                onMouseUp={() => { if (masterDrag !== null) { applyMasterBrightness(masterDrag); setMasterDrag(null); } }}
+                onTouchEnd={() => { if (masterDrag !== null) { applyMasterBrightness(masterDrag); setMasterDrag(null); } }}
+                aria-label="Whole-home master brightness"
+              />
+            </div>
+            <span className="ltp-master-pct num">
+              {masterAvail ? (masterOff ? 'Off' : `${shownMaster}%`) : '—'}
+            </span>
+          </div>
+
           <div className="ltp-sub-label">By Area · group dimming</div>
           <div className="ltp-area-grid">
             {l.areas.map((a) => (
@@ -216,35 +266,13 @@ const LightingPanel = () => {
           </div>
         </div>
 
-        {/* RIGHT — shades (LIVE) + keypad LED state (DISPLAY-ONLY · diagnostic) */}
+        {/* RIGHT — Shades & Covers (LIVE) */}
         <div className="ltp-right-col">
-          <div className="ltp-card">
+          <div className="ltp-card ltp-shades-card">
             <div className="ltp-card-label"><span>Shades &amp; Covers</span><span>cover.set_position</span></div>
             {l.shades.map((sh) => (
               <ShadeRow key={sh.id} shade={sh} onSet={(pos) => l.actions.setShade(sh.id, pos)} />
             ))}
-          </div>
-
-          <div className="ltp-card ltp-keypad-card">
-            <div className="ltp-card-label"><span>Keypads · LED state</span><span title="LED control is deferred / equipment-gated — state shown only">display-only</span></div>
-            {l.keypads.map((kp) => (
-              <div className="ltp-keypad" key={kp.name}>
-                <div className="ltp-keypad-head">
-                  <span className="ltp-keypad-name">{kp.name}</span>
-                  <span className="ltp-keypad-tag">{kp.tag}</span>
-                </div>
-                {kp.buttons.map((b) => (
-                  <div className="ltp-kp-btn" key={b.id} title={`${b.label} LED · ${b.available ? (b.on ? 'lit' : 'off') : 'unavailable'} (display-only)`}>
-                    <span className={`ltp-kp-led ${b.on ? 'on' : 'off'}`} />
-                    <span className={`ltp-kp-label${b.on ? ' on' : ''}`}>{b.label}</span>
-                  </div>
-                ))}
-              </div>
-            ))}
-            <div className="ltp-keypad-note">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-              Keypad LED control is deferred — state shown only (diagnostic).
-            </div>
           </div>
         </div>
       </div>

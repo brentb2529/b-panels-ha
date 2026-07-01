@@ -25,8 +25,9 @@
   --glass-border: rgba(255,255,255,0.10);
   --glass-border-bright: rgba(255,255,255,0.22);
   --text-primary: #EEF0F6;
-  --text-secondary: rgba(238,240,246,0.55);
-  --text-dim: rgba(238,240,246,0.28);
+  /* Readability (shared spec rule 1): raised text opacity ≥0.70 */
+  --text-secondary: rgba(238,240,246,0.72);
+  --text-dim: rgba(238,240,246,0.45);
   /* identity accent — deep indigo */
   --accent-security: #5B6CC9;
   --accent-security-rgb: 91,108,201;
@@ -63,8 +64,8 @@ body.light-mode .secp-scope {
   --glass-border: rgba(0,0,0,0.08);
   --glass-border-bright: rgba(0,0,0,0.14);
   --text-primary: #1B2030;
-  --text-secondary: rgba(27,32,48,0.60);
-  --text-dim: rgba(27,32,48,0.38);
+  --text-secondary: rgba(27,32,48,0.72);
+  --text-dim: rgba(27,32,48,0.52);
   --accent-security: #4A55B0;
   --accent-security-rgb: 74,85,176;
   --sem-ready: #6E7C92; --sem-ready-rgb: 110,124,146;
@@ -79,11 +80,12 @@ body.light-mode .secp-scope {
 .secp-hero-canvas { position: absolute; inset: 0; }
 .secp-hero-canvas::before {
   content: ''; position: absolute; inset: 0;
+  /* Background saturation reduced ~10% to match cool-neutral panel family */
   background:
-    radial-gradient(ellipse 56% 46% at 76% 16%, rgba(120,134,224,0.28) 0%, rgba(70,84,180,0.10) 40%, transparent 70%),
-    radial-gradient(ellipse 60% 70% at 18% 46%, rgba(34,40,78,0.92) 0%, transparent 64%),
+    radial-gradient(ellipse 56% 46% at 76% 16%, rgba(124,137,218,0.26) 0%, rgba(74,87,173,0.10) 40%, transparent 70%),
+    radial-gradient(ellipse 60% 70% at 18% 46%, rgba(36,41,75,0.92) 0%, transparent 64%),
     radial-gradient(ellipse 80% 50% at 50% 82%, rgba(8,9,18,0.95) 0%, transparent 60%),
-    linear-gradient(160deg, #11142b 0%, #161a38 24%, #12152e 50%, #0c0e20 76%, #07080f 100%);
+    linear-gradient(160deg, #121529 0%, #171b36 24%, #13162c 50%, #0d0f1f 76%, #07080f 100%);
 }
 .secp-hero-canvas::after {
   content: ''; position: absolute; inset: 0;
@@ -91,10 +93,11 @@ body.light-mode .secp-scope {
   opacity: 0.6; mix-blend-mode: overlay;
 }
 body.light-mode .secp-hero-canvas::before {
+  /* Background saturation reduced ~10% to match cool-neutral panel family */
   background:
-    radial-gradient(ellipse 60% 50% at 76% 14%, rgba(150,162,224,0.42) 0%, rgba(120,134,210,0.14) 42%, transparent 72%),
-    radial-gradient(ellipse 70% 80% at 18% 40%, rgba(206,212,234,0.9) 0%, transparent 66%),
-    linear-gradient(160deg, #D7DBEC 0%, #DEE2F0 30%, #E6E9F4 60%, #EAECF3 100%);
+    radial-gradient(ellipse 60% 50% at 76% 14%, rgba(153,164,220,0.40) 0%, rgba(123,136,205,0.14) 42%, transparent 72%),
+    radial-gradient(ellipse 70% 80% at 18% 40%, rgba(207,213,232,0.9) 0%, transparent 66%),
+    linear-gradient(160deg, #D8DBEB 0%, #DEE2EF 30%, #E6E9F4 60%, #EAECF3 100%);
 }
 .secp-hero-vignette {
   position: absolute; inset: 0;
@@ -264,6 +267,34 @@ body.light-mode .secp-cam-empty::before { background: linear-gradient(180deg, #E
 .secp-live-dot { width: 5px; height: 5px; border-radius: 50%; background: #ef4444; animation: secp-pulse-dot 2s ease-in-out infinite; }
 .secp-motion-badge { position: absolute; top: 6px; right: 6px; padding: 3px 7px; background: rgba(var(--sem-notready-rgb),0.92); border-radius: 6px; font-size: 9px; font-weight: 700; color: #fff; letter-spacing: 0.08em; text-transform: uppercase; }
 
+/* Camera offline empty-state (shared spec rule 4 — house-health grammar) */
+/* Full-opacity chrome: intentional/pending, never dimmed or ghost tiles.     */
+.secp-cam-offline {
+  flex: 1 1 auto;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px 20px;
+  background: var(--surface-glass-raised);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  text-align: center;
+}
+.secp-cam-offline-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+.secp-cam-offline-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
 .secp-cam-summary { display: flex; gap: 14px; align-items: center; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
 body.light-mode .secp-cam-summary { border-top-color: rgba(0,0,0,0.07); }
 .secp-cam-sum-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
@@ -280,17 +311,19 @@ body.light-mode .secp-doorbell { background: rgba(0,0,0,0.03); border-color: rgb
 
 /* ── RIGHT: access & locks + glass ──────────────────────────────────────── */
 .secp-locks-card { overflow-y: auto; }
-.secp-entry { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.secp-entry { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 body.light-mode .secp-entry { border-bottom-color: rgba(0,0,0,0.07); }
 .secp-entry:last-of-type { border-bottom: none; }
 .secp-entry-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
-.secp-proposed-row .secp-entry-name { color: var(--text-secondary); }
+/* Proposed rows: keep primary color so homeowner can read lock names clearly */
+.secp-proposed-row .secp-entry-name { color: var(--text-primary); }
 .secp-entry-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 
-.secp-lock-btn { display: flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 20px; flex-shrink: 0; opacity: 0.6; }
+/* Readability (shared spec rule 1): increased opacity and label size for lock state badges */
+.secp-lock-btn { display: flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 20px; flex-shrink: 0; opacity: 0.80; }
 .secp-locked-state { background: rgba(var(--sem-positive-rgb),0.10); border: 1px solid rgba(var(--sem-positive-rgb),0.25); }
 .secp-unlocked-state { background: rgba(var(--sem-notready-rgb),0.12); border: 1px solid rgba(var(--sem-notready-rgb),0.30); }
-.secp-lock-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.secp-lock-label { font-size: 14px; font-weight: 600; color: var(--text-secondary); }
 
 .secp-cover-btn { display: flex; align-items: center; gap: 8px; padding: 6px 11px 6px 13px; border-radius: 20px; flex-shrink: 0; opacity: 0.65; }
 .secp-cover-open { background: rgba(var(--sem-notready-rgb),0.12); border: 1px solid rgba(var(--sem-notready-rgb),0.30); }

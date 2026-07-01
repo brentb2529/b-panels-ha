@@ -166,6 +166,13 @@ body.light-mode .pp-hero-horizon {
 body.light-mode .pp-hero-vignette {
   background: linear-gradient(180deg, rgba(20,40,55,0.10) 0%, rgba(20,40,55,0.0) 36%, rgba(20,40,55,0.0) 50%, rgba(228,238,243,0.55) 84%, rgba(228,238,243,1.0) 100%);
 }
+/* Bottom-left scrim — lifts the hero title text out of bright water caustics */
+.pp-hero-scrim {
+  position: absolute; left: 0; bottom: 0; width: 58%; height: 72%; z-index: 3;
+  background: linear-gradient(to top right, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.22) 45%, transparent 75%);
+  pointer-events: none;
+}
+body.light-mode .pp-hero-scrim { display: none; }
 
 .pp-title-block { position: absolute; top: 132px; left: 44px; right: 44px; z-index: 4; display: flex; align-items: flex-start; justify-content: space-between; }
 .pp-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(58,181,212,0.85); margin-bottom: 8px; }
@@ -181,12 +188,14 @@ body.light-mode .pp-status-pill { background: rgba(255,255,255,0.85); border-col
 .pp-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-positive); animation: pp-pulse-dot 3s ease-in-out infinite; }
 @keyframes pp-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.65;} }
 
-.pp-hero-right { display: flex; gap: 12px; align-items: flex-start; margin-right: 4px; }
+.pp-hero-right { display: flex; gap: 12px; align-items: flex-start; margin-right: 4px; padding: 10px 12px; background: rgba(4,18,30,0.30); border-radius: 18px; border: 1px solid rgba(255,255,255,0.07); }
+body.light-mode .pp-hero-right { padding: 0; background: transparent; border-color: transparent; border-radius: 0; }
 .pp-metric { min-width: 96px; text-align: center; padding: 12px 14px 11px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 10px 26px rgba(0,0,0,0.35); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 body.light-mode .pp-metric { background: rgba(255,255,255,0.85); border-color: rgba(20,40,55,0.10); box-shadow: 0 2px 8px rgba(20,40,55,0.08), 0 12px 32px rgba(20,40,55,0.12); }
 .pp-metric-value { font-size: 36px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); white-space: nowrap; }
 .pp-metric-unit { font-size: 15px; color: var(--text-secondary); }
-.pp-metric-label { font-size: 10px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+.pp-metric-label { font-size: 11px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: rgba(240,239,234,0.72); white-space: nowrap; }
+body.light-mode .pp-metric-label { color: rgba(15,30,39,0.72); }
 .pp-metric.is-unavailable .pp-metric-value { color: var(--text-dim); }
 
 /* ══ Content grid ══ */
@@ -222,7 +231,10 @@ body.light-mode .pp-card-primary { background: rgba(255,255,255,0.92); border-co
 body.light-mode .pp-card-accent { color: var(--accent-pool); }
 
 /* ── PRIMARY: Pool & Spa Controls (GATED) ── */
-.pp-body-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.pp-body-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.pp-body-info { flex: 1; min-width: 0; }
+/* Fixed-width badge column keeps all three Gated tags on the same right edge */
+.pp-body-badge { width: 54px; flex-shrink: 0; display: flex; justify-content: flex-end; }
 body.light-mode .pp-body-row { border-bottom-color: rgba(20,40,55,0.08); }
 .pp-body-row:last-of-type { border-bottom: none; }
 .pp-body-name { font-size: 16px; font-weight: 500; color: var(--text-primary); }
@@ -259,7 +271,8 @@ body.light-mode .pp-toggle-off { background: rgba(20,40,55,0.16); }
 .pp-chem-chip { flex: 1; padding: 11px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; text-align: center; }
 body.light-mode .pp-chem-chip { background: rgba(255,255,255,0.6); border-color: rgba(20,40,55,0.08); }
 .pp-chem-value { font-size: 21px; font-weight: 300; letter-spacing: -0.01em; color: var(--text-primary); }
-.pp-chem-label { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-top: 3px; }
+.pp-chem-label { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(240,239,234,0.72); margin-top: 3px; }
+body.light-mode .pp-chem-label { color: rgba(15,30,39,0.72); }
 .pp-chem-ok { border-bottom: 2px solid var(--accent-positive); }
 .pp-chem-warn { border-bottom: 2px solid var(--accent-warning); }
 .pp-chem-na { border-bottom: 2px solid rgba(255,255,255,0.14); }

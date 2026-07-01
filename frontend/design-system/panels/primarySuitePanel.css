@@ -19,8 +19,8 @@
   --glass-border: rgba(255,255,255,0.10);
   --glass-border-bright: rgba(255,255,255,0.20);
   --text-primary: #EEEBF2;
-  --text-secondary: rgba(238,235,242,0.56);
-  --text-dim: rgba(238,235,242,0.30);
+  --text-secondary: rgba(238,235,242,0.72);
+  --text-dim: rgba(238,235,242,0.50);
   /* Primary Suite accent = cool platinum/pearl (matches locked Lights accent) */
   --accent-room: #C7D2DA;
   --accent-room-rgb: 199,210,218;
@@ -63,8 +63,8 @@ body.light-mode .ps-scope {
   --glass-border: rgba(0,0,0,0.08);
   --glass-border-bright: rgba(0,0,0,0.18);
   --text-primary: #16161E;
-  --text-secondary: rgba(22,22,30,0.58);
-  --text-dim: rgba(22,22,30,0.34);
+  --text-secondary: rgba(22,22,30,0.72);
+  --text-dim: rgba(22,22,30,0.52);
   --accent-room: #6E7C88;
   --accent-room-rgb: 110,124,136;
   --accent-bedside: #76828E;
@@ -128,9 +128,15 @@ body.light-mode .ps-metric { background: rgba(255,255,255,0.78); border-color: r
 /* ── Content grid — scenes primary + climate + shade/lights/media ───────── */
 .ps-content {
   /* Fit-to-window: scrollable body region; margin-top:-28px preserves the
-     original hero/content overlap; margin-bottom:76px clears the pinned nav. */
+     original hero/content overlap; margin-bottom:76px clears the pinned nav.
+     grid-template-rows: 1fr auto — main card row fills all available height
+     (fixes ~35% bottom void); footer module sits in the auto row below.      */
   position: relative; flex: 1 1 auto; min-height: 0; margin-top: -28px; margin-bottom: 76px;
-  padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px; overflow-y: auto; overflow-x: hidden;
+  padding: 0 24px 20px; display: grid;
+  grid-template-columns: 1.55fr 1fr 1fr;
+  grid-template-rows: 1fr auto;
+  align-items: stretch;
+  gap: 16px; overflow-y: auto; overflow-x: hidden;
 }
 .ps-card {
   background: var(--surface-glass); border: 1px solid var(--glass-border); border-radius: 20px;
@@ -148,7 +154,7 @@ body.light-mode .ps-card { box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 18
   box-shadow: 0 0 0 1px rgba(199,210,218,0.14) inset, 0 1px 0 rgba(255,255,255,0.10) inset, 0 10px 30px rgba(199,210,218,0.08), 0 26px 54px rgba(0,0,0,0.52);
 }
 body.light-mode .ps-card-primary { background: rgba(255,255,255,0.85); }
-.ps-card-label { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.ps-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .ps-card-accent { color: rgba(199,210,218,0.92); }
 body.light-mode .ps-card-accent { color: var(--accent-room); }
 
@@ -240,6 +246,11 @@ body.light-mode .ps-shade-preset { background: rgba(255,255,255,0.6); border-col
 .ps-shade-preset.active { background: rgba(122,155,191,0.18); border-color: rgba(122,155,191,0.45); color: #B8CCE4; }
 .ps-shade-preset:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* shade head right-group: graphic + percentage */
+.ps-shade-right { display: flex; align-items: center; gap: 8px; }
+/* shade window graphic: shows fabric coverage vs open gap */
+.ps-shade-gfx { flex-shrink: 0; display: block; }
+
 /* bedside lights list */
 .ps-fixture-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.06); gap: 12px; }
 body.light-mode .ps-fixture-row { border-bottom-color: rgba(0,0,0,0.06); }
@@ -262,7 +273,7 @@ body.light-mode .ps-media { background: rgba(255,255,255,0.6); border-color: rgb
 .ps-media-txt { flex: 1; min-width: 0; }
 .ps-media-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ps-media-artist { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ps-media-src { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-top: 3px; display: flex; align-items: center; gap: 5px; }
+.ps-media-src { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-top: 3px; display: flex; align-items: center; gap: 5px; }
 .ps-media-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-room); box-shadow: 0 0 6px rgba(199,210,218,0.6); }
 .ps-media-transport { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .ps-tp { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); cursor: pointer; }
@@ -274,6 +285,57 @@ body.light-mode .ps-media-foot { border-top-color: rgba(0,0,0,0.07); }
 .ps-media-vol { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .ps-vol-pct { font-size: 11px; color: var(--text-secondary); width: 28px; text-align: right; }
 .ps-group-chip { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 5px 10px; border-radius: 10px; background: rgba(199,210,218,0.12); border: 1px solid rgba(199,210,218,0.30); font-size: 10.5px; font-weight: 600; color: var(--accent-room); }
+
+/* ── Suite status footer (spans all 3 columns, fills the 4:3 void) ─────── */
+.ps-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 20px;
+  background: var(--surface-glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.07) inset, 0 8px 20px rgba(0,0,0,0.28);
+  overflow: hidden;
+  animation: ps-fade-up 280ms cubic-bezier(0.22,1,0.36,1) 260ms both;
+}
+body.light-mode .ps-footer { box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 6px 16px rgba(31,45,61,0.12); }
+.ps-footer-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 24px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ps-footer-item:first-child { padding-left: 0; }
+.ps-footer-item:last-child { padding-right: 0; flex: 1; }
+.ps-footer-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.ps-footer-dim {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ps-footer-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.12);
+  flex-shrink: 0;
+}
+body.light-mode .ps-footer-sep { background: rgba(0,0,0,0.10); }
 
 /* ── Bottom switcher (locked v13 nav) ──────────────────────────────────── */
 .ps-switcher { position: absolute; bottom: 0; left: 0; right: 0; height: 76px; background: rgba(11,15,20,0.90); backdrop-filter: blur(24px) saturate(130%); -webkit-backdrop-filter: blur(24px) saturate(130%); border-top: 1px solid rgba(255,255,255,0.09); display: flex; align-items: center; justify-content: center; z-index: 100; }

@@ -45,6 +45,40 @@ const SceneIcons: Record<string, React.ReactNode> = {
   ),
 };
 
+// ── small inline shade-window graphic ──────────────────────────────────────
+// Shows a cross-section window with a shade fabric dropping from the top.
+// position 0 = fully closed (fabric covers all glass),
+// position 100 = fully open (fabric retracted, glass visible).
+const ShadeGraphic = ({ position }: { position: number }) => {
+  const glasH = 26; // glass interior height (SVG units)
+  const glasY = 4;  // glass top Y
+  const clampedPos = Math.max(0, Math.min(100, position));
+  // how many SVG units the fabric covers (from top of glass downward)
+  const shadeH = Math.round(((100 - clampedPos) / 100) * glasH);
+  const isPartiallyOpen = shadeH > 0 && shadeH < glasH;
+  return (
+    <svg className="ps-shade-gfx" width="24" height="34" viewBox="0 0 24 34" fill="none" aria-hidden="true">
+      {/* window frame */}
+      <rect x="1.5" y="1.5" width="21" height="31" rx="2.5"
+        stroke="rgba(157,184,214,0.45)" strokeWidth="1.5"
+        fill="rgba(157,184,214,0.05)" />
+      {/* glass area — brighter when open gap is visible */}
+      <rect x="3.5" y={glasY} width="17" height={glasH}
+        fill={isPartiallyOpen ? 'rgba(180,210,240,0.22)' : 'rgba(157,184,214,0.07)'} />
+      {/* shade fabric — covers from top downward */}
+      {shadeH > 0 && (
+        <rect x="3.5" y={glasY} width="17" height={shadeH}
+          fill="rgba(157,184,214,0.42)" />
+      )}
+      {/* bottom rod at lower edge of the fabric */}
+      {shadeH > 0 && (
+        <rect x="3.5" y={glasY + shadeH - 1.5} width="17" height="2.5"
+          fill="rgba(157,184,214,0.72)" rx="1" />
+      )}
+    </svg>
+  );
+};
+
 const fmtTime = (sec: number) => {
   const s = Math.max(0, Math.round(sec));
   const m = Math.floor(s / 60);
@@ -298,7 +332,11 @@ const PrimarySuitePanel = () => {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent-shade)" strokeWidth="1.6" strokeLinecap="round"><rect x="4" y="3" width="16" height="14" rx="1" /><path d="M4 9h16" /><path d="M9 17v3M15 17v3" /></svg>
                 Blackout Shade
               </span>
-              <span className="ps-shade-pct num">{s.shade.available ? `${shadePos}%` : '—'}</span>
+              {/* graphic + percentage: visual shade state at a glance */}
+              <div className="ps-shade-right">
+                <ShadeGraphic position={shadePos} />
+                <span className="ps-shade-pct num">{s.shade.available ? `${shadePos}%` : '—'}</span>
+              </div>
             </div>
             <div className="ps-slider">
               <div className="ps-track"><div className="ps-fill ps-fill-shade" style={{ width: `${shadePos}%` }} /></div>
@@ -377,6 +415,30 @@ const PrimarySuitePanel = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ── Suite status footer — spans all 3 columns, fills the 4:3 void ── */}
+        <div className="ps-footer">
+          <span className="ps-footer-item">
+            {/* thermometer */}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="1.7" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
+            <span className="ps-footer-val num">{c.current !== null ? `${Math.round(c.current)}°` : '—'}</span>
+            <span className="ps-footer-dim">· {actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)}</span>
+          </span>
+          <span className="ps-footer-sep" aria-hidden="true" />
+          <span className="ps-footer-item">
+            {/* bulb */}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent-bedside)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 1 5 11.92V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-2.08A7 7 0 0 1 12 2z" /></svg>
+            <span className="ps-footer-val">{s.lightsOnCount > 0 ? `${s.lightsOnCount} light${s.lightsOnCount !== 1 ? 's' : ''}` : 'Lights off'}</span>
+            {s.lightsOnCount > 0 && <span className="ps-footer-dim num">· {groupBright}%</span>}
+          </span>
+          <span className="ps-footer-sep" aria-hidden="true" />
+          <span className="ps-footer-item">
+            {/* speaker */}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /></svg>
+            <span className="ps-footer-val">{s.media.playing ? s.media.title : 'Quiet'}</span>
+            {s.media.playing && <span className="ps-footer-dim">· {s.media.artist}</span>}
+          </span>
         </div>
       </div>
 

@@ -6,7 +6,6 @@ import PanelShell from '../shell/PanelShell';
 import { WeatherSafetyCard } from '../weather-safety/WeatherSafetyBanner';
 import { useGarage } from '../entry/useGarage';
 import { GarageAlertStrip } from '../entry/GarageControls';
-import HomeNewsTicker from './HomeNewsTicker';
 import './homePanel.css';
 
 // ---------------------------------------------------------------------------
@@ -197,38 +196,50 @@ const HomePanel = () => {
             <div className="hp-greeting">{greeting}, Brent</div>
             <div className="hp-date">{dateLong} · {statusLine}</div>
           </div>
-          <div className="hp-right">
-            <div className="hp-chips">
-              <div className="hp-chip">
-                <svg className="hp-chip-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="2" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
-                <span className="hp-chip-val num">{h.pool.water !== null ? `${Math.round(h.pool.water)}°` : '—'}</span>
-                <span className="hp-chip-lbl">Pool</span>
-              </div>
-              <div className="hp-chip">
-                <svg className="hp-chip-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--sem-ready)" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" /></svg>
-                <span className="hp-chip-val">{armReadout.label.replace('Disarmed · ', '').replace('Armed · ', '')}</span>
-              </div>
-              <div className="hp-chip">
-                <svg className="hp-chip-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /></svg>
-                <span className="hp-chip-val num">{h.lights.onCount}</span>
-                <span className="hp-chip-lbl">Lights on</span>
-              </div>
-              <div className="hp-chip">
-                <svg className="hp-chip-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="2" strokeLinecap="round"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2" /></svg>
-                <span className="hp-chip-val num">{h.climate.avg !== null ? `${h.climate.avg}°` : '—'}</span>
-                <span className="hp-chip-lbl">Avg zone</span>
+          {/* ONE stat-card cluster (SHARED SPEC rule 2) — weather + clock + 4
+              glance stats as equal-width glass cards. Replaces the old
+              hp-chips / hp-weather / hp-clock trio. */}
+          <div className="hp-stat-cluster">
+            {/* Weather */}
+            <div className="hp-stat-card">
+              <div className="hp-stat-ico">{weatherEmoji(h.weather.condition, h.weather.isDaytime)}</div>
+              <div className="hp-stat-val num">{h.weather.temp !== null ? `${Math.round(h.weather.temp)}°F` : '—'}</div>
+              <div className="hp-stat-lbl">
+                {h.weather.available
+                  ? h.weather.condition.replace(/_/g, ' ').charAt(0).toUpperCase() + h.weather.condition.replace(/_/g, ' ').slice(1)
+                  : 'Outside'}
               </div>
             </div>
-            <div className="hp-weather">
-              <div className="hp-weather-ico">{weatherEmoji(h.weather.condition, h.weather.isDaytime)}</div>
-              <div>
-                <div className="hp-weather-temp num">{h.weather.temp !== null ? `${Math.round(h.weather.temp)}°F` : '—'}</div>
-                <div className="hp-weather-desc">{h.weather.available ? h.weather.condition.charAt(0).toUpperCase() + h.weather.condition.slice(1) : 'Unavailable'}</div>
-              </div>
+            {/* Clock */}
+            <div className="hp-stat-card">
+              <div className="hp-stat-val num">{time.hm}<span className="hp-stat-ampm"> {time.ampm}</span></div>
+              <div className="hp-stat-lbl">{dateShort}</div>
             </div>
-            <div className="hp-clock">
-              <div className="hp-clock-time num">{time.hm} {time.ampm}</div>
-              <div className="hp-clock-date">{dateShort}</div>
+            {/* Pool temperature */}
+            <div className="hp-stat-card">
+              <svg className="hp-stat-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-pool)" strokeWidth="2" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" /></svg>
+              <div className="hp-stat-val num">{h.pool.water !== null ? `${Math.round(h.pool.water)}°` : '—'}</div>
+              <div className="hp-stat-lbl">Pool</div>
+            </div>
+            {/* Security */}
+            <div className="hp-stat-card">
+              <svg className="hp-stat-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-security)" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" /></svg>
+              <div className={`hp-stat-val hp-stat-arm${armReadout.cls ? ` ${armReadout.cls}` : ''}`}>
+                {armReadout.label.replace('Disarmed · ', '').replace('Armed · ', '')}
+              </div>
+              <div className="hp-stat-lbl">Security</div>
+            </div>
+            {/* Lights */}
+            <div className="hp-stat-card">
+              <svg className="hp-stat-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-lights)" strokeWidth="2" strokeLinecap="round"><line x1="9" y1="18" x2="15" y2="18" /><line x1="10" y1="22" x2="14" y2="22" /><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" /></svg>
+              <div className="hp-stat-val num">{h.lights.onCount}</div>
+              <div className="hp-stat-lbl">Lights On</div>
+            </div>
+            {/* Avg zone temp */}
+            <div className="hp-stat-card">
+              <svg className="hp-stat-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-climate)" strokeWidth="2" strokeLinecap="round"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2" /></svg>
+              <div className="hp-stat-val num">{h.climate.avg !== null ? `${h.climate.avg}°` : '—'}</div>
+              <div className="hp-stat-lbl">Avg Zone</div>
             </div>
           </div>
         </div>
@@ -252,6 +263,7 @@ const HomePanel = () => {
                   {SceneIcons[s.name]}
                   <span className="hp-pill-lbl">{s.name}</span>
                   {hasGated && <span className="hp-pill-gated-dot" title="Has a gated finishing step" />}
+                  {active && <span className="hp-pill-active-dot" aria-hidden="true" />}
                 </button>
                 {SIGNATURE_SCENES[s.id] && (
                   <button
@@ -268,14 +280,6 @@ const HomePanel = () => {
             );
           })}
         </div>
-
-        {/* ── RSS newsfeed (feat/home-rss) — the homeowner wanted it back on the
-            front page, tastefully. A quiet morning-paper headline ticker,
-            SECONDARY to the scenes + area cards. Display-only; every headline is
-            sanitized (M-2 allow-list) before render; renders nothing when no feed
-            is present. Binds GENERICALLY to a feedreader-backed sensor (entries
-            attribute) — no real feed URL is hardcoded (stays HA/config side). ── */}
-        <HomeNewsTicker />
 
         {/* ── Freeze + storm protective card (feat/freeze-storm) — renders only
             when a freeze and/or severe-weather alert is active AND no life-safety
@@ -409,11 +413,11 @@ const HomePanel = () => {
               </div>
               <div className="hp-card-body">
                 <div className="hp-card-area">Rehlko · Whole Home</div>
-                <div className="hp-card-title" style={{ opacity: h.generator.available ? 1 : 0.78 }}>Generator</div>
-                <div className="hp-card-sum num" style={{ color: h.generator.available ? undefined : 'var(--text-dim)' }}>{h.generator.available ? h.generator.summary : '— · Cloud account not connected'}</div>
+                <div className="hp-card-title">Generator</div>
+                <div className="hp-card-sum num">{h.generator.available ? h.generator.summary : '— · Cloud account not connected'}</div>
               </div>
               <div className="hp-card-foot">
-                <div className="hp-foot-data" style={{ color: 'var(--text-dim)' }}>Display only</div>
+                <div className="hp-foot-data">Display only</div>
                 <button className="hp-cta" onClick={() => open(/generator/i)}>Open {chevron}</button>
               </div>
             </div>
@@ -428,13 +432,13 @@ const HomePanel = () => {
               </div>
               <div className="hp-card-body">
                 <div className="hp-card-area">Movable Floor</div>
-                <div className="hp-card-title" style={{ opacity: 0.7 }}>AKVO Floor</div>
-                <div className="hp-card-sum num" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                <div className="hp-card-title">AKVO Floor</div>
+                <div className="hp-card-sum num">
                   {h.akvo.present && h.akvo.position !== null ? `Depth ${h.akvo.position.toFixed(1)} ft · ` : ''}{h.akvo.summary}
                 </div>
               </div>
-              <div className="hp-card-foot" style={{ borderTopColor: 'rgba(255,255,255,0.05)' }}>
-                <div className="hp-foot-data" style={{ fontSize: 11, color: 'var(--text-dim)' }}>PLC-mediated · display only</div>
+              <div className="hp-card-foot">
+                <div className="hp-foot-data">PLC-mediated · display only</div>
               </div>
             </div>
           </div>

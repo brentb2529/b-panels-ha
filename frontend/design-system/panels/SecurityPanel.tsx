@@ -170,6 +170,11 @@ const SecurityPanel = () => {
     : s.arm.tone === 'notready' || s.arm.tone === 'unavailable' ? 'secp-hero-notready'
     : '';
 
+  // True when no camera entity has an active stream (e.g. UniFi Protect not yet
+  // in dev). Drives the graceful "cameras coming online" empty-state card instead
+  // of four bare grey "Feed unavailable" tiles (shared spec rule 4).
+  const allCamerasOffline = s.cameras.every((c) => !c.hasStream);
+
   return (
     <PanelShell kind="security">
     <div className="secp-scope">
@@ -267,9 +272,23 @@ const SecurityPanel = () => {
             <span className="secp-tag" title="UniFi Protect not yet in contract">Proposed</span>
           </div>
 
-          <div className="secp-cam-grid">
-            {s.cameras.map((c) => <CameraTile key={c.id} cam={c} />)}
-          </div>
+          {/* Camera grid or "cameras coming online" empty-state (shared spec rule 4).
+              When no camera has a live stream (UniFi Protect not yet integrated)
+              show a single intentional pending card instead of four grey tiles. */}
+          {allCamerasOffline ? (
+            <div className="secp-cam-offline">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <span className="secp-cam-offline-label">Cameras Coming Online</span>
+              <span className="secp-cam-offline-sub">UniFi Protect · Integration pending</span>
+            </div>
+          ) : (
+            <div className="secp-cam-grid">
+              {s.cameras.map((c) => <CameraTile key={c.id} cam={c} />)}
+            </div>
+          )}
 
           <div className="secp-cam-summary">
             <div className="secp-cam-sum-item">
@@ -336,11 +355,6 @@ const SecurityPanel = () => {
             </div>
             );
           })}
-
-          <div className="secp-access-note">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-            <span>Locks are PROPOSED (Surface 5a) — unlock is security + equipment gated. The garage door shows LIVE cover state with confirm-to-close; close is equipment gated (never automatic, never on a person) and fires no actuation until ratified.</span>
-          </div>
 
           {/* CLiC privacy glass — PROPOSED (HC-108), display-only toggles */}
           <div className="secp-glass-section">

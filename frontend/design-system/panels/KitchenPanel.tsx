@@ -68,7 +68,7 @@ const FixtureRow = ({ light, onSet, onToggle }: { light: LightView; onSet: (lvl:
             aria-label={`${light.name} brightness`}
           />
         </div>
-        <span className="kp-mini-pct num" style={{ color: light.on ? undefined : 'var(--text-dim)' }}>
+        <span className={`kp-mini-pct num${!light.on ? ' kp-pct-off' : ''}`}>
           {!light.available ? '—' : light.on ? `${shown}%` : 'Off'}
         </span>
       </div>
@@ -230,7 +230,7 @@ const KitchenPanel = () => {
             <div className="kp-zone-arc">
               <svg width="150" height="150" viewBox="0 0 150 150">
                 <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="9" strokeLinecap="round" />
-                <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="var(--accent-climate)" strokeWidth="9" strokeLinecap="round" strokeDasharray={ARC} strokeDashoffset={dashOffset} />
+                <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="var(--accent-climate)" strokeWidth="11" strokeLinecap="round" strokeDasharray={ARC} strokeDashoffset={dashOffset} />
                 <circle cx="120" cy="120" r="5.5" fill="#fff" />
               </svg>
               <div className="kp-arc-center">

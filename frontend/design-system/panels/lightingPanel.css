@@ -21,7 +21,7 @@
   --glass-border: rgba(255,255,255,0.11);
   --glass-border-bright: rgba(255,255,255,0.22);
   --text-primary: #F3EFE6;
-  --text-secondary: rgba(243,239,230,0.58);
+  --text-secondary: rgba(243,239,230,0.72);
   --text-dim: rgba(243,239,230,0.32);
   --accent-lights: #C7D2DA; --accent-lights-rgb: 199,210,218;
   /* a small contrast lift used only on active/lit states (still platinum) */
@@ -57,7 +57,7 @@ body.light-mode .ltp-scope {
   --glass-border: rgba(20,30,45,0.10);
   --glass-border-bright: rgba(20,30,45,0.20);
   --text-primary: #1C2530;
-  --text-secondary: rgba(28,37,48,0.62);
+  --text-secondary: rgba(28,37,48,0.72);
   --text-dim: rgba(28,37,48,0.36);
   --accent-lights: #7E8B95; --accent-lights-rgb: 126,139,149;
   --accent-lights-bright: #5E6B76; --accent-lights-bright-rgb: 94,107,118;
@@ -100,19 +100,25 @@ body.light-mode .ltp-hero-title { text-shadow: none; }
 .ltp-hero-metric { min-width: 96px; text-align: center; padding: 12px 14px 11px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 10px 26px rgba(0,0,0,0.35); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 body.light-mode .ltp-hero-metric { background: rgba(255,255,255,0.80); border-color: rgba(20,30,45,0.10); box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 10px 26px rgba(31,40,60,0.12); }
 .ltp-hero-metric-value { font-size: 36px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); white-space: nowrap; }
-.ltp-hero-metric-label { font-size: 10px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+.ltp-hero-metric-label { font-size: 11px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
 
 /* ── content ── */
 /* Fit-to-window: scrollable body region; margin-top:-30px preserves the original
    hero/content overlap; margin-bottom:76px clears the pinned bottom nav. */
-.ltp-content { position: relative; flex: 1 1 auto; min-height: 0; margin-top: -30px; margin-bottom: 76px; padding: 0 24px 18px; display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; overflow-y: auto; overflow-x: hidden; }
+.ltp-content { position: relative; flex: 1 1 auto; min-height: 0; margin-top: -30px; margin-bottom: 76px; padding: 0 24px 18px; display: grid; grid-template-columns: 2fr 1fr; gap: 16px; overflow-y: auto; overflow-x: hidden; }
 .ltp-card { background: var(--surface-glass); border: 1px solid var(--glass-border); border-radius: 20px; backdrop-filter: blur(24px) saturate(140%); -webkit-backdrop-filter: blur(24px) saturate(140%); box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 24px 48px rgba(0,0,0,0.50), 0 4px 12px rgba(0,0,0,0.25); padding: 18px 20px; overflow: hidden; position: relative; animation: ltp-fadeUp 280ms cubic-bezier(0.22,1,0.36,1) both; }
 body.light-mode .ltp-card { box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 18px 38px rgba(31,40,60,0.14), 0 3px 10px rgba(31,40,60,0.10); }
 @keyframes ltp-fadeUp { from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:none;} }
 .ltp-primary-card { background: rgba(255,255,255,0.09); border: 1px solid rgba(var(--accent-lights-rgb),0.28); box-shadow: 0 0 0 1px rgba(var(--accent-lights-rgb),0.14) inset, 0 1px 0 rgba(255,255,255,0.10) inset, 0 26px 54px rgba(0,0,0,0.52); }
 body.light-mode .ltp-primary-card { background: rgba(255,255,255,0.86); }
+/* subtle warm candlelight glow in lower-left + cool platinum shimmer upper-right */
+.ltp-primary-card::before { content: ''; position: absolute; inset: 0; border-radius: 20px; background: radial-gradient(ellipse 60% 44% at 18% 88%, rgba(255,220,155,0.055) 0%, transparent 68%), radial-gradient(ellipse 45% 32% at 88% 14%, rgba(var(--accent-lights-rgb),0.07) 0%, transparent 65%); pointer-events: none; z-index: 0; }
+body.light-mode .ltp-primary-card::before { background: radial-gradient(ellipse 60% 44% at 18% 88%, rgba(255,210,140,0.04) 0%, transparent 68%), radial-gradient(ellipse 45% 32% at 88% 14%, rgba(var(--accent-lights-rgb),0.05) 0%, transparent 65%); }
+/* Ensure card content sits above the ::before overlay */
+.ltp-primary-card > * { position: relative; z-index: 1; }
 .ltp-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-.ltp-keypad-card { flex: 1; min-height: 0; overflow-y: auto; }
+/* shades card fills the full column height now that keypads are removed */
+.ltp-shades-card { flex: 1; min-height: 0; }
 
 .ltp-card-label { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
 .ltp-card-accent { color: rgba(var(--accent-lights-rgb),0.95); }
@@ -125,14 +131,28 @@ body.light-mode .ltp-scene-pill { background: rgba(0,0,0,0.035); border-color: r
 .ltp-scene-pill:disabled { opacity: 0.4; cursor: default; }
 /* fired: small contrast lift — brighter platinum + soft glow (still platinum) */
 .ltp-scene-pill.ltp-scene-fired { background: rgba(var(--accent-lights-bright-rgb),0.24); border: 1px solid var(--accent-lights-bright); box-shadow: 0 0 18px rgba(var(--accent-lights-bright-rgb),0.34), 0 0 0 1px rgba(var(--accent-lights-bright-rgb),0.38); }
-.ltp-scene-ico { width: 20px; height: 20px; opacity: 0.85; margin-bottom: 6px; }
+.ltp-scene-ico { width: 22px; height: 22px; opacity: 0.85; margin-bottom: 6px; }
 .ltp-scene-pill.ltp-scene-fired .ltp-scene-ico { opacity: 1; }
 .ltp-scene-nm { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); }
 .ltp-scene-pill.ltp-scene-fired .ltp-scene-nm { color: var(--text-primary); font-weight: 600; }
-.ltp-scene-hint { font-size: 9.5px; color: var(--text-dim); margin-top: 2px; }
+.ltp-scene-hint { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 .ltp-scene-pill.ltp-scene-fired .ltp-scene-hint { color: var(--accent-lights-bright); }
 
-.ltp-sub-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin: 16px 0 10px; }
+.ltp-sub-label { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin: 16px 0 10px; padding-top: 14px; border-top: 1px solid rgba(var(--accent-lights-rgb), 0.16); }
+body.light-mode .ltp-sub-label { border-top-color: rgba(var(--accent-lights-rgb), 0.20); }
+
+/* ── whole-home master brightness row ── */
+.ltp-master-row { display: flex; align-items: center; gap: 13px; padding: 12px 16px; border-radius: 13px; background: rgba(var(--accent-lights-rgb), 0.07); border: 1px solid rgba(var(--accent-lights-rgb), 0.20); margin-top: 12px; }
+body.light-mode .ltp-master-row { background: rgba(var(--accent-lights-rgb), 0.05); border-color: rgba(var(--accent-lights-rgb), 0.18); }
+.ltp-master-label { font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.01em; flex-shrink: 0; min-width: 74px; }
+.ltp-master-slider { position: relative; flex: 1; height: 20px; display: flex; align-items: center; }
+.ltp-master-track { width: 100%; height: 8px; background: rgba(255,255,255,0.10); border-radius: 4px; overflow: hidden; }
+body.light-mode .ltp-master-track { background: rgba(0,0,0,0.10); }
+.ltp-master-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, rgba(var(--accent-lights-rgb),0.55), var(--accent-lights)); }
+.ltp-master-fill-off { height: 100%; width: 0; }
+.ltp-master-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.ltp-master-range:disabled { cursor: default; }
+.ltp-master-pct { font-size: 14px; font-weight: 600; color: var(--text-primary); width: 42px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
 /* ── per-area light groups (the core) ── */
 .ltp-area-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -140,7 +160,7 @@ body.light-mode .ltp-scene-pill { background: rgba(0,0,0,0.035); border-color: r
 body.light-mode .ltp-area-tile { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.07); }
 .ltp-area-unavail { opacity: 0.5; }
 .ltp-area-top { display: flex; align-items: center; justify-content: space-between; }
-.ltp-area-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.ltp-area-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .ltp-area-dim-row { display: flex; align-items: center; gap: 9px; margin-top: 9px; }
 
 .ltp-area-slider { position: relative; flex: 1; height: 18px; display: flex; align-items: center; }
@@ -150,7 +170,7 @@ body.light-mode .ltp-area-track { background: rgba(0,0,0,0.10); }
 .ltp-area-fill-off { height: 100%; width: 0; }
 .ltp-area-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .ltp-area-range:disabled { cursor: default; }
-.ltp-area-count { font-size: 12px; font-weight: 500; color: var(--text-secondary); width: 34px; text-align: right; }
+.ltp-area-count { font-size: 14px; font-weight: 600; color: var(--text-secondary); width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
 
 .ltp-area-toggle { width: 40px; height: 23px; border-radius: 12px; position: relative; flex-shrink: 0; border: none; padding: 0; cursor: pointer; transition: background 160ms ease, box-shadow 160ms ease; }
 .ltp-area-toggle:disabled { cursor: default; opacity: 0.6; }
@@ -174,24 +194,9 @@ body.light-mode .ltp-shade-track { background: rgba(0,0,0,0.10); }
 .ltp-shade-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, rgba(var(--accent-shade-rgb),0.6), var(--accent-shade)); }
 .ltp-shade-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .ltp-shade-range:disabled { cursor: default; }
-.ltp-shade-pct { font-size: 12px; font-weight: 500; color: var(--text-secondary); width: 38px; text-align: right; }
+.ltp-shade-pct { font-size: 14px; font-weight: 600; color: var(--text-secondary); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ── Lutron keypad — DISPLAY-ONLY LED state (diagnostic, not LED control) ── */
-.ltp-keypad { padding: 12px 13px; border-radius: 13px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px; }
-body.light-mode .ltp-keypad { background: rgba(0,0,0,0.025); border-color: rgba(0,0,0,0.07); }
-.ltp-keypad-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.ltp-keypad-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
-.ltp-keypad-tag { font-size: 8.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); }
-body.light-mode .ltp-keypad-tag { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.10); }
-.ltp-kp-btn { display: flex; align-items: center; gap: 10px; padding: 7px 2px; }
-.ltp-kp-led { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.ltp-kp-led.on { background: var(--accent-lights-bright); box-shadow: 0 0 8px rgba(var(--accent-lights-bright-rgb),0.7); }
-.ltp-kp-led.off { background: rgba(255,255,255,0.14); }
-body.light-mode .ltp-kp-led.off { background: rgba(0,0,0,0.16); }
-.ltp-kp-label { font-size: 12px; color: var(--text-secondary); }
-.ltp-kp-label.on { color: var(--text-primary); }
-.ltp-keypad-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px; font-size: 10px; line-height: 1.35; color: var(--text-dim); }
-.ltp-keypad-note svg { flex-shrink: 0; margin-top: 1px; }
+/* keypad CSS removed — keypad card removed in round-1 polish (installer diagnostic, not homeowner content) */
 
 /* ── stale banner ── */
 .ltp-stale { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 120; padding: 5px 14px; border-radius: 12px; font-size: 11px; font-weight: 600; color: var(--sem-pending); background: rgba(var(--sem-pending-rgb),0.16); border: 1px solid rgba(var(--sem-pending-rgb),0.4); }

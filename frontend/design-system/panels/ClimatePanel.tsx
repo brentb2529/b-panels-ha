@@ -31,12 +31,12 @@ import './climatePanel.css';
 
 // ── mode icons (cool / heat / auto-off) ─────────────────────────────────────
 const CoolIcon = ({ stroke }: { stroke: string }) => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round">
     <path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" />
   </svg>
 );
 const HeatIcon = ({ stroke }: { stroke: string }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round">
     <path d="M8 14c0-3 4-4 4-8 2 2 4 4 4 8a4 4 0 0 1-8 0z" />
   </svg>
 );

@@ -6,6 +6,10 @@ import {
 import PanelShell from '../shell/PanelShell';
 import './houseHealthPanel.css';
 
+// Needed for AttentionCard / OverviewCard prop types (display-only projections).
+type AttentionViewShape = ReturnType<typeof useHouseHealthEntities>['attention'];
+type ConnectivityViewShape = ReturnType<typeof useHouseHealthEntities>['connectivity'];
+
 // ---------------------------------------------------------------------------
 // HouseHealthPanel — the "system trust" surface (ECOSYSTEM #8 / §J2).
 //
@@ -60,6 +64,51 @@ const StatusPill = ({ status }: { status: HealthStatus }) => (
     {STATUS_WORD[status]}
   </span>
 );
+
+// ── stat card — single glass card used in the header cluster ─────────────────
+const StatCard = ({
+  value, label, tone,
+}: {
+  value: string | number;
+  label: string;
+  tone?: 'ok' | 'attention' | 'critical';
+}) => (
+  <div className={`hh-stat-card${tone ? ` hh-stat-${tone}` : ''}`}>
+    <span className="hh-stat-val num">{value}</span>
+    <span className="hh-stat-lab">{label}</span>
+  </div>
+);
+
+// ── system-overview body card — shows alert items or all-clear, never 'unknown'
+// items (those are shown in their own cards already). Replaces the old amber
+// feed list that lived inside the hero header.
+const OverviewCard = ({ a, c }: {
+  a: AttentionViewShape;
+  c: ConnectivityViewShape;
+}) => {
+  // Only show real health signals; 'unknown' = not-configured (handled in cards).
+  const alertItems = a.items.filter((it) => it.status !== 'unknown');
+  const hasAlert = alertItems.some((it) => it.status === 'attention' || it.status === 'critical');
+  return (
+    <GroupCard eyebrow="System Overview" title={a.headline} status={a.overall}>
+      {!hasAlert ? (
+        <div className="hh-allclear">
+          <StatusDot status="ok" size={8} />
+          <span>{c.online} of {c.total} entities online · no issues detected</span>
+        </div>
+      ) : (
+        <ul className="hh-hero-feed">
+          {alertItems.map((it, i) => (
+            <li className={`hh-feed-row hh-feed-${it.status}`} key={i}>
+              <StatusDot status={it.status} size={7} />
+              <span className="hh-feed-text">{it.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </GroupCard>
+  );
+};
 
 // ── small labelled metric (renders the honest em-dash when value is "—") ──────
 const Metric = ({ label, value, absent }: { label: string; value: string; absent?: boolean }) => (
@@ -123,19 +172,28 @@ const HouseHealthPanel = () => {
             <div className="hh-hero-verdict">
               <StatusDot status={a.overall} size={13} />
               <span className="hh-hero-verdict-word">{STATUS_WORD[a.overall]}</span>
-              <span className="hh-hero-verdict-sub">
-                {c.online} of {c.total} online · {c.offlineCount} offline · {c.problemCount} fault{c.problemCount === 1 ? '' : 's'}
-              </span>
+              <span className="hh-hero-verdict-sub">{c.total} entities monitored</span>
             </div>
           </div>
-          <ul className="hh-hero-feed">
-            {a.items.slice(0, 6).map((it, i) => (
-              <li className={`hh-feed-row hh-feed-${it.status}`} key={i}>
-                <StatusDot status={it.status} size={7} />
-                <span className="hh-feed-text">{it.text}</span>
-              </li>
-            ))}
-          </ul>
+          {/* Stat-card cluster — top-right per shared header grammar */}
+          <div className="hh-stat-cluster">
+            <StatCard value={c.online} label="ONLINE" tone="ok" />
+            <StatCard
+              value={c.offlineCount}
+              label="OFFLINE"
+              tone={c.offlineCount > 0 ? 'attention' : undefined}
+            />
+            <StatCard
+              value={c.problemCount}
+              label="FAULTS"
+              tone={c.problemCount > 0 ? 'critical' : undefined}
+            />
+          </div>
+        </div>
+
+        {/* ── System overview card — amber alert feed moved here from header ── */}
+        <div className="hh-attn-bar">
+          <OverviewCard a={a} c={c} />
         </div>
 
         {/* ── Group grid ── */}
@@ -234,7 +292,7 @@ const HouseHealthPanel = () => {
           </GroupCard>
 
           {/* Power · Generator */}
-          <GroupCard eyebrow="Power" title="Generator · rehlko" status={g.status}
+          <GroupCard eyebrow="Power" title="Generator · Rehlko" status={g.status}
             tag={g.configured ? undefined : 'Awaiting connection'}>
             {g.configured ? (
               <>
@@ -256,7 +314,7 @@ const HouseHealthPanel = () => {
                 <div className={`hh-note hh-note-${g.status}`}>{g.note}</div>
               </>
             ) : (
-              <AbsentState note={g.note} />
+              <AbsentState note="Awaiting Rehlko integration connection" />
             )}
           </GroupCard>
 
@@ -277,7 +335,7 @@ const HouseHealthPanel = () => {
                 <div className={`hh-note hh-note-${u.status}`}>{u.note}</div>
               </>
             ) : (
-              <AbsentState note={u.note} />
+              <AbsentState note="Awaiting NUT / UPS configuration" />
             )}
           </GroupCard>
 
@@ -298,7 +356,7 @@ const HouseHealthPanel = () => {
                 <div className={`hh-note hh-note-${net.status}`}>{net.note}</div>
               </>
             ) : (
-              <AbsentState note={net.note} />
+              <AbsentState note="Awaiting UniFi network configuration" />
             )}
           </GroupCard>
 
