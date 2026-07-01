@@ -120,6 +120,26 @@
         --bg-gradient: radial-gradient(125% 105% at 50% -10%, rgb(28 22 14) 0%, rgb(var(--bg)) 70%, rgb(6 5 4) 100%);
       }
 
+      /* Global warm night wash — the decisive "night-shift" layer. The bespoke
+         compilation panels each define their own scoped tokens, so the per-scope
+         ambient-night warmth alone was too subtle to read as night. This full-screen
+         multiply veil warms highlights toward amber and gently dims the whole scene
+         (like display night-shift) so dark vs ambient-night is unmistakable at a
+         glance, while staying legible + luxe. pointer-events:none — never blocks input.
+         Only active under .ambient-night; light/dark are untouched. */
+      body.ambient-night::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9990;
+        /* Straight amber veil (normal blend, always composites regardless of the
+           panels' backdrop-filter stacking) + a soft darker vignette so night reads
+           both warmer AND dimmer, unmistakably, while text stays legible. */
+        background:
+          radial-gradient(130% 120% at 50% 42%, rgba(255,150,70,0.10) 0%, rgba(255,138,58,0.14) 60%, rgba(120,60,20,0.20) 100%);
+      }
+
       /* Ambient gradient canvas: painted on the body and any base bg-gray-900
          container, viewport-fixed so it stays seamless behind glass tiles. */
       body {

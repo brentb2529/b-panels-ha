@@ -286,7 +286,6 @@ const HouseHealthPanel = () => {
                   <div className="hh-list-row" key={p.id}>
                     <StatusDot status="critical" size={7} />
                     <span className="hh-list-name">{toFriendlyName(p.id, p.name)}</span>
-                    <span className="hh-list-id num">{p.id.split('.')[0]}</span>
                   </div>
                 ))}
               </div>
@@ -299,7 +298,6 @@ const HouseHealthPanel = () => {
                   <div className="hh-list-row" key={o.id}>
                     <StatusDot status="attention" size={7} />
                     <span className="hh-list-name">{toFriendlyName(o.id, o.name)}</span>
-                    <span className="hh-list-id num">{o.id.split('.')[0]}</span>
                   </div>
                 ))}
                 {c.offline.length > 8 && (
