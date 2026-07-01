@@ -9,10 +9,23 @@
  * Light theme: when the panel renders inside `body.light-mode` (the app's
  * existing theme switch), the cool-light token column activates.
  *
+ * Polish R1 changes (2026-06-30):
+ *   • Renamed installer language in visible text (display copy only):
+ *       "Zones · Master & Slave Topology" → "Whole-Home Zones"
+ *       "Master" badge → "Zone Lead"
+ *       "mode on <zone>" → "Follows <zone>"
+ *       "Slave · <zone>" (Others list) → "Grouped · <zone>"
+ *   • Master-row icon cluster: 4 pills → 3 (Cool/Heat/Off) at 32px / 8px gap
+ *   • Per-room temp numbers enlarged (slave row 20px → 24px)
+ *   • Shared flex-basis on cp-zone-readout + cp-zone-setpoint so master/slave
+ *     numeric columns align
+ *   • Readability (SHARED SPEC #1): min labels 11–12px; text-secondary opacity
+ *     raised to 0.72; text-dim raised to 0.50; tabular-nums already present
+ *   • Stat-card cluster (SHARED SPEC #2): metric-label → 11px / 0.65 opacity
+ *
  * SAFETY POSTURE reflected in the styling: MASTER zones carry full, enabled
- * mode pills (LIVE, low-hazard). SLAVE zones carry a "set on master" lock +
- * disabled (read-back) mode pills, but a LIVE setpoint stepper. See
- * ClimatePanel.tsx / useClimateEntities.ts.
+ * mode pills (LIVE, low-hazard). SLAVE zones carry a "Follows <zone>" lock +
+ * live setpoint stepper — no mode input, per ENTITY_CONTRACT Surface 2.
  * ===========================================================================*/
 
 .cp-scope {
@@ -22,8 +35,10 @@
   --glass-border: rgba(255,255,255,0.11);
   --glass-border-bright: rgba(255,255,255,0.22);
   --text-primary: #ECEFF3;
-  --text-secondary: rgba(236,239,243,0.58);
-  --text-dim: rgba(236,239,243,0.32);
+  /* R1: raised from 0.58 → 0.72 for ≥0.70 readability floor */
+  --text-secondary: rgba(236,239,243,0.72);
+  /* R1: raised from 0.32 → 0.50 for label legibility */
+  --text-dim: rgba(236,239,243,0.50);
   --accent-climate: #7A9BBF; --accent-climate-rgb: 122,155,191;
   --accent-heat: #E0683C; --accent-heat-rgb: 224,104,60;
   --accent-cool: #4FB8D8; --accent-cool-rgb: 79,184,216;
@@ -58,8 +73,10 @@ body.light-mode .cp-scope {
   --glass-border: rgba(20,40,55,0.12);
   --glass-border-bright: rgba(20,40,55,0.20);
   --text-primary: #0F1E27;
-  --text-secondary: rgba(15,30,39,0.62);
-  --text-dim: rgba(15,30,39,0.40);
+  /* R1: raised from 0.62 → 0.72 */
+  --text-secondary: rgba(15,30,39,0.72);
+  /* R1: raised from 0.40 → 0.50 */
+  --text-dim: rgba(15,30,39,0.50);
   --accent-climate: #4A78A8; --accent-climate-rgb: 74,120,168;
   --accent-heat: #C5562B; --accent-heat-rgb: 197,86,43;
   --accent-cool: #1E8FB6; --accent-cool-rgb: 30,143,182;
@@ -112,12 +129,14 @@ body.light-mode .cp-title { text-shadow: none; }
 @keyframes cp-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.65;} }
 
 .cp-hero-right { display: flex; gap: 12px; align-items: flex-start; }
-.cp-metric { min-width: 96px; text-align: center; padding: 12px 14px 11px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 10px 26px rgba(0,0,0,0.35); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* Stat-card cluster (SHARED SPEC #2): glass cards, big tabular value, 11px caps label */
+.cp-metric { min-width: 88px; text-align: center; padding: 12px 14px 11px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 10px 26px rgba(0,0,0,0.35); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 body.light-mode .cp-metric { background: rgba(255,255,255,0.78); border-color: rgba(20,40,55,0.14); box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 10px 26px rgba(40,60,80,0.12); }
 .cp-metric.is-unavailable .cp-metric-value { color: var(--text-dim); }
 .cp-metric-value { font-size: 36px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); white-space: nowrap; }
 .cp-metric-unit { font-size: 15px; color: var(--text-secondary); }
-.cp-metric-label { font-size: 10px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+/* R1: 10px → 11px; explicit opacity 0.65 per SHARED SPEC #2 */
+.cp-metric-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(var(--accent-climate-rgb),0.65); white-space: nowrap; }
 
 /* ══ Content — one wide primary (zone topology) + satellites ══ */
 /* Fit-to-window: body region takes remaining height and scrolls within instead
@@ -130,32 +149,42 @@ body.light-mode .cp-card { box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 18
 .cp-card-primary { background: rgba(255,255,255,0.09); border: 1px solid rgba(var(--accent-climate-rgb),0.28); box-shadow: 0 0 0 1px rgba(var(--accent-climate-rgb),0.14) inset, 0 1px 0 rgba(255,255,255,0.10) inset, 0 26px 54px rgba(0,0,0,0.52); }
 body.light-mode .cp-card-primary { background: rgba(255,255,255,0.88); box-shadow: 0 0 0 1px rgba(var(--accent-climate-rgb),0.18) inset, 0 18px 44px rgba(40,60,80,0.14); }
 .cp-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-.cp-card-label { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+/* R1: 10px → 12px (data-label readability rule) */
+.cp-card-label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
 .cp-card-accent { color: rgba(var(--accent-climate-rgb),0.9); }
-.cp-empty { font-size: 12px; color: var(--text-dim); padding: 18px 4px; text-align: center; }
+/* R1: empty state — text-secondary (0.72) instead of text-dim; intentional/pending feel */
+.cp-empty { font-size: 12px; color: var(--text-secondary); padding: 18px 4px; text-align: center; }
 
 /* zone group (master + its slaves) */
 .cp-zone-group { margin-bottom: 12px; }
 .cp-zone-group:last-child { margin-bottom: 0; }
-.cp-master-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: rgba(var(--accent-climate-rgb),0.10); border: 1px solid rgba(var(--accent-climate-rgb),0.26); border-radius: 14px; }
-.cp-master-badge { font-size: 8.5px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase; color: var(--accent-climate); padding: 3px 7px; border-radius: 6px; background: rgba(var(--accent-climate-rgb),0.16); border: 1px solid rgba(var(--accent-climate-rgb),0.34); flex-shrink: 0; }
+.cp-master-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: rgba(var(--accent-climate-rgb),0.10); border: 1px solid rgba(var(--accent-climate-rgb),0.26); border-radius: 14px; }
+/* R1: 8.5px → 10px for legibility */
+.cp-master-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-climate); padding: 3px 8px; border-radius: 6px; background: rgba(var(--accent-climate-rgb),0.16); border: 1px solid rgba(var(--accent-climate-rgb),0.34); flex-shrink: 0; }
 .cp-zone-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
-.cp-zone-readout { display: flex; align-items: baseline; gap: 3px; }
+/* R1: add flex-basis so master and slave readout columns align */
+.cp-zone-readout { display: flex; align-items: baseline; gap: 3px; flex: 0 0 58px; justify-content: flex-end; }
 .cp-zone-temp { font-size: 30px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--text-primary); }
 .cp-zone-temp .deg { font-size: 16px; color: var(--text-secondary); }
 .cp-zone-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; display: flex; align-items: center; gap: 8px; }
-.cp-hvac-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 7px; }
+/* R1: 10px → 11px */
+.cp-hvac-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 7px; border-radius: 7px; }
 .cp-hvac-cool { color: var(--accent-cool); background: rgba(var(--accent-cool-rgb),0.14); border: 1px solid rgba(var(--accent-cool-rgb),0.30); }
 .cp-hvac-heat { color: var(--accent-heat); background: rgba(var(--accent-heat-rgb),0.14); border: 1px solid rgba(var(--accent-heat-rgb),0.30); }
 .cp-hvac-idle { color: var(--text-dim); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); }
 body.light-mode .cp-hvac-idle { background: rgba(20,40,55,0.05); border-color: rgba(20,40,55,0.10); }
 .cp-zone-grow { flex: 1; min-width: 0; }
-.cp-zone-setpoint { text-align: right; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-.cp-sp-cap { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+/* R1: add flex-basis so master and slave setpoint columns align */
+.cp-zone-setpoint { flex: 0 0 82px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+/* R1: 9px → 11px */
+.cp-sp-cap { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 
-/* full mode control on master */
-.cp-mode-pills { display: flex; gap: 6px; margin-left: 4px; flex-shrink: 0; }
-.cp-mode-pill { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); cursor: pointer; color: var(--text-dim); font-size: 14px; padding: 0; transition: background 140ms ease, border-color 140ms ease, transform 100ms ease; }
+/* full mode control on master — 3 essential pills (Cool / Heat / Off)
+   R1: gap 6px → 8px; pills 30px → 32px; icons enlarged via svg override */
+.cp-mode-pills { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 112px; justify-content: flex-end; flex-shrink: 0; }
+.cp-mode-pill { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); cursor: pointer; color: var(--text-dim); font-size: 14px; padding: 0; transition: background 140ms ease, border-color 140ms ease, transform 100ms ease; }
+/* R1: enlarge icons inside mode pills for across-room legibility */
+.cp-mode-pill svg { width: 18px; height: 18px; }
 body.light-mode .cp-mode-pill { background: rgba(20,40,55,0.05); border-color: rgba(20,40,55,0.12); }
 .cp-mode-pill:not(.is-disabled):hover { border-color: var(--glass-border-bright); }
 .cp-mode-pill:not(.is-disabled):active { transform: scale(0.94); }
@@ -166,12 +195,18 @@ body.light-mode .cp-mode-pill { background: rgba(20,40,55,0.05); border-color: r
 .cp-mode-off { line-height: 1; }
 .cp-mode-readback { opacity: 0.5; pointer-events: none; }
 
-/* slave row */
+/* slave row — indented, Follows <zone> label, live setpoint
+   R1: restructured to use cp-zone-readout + cp-zone-setpoint for column alignment */
 .cp-slave-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px 9px 26px; border-left: 1px solid rgba(var(--accent-climate-rgb),0.22); margin-left: 14px; }
-.cp-slave-name { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-.cp-slave-temp { font-size: 20px; font-weight: 300; color: var(--text-primary); }
-.cp-slave-temp .deg { font-size: 12px; color: var(--text-secondary); }
-.cp-slave-lock { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-dim); }
+/* R1: 13px → 14px */
+.cp-slave-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+/* R1: 20px → 24px — across-room legibility (readability rule #1) */
+.cp-slave-temp { font-size: 24px; font-weight: 300; color: var(--text-primary); }
+.cp-slave-temp .deg { font-size: 14px; color: var(--text-secondary); }
+/* R1: renamed from cp-slave-lock; homeowner-friendly "Follows <zone>" copy */
+.cp-slave-follows { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); }
+/* kept for backward compat; no longer rendered but harmless */
+.cp-slave-lock { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); }
 
 /* setpoint stepper (every zone) */
 .cp-stepper { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -193,7 +228,8 @@ body.light-mode .cp-step-btn { background: rgba(20,40,55,0.06); border-color: rg
 .cp-calling { flex: 1; text-align: center; padding: 11px 8px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); }
 body.light-mode .cp-calling { background: rgba(20,40,55,0.04); border-color: rgba(20,40,55,0.10); }
 .cp-calling-n { font-size: 22px; font-weight: 300; }
-.cp-calling-l { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-top: 2px; }
+/* R1: 10px → 11px */
+.cp-calling-l { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-top: 2px; }
 .cp-summary-foot { margin-top: 12px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-secondary); }
 body.light-mode .cp-summary-foot { border-top-color: rgba(20,40,55,0.08); }
 

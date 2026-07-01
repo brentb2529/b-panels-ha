@@ -40,12 +40,6 @@ const HeatIcon = ({ stroke }: { stroke: string }) => (
     <path d="M8 14c0-3 4-4 4-8 2 2 4 4 4 8a4 4 0 0 1-8 0z" />
   </svg>
 );
-const AutoIcon = ({ stroke }: { stroke: string }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round">
-    <path d="M18.36 6.64A9 9 0 1 1 5.64 6.64" />
-    <line x1="12" y1="2" x2="12" y2="12" />
-  </svg>
-);
 
 const LockIcon = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -60,11 +54,15 @@ const hvacChipLabel = (z: ZoneView) =>
   !z.available ? 'Offline' : z.calling === 'cool' ? 'Cooling' : z.calling === 'heat' ? 'Heating' : z.calling === 'off' ? 'Off' : 'Idle';
 
 // ── full mode control on a MASTER zone (LIVE) ───────────────────────────────
+// 3 essential pills at 32px tap targets (Cool / Heat / Off). Auto mode is
+// wired in the hook (setHvacMode('auto') works) but not surfaced as a pill —
+// the hvac chip always shows the live calling state, so Auto is visible even
+// when set by a schedule or externally.
 const MasterModePills = ({ zone, onMode }: { zone: ZoneView; onMode: (m: ClimateMode) => void }) => {
   const pill = (m: ClimateMode, icon: React.ReactNode, on: boolean, label: string) => (
     <button
       type="button"
-      className={`cp-mode-pill${on ? (m === 'cool' ? ' on-cool' : m === 'heat' ? ' on-heat' : ' on-auto') : ''}`}
+      className={`cp-mode-pill${on ? (m === 'cool' ? ' on-cool' : m === 'heat' ? ' on-heat' : '') : ''}`}
       onClick={() => onMode(m)}
       title={label}
       aria-label={`${zone.name} — ${label}`}
@@ -77,7 +75,6 @@ const MasterModePills = ({ zone, onMode }: { zone: ZoneView; onMode: (m: Climate
     <div className="cp-mode-pills">
       {pill('cool', <CoolIcon stroke={zone.mode === 'cool' ? 'var(--accent-cool)' : 'var(--text-dim)'} />, zone.mode === 'cool', 'Cool')}
       {pill('heat', <HeatIcon stroke={zone.mode === 'heat' ? 'var(--accent-heat)' : 'var(--text-dim)'} />, zone.mode === 'heat', 'Heat')}
-      {pill('auto', <AutoIcon stroke={zone.mode === 'auto' ? 'var(--accent-climate)' : 'var(--text-dim)'} />, zone.mode === 'auto', 'Auto')}
       {pill('off', <span className="cp-mode-off">⏻</span>, zone.mode === 'off', 'Off')}
     </div>
   );
@@ -104,7 +101,7 @@ const Stepper = ({ zone, onSet }: { zone: ZoneView; onSet: (t: number) => void }
 // ── MASTER zone row (elevated, full controls) ───────────────────────────────
 const MasterRow = ({ zone, onSet, onMode }: { zone: ZoneView; onSet: (t: number) => void; onMode: (m: ClimateMode) => void }) => (
   <div className="cp-master-row">
-    <span className="cp-master-badge">Master</span>
+    <span className="cp-master-badge">Zone Lead</span>
     <div className="cp-zone-grow">
       <div className="cp-zone-name">{zone.name}</div>
       <div className="cp-zone-meta">
@@ -124,20 +121,25 @@ const MasterRow = ({ zone, onSet, onMode }: { zone: ZoneView; onSet: (t: number)
 );
 
 // ── SLAVE zone row (indented, live setpoint, mode read-back only) ───────────
+// "Follows <zone>" replaces "Set on master" — homeowner-friendly phrasing.
+// Mode input is intentionally absent (mode follows the Zone Lead); the live
+// hvac chip still shows the current calling state. Setpoint is a live stepper.
 const SlaveRow = ({ zone, onSet }: { zone: ZoneView; onSet: (t: number) => void }) => (
   <div className="cp-slave-row">
     <div className="cp-zone-grow">
-      <span className="cp-slave-name">{zone.name}</span>
-      {' · '}
-      <span className="cp-slave-lock"><LockIcon />mode on {zone.masterZone}</span>
+      <div className="cp-slave-name">{zone.name}</div>
+      <div className="cp-zone-meta">
+        <span className="cp-slave-follows"><LockIcon />Follows {zone.masterZone}</span>
+        <span className={`cp-hvac-chip ${hvacChipClass(zone.calling)}`}>{hvacChipLabel(zone)}</span>
+      </div>
     </div>
-    <span className="cp-slave-temp num">{zone.current !== null ? Math.round(zone.current) : '—'}<span className="deg">°</span></span>
-    <span className={`cp-hvac-chip ${hvacChipClass(zone.calling)}`} style={{ margin: '0 4px' }}>{hvacChipLabel(zone)}</span>
-    {/* mode buttons are DISABLED on a slave — read-back only */}
-    <div className="cp-mode-pills cp-mode-readback" aria-hidden="true">
-      <span className="cp-mode-pill is-disabled" title="Set on master"><CoolIcon stroke="var(--text-dim)" /></span>
+    <div className="cp-zone-readout">
+      <span className="cp-slave-temp num">{zone.current !== null ? Math.round(zone.current) : '—'}<span className="deg">°</span></span>
     </div>
-    <Stepper zone={zone} onSet={onSet} />
+    <div className="cp-zone-setpoint">
+      <Stepper zone={zone} onSet={onSet} />
+      <div className="cp-sp-cap">Set</div>
+    </div>
   </div>
 );
 
@@ -202,7 +204,7 @@ const ClimatePanel = () => {
 
         {/* PRIMARY — master/slave zone topology */}
         <div className="cp-card cp-card-primary">
-          <div className="cp-card-label"><span className="cp-card-accent">Zones · Master &amp; Slave Topology</span><span>Airzone</span></div>
+          <div className="cp-card-label"><span className="cp-card-accent">Whole-Home Zones</span><span>Airzone</span></div>
 
           {c.groups.length === 0 && c.independents.length === 0 && (
             <div className="cp-empty">No live climate zones reporting topology.</div>
@@ -256,7 +258,7 @@ const ClimatePanel = () => {
               const sub = offline
                 ? 'Sensor offline'
                 : z.masterZone
-                  ? `Slave · ${z.masterZone}`
+                  ? `Grouped · ${z.masterZone}`
                   : z.calling === 'off'
                     ? 'Independent · off'
                     : 'Independent';

@@ -205,7 +205,7 @@ body.light-mode .pp-metric-label { color: rgba(15,30,39,0.72); }
      overflowing and clipping controls off-screen. margin-top:-28px preserves the
      original 28px hero/content overlap (old top:372 over a 400px hero) so the 4:3
      look is identical; margin-bottom:76px clears the pinned bottom nav/arming bar. */
-  position: relative; flex: 1 1 auto; min-height: 0;
+  position: relative; z-index: 5; flex: 1 1 auto; min-height: 0;
   margin-top: -28px; margin-bottom: 76px;
   padding: 0 24px 20px; display: grid; grid-template-columns: 1.55fr 1fr 1fr; gap: 16px;
   overflow-y: auto; overflow-x: hidden;
