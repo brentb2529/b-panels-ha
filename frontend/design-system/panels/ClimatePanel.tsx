@@ -232,7 +232,7 @@ const ClimatePanel = () => {
             <div className="cp-summary-arc-wrap">
               <div className="cp-summary-arc">
                 <svg width="150" height="150" viewBox="0 0 150 150">
-                  <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="9" strokeLinecap="round" />
+                  <path className="cp-arc-track" d="M30 120 A 55 55 0 1 1 120 120" fill="none" strokeWidth="9" strokeLinecap="round" />
                   <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke={ringColor} strokeWidth="9" strokeLinecap="round" strokeDasharray={ARC} strokeDashoffset={arcOffset} />
                 </svg>
                 <div className="cp-arc-c">

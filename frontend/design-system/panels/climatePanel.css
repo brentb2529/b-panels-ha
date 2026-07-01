@@ -88,6 +88,59 @@ body.light-mode .cp-scope {
   --sem-triggered: #CC2F35; --sem-triggered-rgb: 204,47,53;
 }
 
+/* ── ambient-night — warm-dimmed cerulean identity ───────────────────────────
+ * Night mode: cut blue light while staying legible + luxe. Cerulean accent
+ * desaturated ~15% and nudged warmer (cerulean → muted teal-slate); surfaces
+ * warm from cool-white glass to warm-neutral glass; text warm off-white.
+ * No hero photo to dim (gradient hero) — gradient itself warms + mutes.
+ * =========================================================================== */
+body.ambient-night .cp-scope {
+  --bg-canvas: #0c1319;
+  --surface-glass: rgba(255,250,242,0.06);
+  --surface-glass-raised: rgba(255,250,242,0.10);
+  --glass-border: rgba(255,250,242,0.11);
+  --glass-border-bright: rgba(255,250,242,0.22);
+  --text-primary: #EFE7D9;
+  --text-secondary: rgba(239,231,217,0.72);
+  --text-dim: rgba(239,231,217,0.50);
+  /* cerulean → muted teal-slate; desaturated ~15%, nudged warmer+dimmer */
+  --accent-climate: #5D8AA0; --accent-climate-rgb: 93,138,160;
+  /* heat: slightly deeper — stays recognisable amber-orange at night */
+  --accent-heat: #C85C30; --accent-heat-rgb: 200,92,48;
+  /* cool: desaturated, dimmed — still distinguishably cool */
+  --accent-cool: #3B9CB8; --accent-cool-rgb: 59,156,184;
+  /* semantic colours: keep intent legible, dim blue light */
+  --sem-armed-away: #338A61; --sem-armed-away-rgb: 51,138,97;
+  --sem-armed-stay: #3391AC; --sem-armed-stay-rgb: 51,145,172;
+  --sem-ready: #8898A8; --sem-ready-rgb: 136,152,168;
+  --sem-notready: #6876CC; --sem-notready-rgb: 104,118,204;
+  --sem-pending: #4878D0; --sem-pending-rgb: 72,120,208;
+  --sem-triggered: #CC3D42; --sem-triggered-rgb: 204,61,66;
+}
+
+/* ambient-night hero — warmer, muted glows against warm dark canvas */
+body.ambient-night .cp-hero::before {
+  background:
+    radial-gradient(ellipse 48% 36% at 74% 14%, rgba(90,130,155,0.22) 0%, transparent 66%),
+    radial-gradient(ellipse 38% 26% at 22% 30%, rgba(60,140,165,0.10) 0%, transparent 60%),
+    linear-gradient(168deg, #181f26 0%, #14191f 30%, #11161c 58%, #0e141a 80%, #0c1319 100%);
+}
+body.ambient-night .cp-hero-vignette {
+  background: linear-gradient(180deg, rgba(12,19,25,0.28) 0%, rgba(12,19,25,0.0) 46%, rgba(12,19,25,0.72) 84%, rgba(12,19,25,1.0) 100%);
+}
+
+/* ambient-night surface overrides — warm-neutral glass, deeper shadows */
+body.ambient-night .cp-metric { background: rgba(255,250,242,0.07); border-color: rgba(255,250,242,0.13); box-shadow: 0 1px 0 rgba(255,250,242,0.08) inset, 0 10px 26px rgba(0,0,0,0.40); }
+body.ambient-night .cp-card { box-shadow: 0 1px 0 rgba(255,250,242,0.07) inset, 0 24px 48px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.28); }
+body.ambient-night .cp-card-primary { background: rgba(255,250,242,0.08); border-color: rgba(93,138,160,0.26); box-shadow: 0 0 0 1px rgba(93,138,160,0.12) inset, 0 1px 0 rgba(255,250,242,0.08) inset, 0 26px 54px rgba(0,0,0,0.56); }
+body.ambient-night .cp-hvac-idle { background: rgba(255,250,242,0.04); border-color: rgba(255,250,242,0.09); }
+body.ambient-night .cp-mode-pill { background: rgba(255,250,242,0.04); border-color: rgba(255,250,242,0.09); }
+body.ambient-night .cp-step-btn { background: rgba(255,250,242,0.05); border-color: rgba(255,250,242,0.10); }
+body.ambient-night .cp-calling { background: rgba(255,250,242,0.04); border-color: rgba(255,250,242,0.08); }
+body.ambient-night .cp-summary-foot { border-top-color: rgba(255,250,242,0.07); }
+body.ambient-night .cp-mini-zone { border-bottom-color: rgba(255,250,242,0.06); }
+body.ambient-night .cp-switcher { background: rgba(12,19,25,0.92); border-top-color: rgba(255,250,242,0.08); }
+
 /* stale banner */
 .cp-stale {
   position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 200;
@@ -216,6 +269,14 @@ body.light-mode .cp-step-btn { background: rgba(20,40,55,0.06); border-color: rg
 .cp-step-btn:not(:disabled):active { transform: scale(0.92); }
 .cp-step-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .cp-step-val { font-size: 15px; font-weight: 500; color: var(--text-primary); min-width: 36px; text-align: center; }
+
+/* SVG arc track (house-summary ring background) — adapts per theme.
+ * The dark-mode default and ambient-night use warm-white at low alpha;
+ * light-mode flips to a dark-neutral at low alpha so the ring track is
+ * visible on the light canvas. This is the 15th light-mode rule. */
+.cp-scope .cp-arc-track { stroke: rgba(255,255,255,0.12); }
+body.light-mode .cp-scope .cp-arc-track { stroke: rgba(20,40,55,0.10); }
+body.ambient-night .cp-scope .cp-arc-track { stroke: rgba(255,250,242,0.12); }
 
 /* house summary satellite */
 .cp-summary-arc-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 2px 0 14px; }

@@ -229,9 +229,9 @@ const KitchenPanel = () => {
           <div className="kp-zone-arc-wrap">
             <div className="kp-zone-arc">
               <svg width="150" height="150" viewBox="0 0 150 150">
-                <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="9" strokeLinecap="round" />
+                <path className="kp-arc-track" d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="9" strokeLinecap="round" />
                 <path d="M30 120 A 55 55 0 1 1 120 120" fill="none" stroke="var(--accent-climate)" strokeWidth="11" strokeLinecap="round" strokeDasharray={ARC} strokeDashoffset={dashOffset} />
-                <circle cx="120" cy="120" r="5.5" fill="#fff" />
+                <circle className="kp-arc-needle" cx="120" cy="120" r="5.5" fill="#fff" />
               </svg>
               <div className="kp-arc-center">
                 <div className="kp-zone-cur num">{Math.round(current)}<span className="deg">°</span></div>

@@ -70,27 +70,21 @@ body.light-mode .hp-canvas {
 /* ── Main content area ── */
 .hp-main {
   position: absolute; top: 0; left: 0; right: 0; bottom: 76px;
-  padding: 36px 40px 22px;
-  /* Rows: top bar · scene row · news ticker · weather-safety card · area grid.
-     The ticker + weather-safety rows are `auto` and collapse to 0 when their
-     child renders null/empty (graceful absence); the area grid always takes the
-     remaining space (1fr). gap is 0 so collapsed rows add no whitespace; live
-     rows space themselves via their own margins below. */
-  /* Fit-to-window: the area grid keeps a usable minimum height (minmax) so its
-     cards never collapse/clip on short viewports; when the rows exceed the
-     available height the whole region scrolls (overflow-y:auto) within the
-     top:0/bottom:76px box (nav stays pinned + clear). At the 4:3 target the 1fr
-     expands past the min, so the look is unchanged. News ticker removed (R1
-     polish); weather-safety + garage-alert rows collapse to 0 when absent. */
-  display: grid; grid-template-rows: auto auto auto minmax(340px, 1fr); row-gap: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 36px 40px 24px;
+  /* Flex column: hp-top + hp-scenes + optional alert rows are shrink-proof
+     flex items; hp-grid carries flex:1 and fills the remaining height so the
+     two-row card grid always lands ~24px above the arming bar regardless of
+     how many alert rows are active or null. Overflow-y:auto lets the whole
+     region scroll on short viewports (nav stays pinned). */
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
 }
 /* Re-introduce the inter-row rhythm via margins so collapsed (null) rows leave
    no gap. Matches the original 22px cadence. */
-.hp-main > .hp-top { margin-bottom: 18px; }
-.hp-main > .hp-scenes { margin-bottom: 18px; }
+.hp-main > .hp-top { margin-bottom: 18px; flex-shrink: 0; }
+.hp-main > .hp-scenes { margin-bottom: 18px; flex-shrink: 0; }
 /* The weather-safety card (owned by ../weather-safety) renders null at rest; when
    active it needs the same inter-row rhythm. Scoped to the Home flow only. */
-.hp-main > .wxs-scope-inline { margin-bottom: 18px; }
+.hp-main > .wxs-scope-inline { margin-bottom: 18px; flex-shrink: 0; }
 
 /* ── Top bar ── */
 .hp-top { display: flex; align-items: flex-start; justify-content: space-between; animation: hp-fadeUp 280ms cubic-bezier(0.22,1,0.36,1) both; }
@@ -260,7 +254,9 @@ body.light-mode .hp-canvas {
 .hp-scene-btn.danger:hover { background: rgba(201,161,74,0.28); }
 
 /* ── Area card grid ── */
-.hp-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 18px; min-height: 0; }
+/* flex:1 makes the grid fill every remaining px in the flex column so the two
+   card rows always reach the ~24px bottom gap (R3 void fix). */
+.hp-grid { flex: 1 1 0; min-height: 340px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 18px; }
 .hp-card {
   position: relative; border-radius: 20px; overflow: hidden;
   background: var(--surface-glass); border: 1px solid var(--glass-border);
@@ -373,6 +369,137 @@ body.light-mode .hp-switcher { background: rgba(238,241,245,0.92); border-top-co
 .hp-arm-triggered{ --arm-fg: var(--sem-triggered); --arm-bg: rgba(var(--sem-triggered-rgb),0.16); --arm-border: rgba(var(--sem-triggered-rgb),0.5); --arm-ring: rgba(var(--sem-triggered-rgb),0.25); --arm-icon-bg: rgba(var(--sem-triggered-rgb),0.22); }
 
 .hp-stale { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 120; padding: 5px 14px; border-radius: 12px; background: rgba(229,160,64,0.18); border: 1px solid rgba(229,160,64,0.45); color: #E5A040; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+
+/* =============================================================================
+ * ADDITIONAL LIGHT-MODE OVERRIDES — R3 polish
+ * Home had ~7 light rules; the R1/R2 stat-card cluster and scene pills read
+ * washed on white. These rules complete light coverage for all new elements.
+ * ============================================================================*/
+
+/* Stat-card cluster: white cards on near-white canvas need shadow + border */
+body.light-mode .hp-stat-card {
+  background: rgba(255,255,255,0.92);
+  border-color: rgba(0,0,0,0.14);
+  box-shadow: 0 2px 10px rgba(18,24,33,0.09);
+}
+body.light-mode .hp-stat-lbl {
+  opacity: 1;
+  color: var(--text-dim);
+}
+body.light-mode .hp-stat-ampm { color: var(--text-dim); }
+
+/* Scene row on light */
+body.light-mode .hp-scene-label { color: var(--text-secondary); }
+body.light-mode .hp-pill {
+  background: rgba(255,255,255,0.90);
+  border-color: rgba(0,0,0,0.15);
+  box-shadow: 0 1px 6px rgba(18,24,33,0.08);
+  color: var(--text-primary);
+}
+body.light-mode .hp-pill:hover {
+  background: #fff;
+  border-color: rgba(0,0,0,0.24);
+  box-shadow: 0 2px 10px rgba(18,24,33,0.12);
+}
+
+/* Room card ::before: replace dark navy/indigo gradients with accent tints */
+body.light-mode .hp-pool::before     { background: radial-gradient(ellipse 100% 75% at 60% 18%, rgba(58,181,212,0.18) 0%, transparent 65%); opacity: 1; }
+body.light-mode .hp-security::before { background: radial-gradient(ellipse 100% 75% at 70% 18%, rgba(91,108,201,0.14) 0%, transparent 65%); opacity: 1; }
+body.light-mode .hp-climate::before  { background: radial-gradient(ellipse 100% 75% at 50% 18%, rgba(122,155,191,0.16) 0%, transparent 65%); opacity: 1; }
+body.light-mode .hp-lights::before   { background: radial-gradient(ellipse 100% 75% at 35% 22%, rgba(199,210,218,0.20) 0%, transparent 65%); opacity: 1; }
+body.light-mode .hp-generator::before{ background: radial-gradient(ellipse 100% 75% at 50% 22%, rgba(139,127,212,0.14) 0%, transparent 65%); opacity: 1; }
+body.light-mode .hp-akvo::before     { background: radial-gradient(ellipse 100% 75% at 50% 20%, rgba(58,181,212,0.11) 0%, transparent 65%); opacity: 1; }
+
+/* Muted badge: white-alpha invisible on white canvas */
+body.light-mode .hp-badge-muted {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.13);
+}
+
+/* Card hover shadow on light */
+body.light-mode .hp-card:hover { box-shadow: 0 12px 30px rgba(31,45,61,0.18); }
+
+/* Pool body toggle track on light */
+body.light-mode .hp-toggle-static { background: rgba(0,0,0,0.16); }
+body.light-mode .hp-toggle-static.on { background: rgba(var(--accent-pool-rgb),0.80); }
+
+/* =============================================================================
+ * AMBIENT-NIGHT — body.ambient-night .hp-scope (R3 — zero rules previously)
+ * Warm-dimmed token set per THEME_POLISH_SPEC recipe: warm off-white text,
+ * warm glass surfaces, accents desaturated ~15% + nudged warmer/dimmer,
+ * hero canvas replaced with a warm dark gradient.
+ * ============================================================================*/
+body.ambient-night .hp-scope {
+  --bg-canvas: #0c0a07;
+  --surface-glass: rgba(255,250,242,0.06);
+  --surface-glass-raised: rgba(255,250,242,0.10);
+  --glass-border: rgba(255,245,228,0.10);
+  --glass-border-bright: rgba(255,245,228,0.20);
+  --text-primary: #EFE7D9;
+  --text-secondary: rgba(239,231,217,0.72);
+  --text-dim: rgba(239,231,217,0.42);
+  /* Accents: desaturate ~15%, nudge warmer/dimmer per recipe */
+  --accent-pool: #31A0BC;        --accent-pool-rgb: 49,160,188;
+  --accent-security: #4E5FA8;    --accent-security-rgb: 78,95,168;
+  --accent-climate: #6A88A8;     --accent-climate-rgb: 106,136,168;
+  --accent-lights: #A8B6C0;      --accent-lights-rgb: 168,182,192;
+  --accent-positive: #4DB876;    --accent-positive-rgb: 77,184,118;
+  --accent-generator: #7A6FBE;   --accent-generator-rgb: 122,111,190;
+  --accent-warning: #C88830;
+  /* Semantics: stay recognizable, slightly muted */
+  --sem-armed-away: #368B66;     --sem-armed-away-rgb: 54,139,102;
+  --sem-armed-stay: #3690A8;     --sem-armed-stay-rgb: 54,144,168;
+  --sem-ready: #808FA0;          --sem-ready-rgb: 128,143,160;
+  --sem-notready: #A858B8;       --sem-notready-rgb: 168,88,184;
+  --sem-pending: #4A78D4;        --sem-pending-rgb: 74,120,212;
+  --sem-triggered: #C23840;      --sem-triggered-rgb: 194,56,64;
+}
+
+/* Canvas: warm darker gradient — removes cool-blue bias of the dark default */
+body.ambient-night .hp-canvas {
+  background:
+    radial-gradient(ellipse 100% 80% at 30% 20%, rgba(22,14,9,0.97) 0%, transparent 70%),
+    radial-gradient(ellipse 80% 60% at 80% 70%, rgba(14,9,6,0.94) 0%, transparent 65%),
+    linear-gradient(160deg, #100d08 0%, #0a0806 60%, #110d09 100%);
+}
+
+/* Card ::before: warm the accent highlight + base gradient for night */
+body.ambient-night .hp-pool::before {
+  background:
+    radial-gradient(ellipse 90% 60% at 62% 26%, rgba(49,160,188,0.26) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 80% at 50% 70%, rgba(12,24,34,0.88) 0%, transparent 72%),
+    linear-gradient(160deg, #0a1e28 0%, #0c2a34 55%, #071a22 100%);
+}
+body.ambient-night .hp-security::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 22%, rgba(78,95,168,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 80% at 40% 55%, rgba(18,20,40,0.88) 0%, transparent 72%),
+    linear-gradient(160deg, #0f1228 0%, #141832 55%, #0a0e20 100%);
+}
+body.ambient-night .hp-climate::before {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 24%, rgba(106,136,168,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 90% at 50% 70%, rgba(14,22,34,0.86) 0%, transparent 72%),
+    linear-gradient(160deg, #111c28 0%, #152230 55%, #0c1520 100%);
+}
+body.ambient-night .hp-lights::before {
+  background:
+    radial-gradient(ellipse 90% 60% at 32% 30%, rgba(168,182,192,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 80% at 55% 72%, rgba(14,22,34,0.86) 0%, transparent 72%),
+    linear-gradient(160deg, #141e2c 0%, #1a2538 55%, #0f1826 100%);
+}
+body.ambient-night .hp-generator::before {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 28%, rgba(122,111,190,0.20) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 80% at 50% 72%, rgba(22,18,36,0.86) 0%, transparent 72%),
+    linear-gradient(160deg, #12102a 0%, #18153a 55%, #0e0c24 100%);
+}
+body.ambient-night .hp-akvo::before {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 26%, rgba(49,160,188,0.14) 0%, transparent 60%),
+    radial-gradient(ellipse 120% 80% at 50% 72%, rgba(8,20,30,0.86) 0%, transparent 72%),
+    linear-gradient(160deg, #092030 0%, #0b2438 55%, #06161e 100%);
+}
 
 @keyframes hp-fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes hp-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.25);opacity:0.7;} }

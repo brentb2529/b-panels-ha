@@ -269,7 +269,6 @@ const SecurityPanel = () => {
         <div className="secp-card secp-cam-card">
           <div className="secp-card-label">
             <span>Cameras · UniFi Protect</span>
-            <span className="secp-tag" title="UniFi Protect not yet in contract">Proposed</span>
           </div>
 
           {/* Camera grid or "cameras coming online" empty-state (shared spec rule 4).
@@ -320,7 +319,6 @@ const SecurityPanel = () => {
         <div className="secp-card secp-locks-card">
           <div className="secp-card-label">
             <span>Access &amp; Locks</span>
-            <span className="secp-tag" title="UniFi Access not yet in contract">Surface 5a · Gap</span>
           </div>
 
           {/* Proactive garage-open alerts (open-at-night / open-while-armed-away) —
@@ -370,10 +368,6 @@ const SecurityPanel = () => {
                 </div>
               </div>
             ))}
-            <div className="secp-glass-note">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-              HC-108 · PROPOSED · Equipment commissioning pending
-            </div>
           </div>
         </div>
       </div>

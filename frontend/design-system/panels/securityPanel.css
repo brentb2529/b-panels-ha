@@ -56,6 +56,80 @@
 }
 .secp-scope .num { font-variant-numeric: tabular-nums; }
 
+/* ── ambient-night theme — warm-dimmed indigo ────────────────────────────── */
+/* Blue-light floor: cut glare after dark while staying legible + luxe.      */
+/* Indigo accent desaturated ~15% and nudged warmer so it doesn't glare.     */
+body.ambient-night .secp-scope {
+  --bg-canvas: #090810;
+  --surface-glass: rgba(255,250,242,0.06);
+  --surface-glass-raised: rgba(255,250,242,0.10);
+  --glass-border: rgba(255,248,236,0.09);
+  --glass-border-bright: rgba(255,248,236,0.18);
+  --text-primary: #EFE7D9;
+  /* Readability floor ≥0.70 opacity */
+  --text-secondary: rgba(239,231,217,0.70);
+  --text-dim: rgba(239,231,217,0.42);
+  /* Indigo identity → muted warm-slate at night */
+  --accent-security: #5E6B9E;
+  --accent-security-rgb: 94,107,158;
+  /* Arming state-semantics — recognisable but gentler at night */
+  --sem-armed-away: #3A9670;   --sem-armed-away-rgb: 58,150,112;
+  --sem-armed-stay: #3A98B5;   --sem-armed-stay-rgb: 58,152,181;
+  --sem-ready: #8A9AA8;        --sem-ready-rgb: 138,154,168;
+  --sem-notready: #7080C8;     --sem-notready-rgb: 112,128,200;
+  --sem-pending: #527FD0;      --sem-pending-rgb: 82,127,208;
+  --sem-triggered: #CC4044;    --sem-triggered-rgb: 204,64,68;
+  --sem-positive: #52B57A;     --sem-positive-rgb: 82,181,122;
+}
+/* Hero gradient: dim + warm-desaturate so the indigo canvas doesn't glare */
+body.ambient-night .secp-hero-canvas::before {
+  filter: brightness(0.88) saturate(0.82);
+}
+/* Hero vignette: warmer (brown-black vs pure black) */
+body.ambient-night .secp-hero-vignette {
+  background: linear-gradient(180deg,
+    rgba(14,10,6,0.68) 0%,
+    rgba(14,10,6,0.12) 40%,
+    rgba(14,10,6,0.00) 55%,
+    rgba(10,8,5,0.80)  85%,
+    rgba(10,8,5,1.00) 100%
+  );
+}
+/* Eyebrow text: dim to match muted accent */
+body.ambient-night .secp-hero-eyebrow { color: rgba(135,148,210,0.78); }
+/* Glass cards: warm the inset highlight */
+body.ambient-night .secp-card {
+  box-shadow: 0 1px 0 rgba(255,248,236,0.05) inset,
+              0 24px 48px rgba(0,0,0,0.55),
+              0 4px 12px rgba(0,0,0,0.32);
+}
+/* Tag pills */
+body.ambient-night .secp-tag { background: rgba(255,250,242,0.04); border-color: rgba(255,248,236,0.12); }
+/* Arm mode buttons */
+body.ambient-night .secp-arm-mode-btn { background: rgba(255,250,242,0.04); border-color: rgba(255,248,236,0.08); }
+/* Events separator */
+body.ambient-night .secp-events { border-top-color: rgba(255,248,236,0.07); }
+/* Camera tiles border */
+body.ambient-night .secp-cam { border-color: rgba(255,248,236,0.09); }
+/* Camera empty tiles */
+body.ambient-night .secp-cam-empty { background: #0d0c10; }
+body.ambient-night .secp-cam-empty::before { background: linear-gradient(180deg, #141218 0%, #0d0c10 100%); }
+/* Camera summary separator */
+body.ambient-night .secp-cam-summary { border-top-color: rgba(255,248,236,0.06); }
+/* Doorbell row */
+body.ambient-night .secp-doorbell { background: rgba(255,250,242,0.03); border-color: rgba(255,248,236,0.06); }
+/* Access entry separators */
+body.ambient-night .secp-entry { border-bottom-color: rgba(255,248,236,0.06); }
+/* Glass section + rows */
+body.ambient-night .secp-glass-section { border-top-color: rgba(255,248,236,0.07); }
+body.ambient-night .secp-glass-row { border-bottom-color: rgba(255,248,236,0.05); }
+body.ambient-night .secp-glass-off { background: rgba(255,250,242,0.09); }
+body.ambient-night .secp-glass-note { background: rgba(255,250,242,0.03); border-color: rgba(255,248,236,0.06); }
+/* Stale banner: update hardcoded indigo RGB to warmer night value */
+body.ambient-night .secp-stale { background: rgba(112,128,200,0.16); border-color: rgba(112,128,200,0.40); }
+/* Bottom switcher */
+body.ambient-night .secp-switcher { background: rgba(10,9,12,0.92); border-top-color: rgba(255,248,236,0.08); }
+
 /* ── light theme — cool-light column ─────────────────────────────────────── */
 body.light-mode .secp-scope {
   --bg-canvas: #EAECF3;
@@ -250,6 +324,11 @@ body.light-mode .secp-events { border-top-color: rgba(0,0,0,0.07); }
 .secp-cam-empty::before { background: linear-gradient(180deg, #14171c 0%, #0d0f13 100%); }
 body.light-mode .secp-cam-empty { background: #DDE0EA; }
 body.light-mode .secp-cam-empty::before { background: linear-gradient(180deg, #E4E7EF 0%, #D7DAE4 100%); }
+/* R1 empty-tile cam-bar: replace the dark-scrim gradient so name/asOf text
+   holds contrast on the light tile background (white/cool-grey underneath). */
+body.light-mode .secp-cam-empty .secp-cam-bar {
+  background: linear-gradient(transparent, rgba(190,196,214,0.80));
+}
 .secp-cam-empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .secp-cam-empty-label { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; color: var(--text-secondary); }
 

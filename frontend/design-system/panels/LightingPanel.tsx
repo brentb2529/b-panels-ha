@@ -43,13 +43,15 @@ const SceneIcon = ({ name, active }: { name: string; active: boolean }) => {
       // Evening — clean single crescent moon
       return (<svg {...common}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>);
     case 'crescent':
-      // Night — crescent moon + three filled star dots (distinct from Evening)
+      // Night — crescent moon + three filled star dots (distinct from Evening's
+      // plain crescent). Dots are intentionally larger (r≥1.1) so they render
+      // visibly at the 22px icon size. Positions placed in the open sky quadrant.
       return (
         <svg {...common}>
           <path d="M12 3a6.4 6.4 0 0 0 9 9 9 9 0 1 1-9-9z" />
-          <circle cx="19.5" cy="4.5" r="0.9" fill={stroke} stroke="none" />
-          <circle cx="21.8" cy="8.2" r="0.72" fill={stroke} stroke="none" />
-          <circle cx="17.2" cy="2.8" r="0.65" fill={stroke} stroke="none" />
+          <circle cx="19.5" cy="4.5" r="1.30" fill={stroke} stroke="none" />
+          <circle cx="22.0" cy="8.5" r="1.00" fill={stroke} stroke="none" />
+          <circle cx="17.0" cy="2.6" r="0.85" fill={stroke} stroke="none" />
         </svg>
       );
     case 'power':

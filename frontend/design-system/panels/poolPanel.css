@@ -88,6 +88,72 @@ body.light-mode .pp-scope {
   --sem-triggered: #CC2F35; --sem-triggered-rgb: 204,47,53;
 }
 
+/* ambient-night theme — warm-dimmed pool tokens
+ * Cuts blue light on wall panels after dark while staying legible + luxe.
+ * Cerulean/spa accents desaturated ~15% and nudged warmer; surfaces warm-tinted;
+ * hero canvas dimmed via brightness filter so the synthesised water art doesn't
+ * blaze at night. Every element downstream inherits from these token overrides. */
+body.ambient-night .pp-scope {
+  --bg-canvas: #070d14;
+  --surface-glass: rgba(255,250,242,0.06);
+  --surface-glass-raised: rgba(255,250,242,0.10);
+  --glass-border: rgba(255,248,234,0.08);
+  --glass-border-bright: rgba(255,248,234,0.14);
+  --text-primary: #EFE7D9;
+  --text-secondary: rgba(239,231,217,0.58);
+  --text-dim: rgba(239,231,217,0.32);
+  /* cerulean → muted teal-slate at night */
+  --accent-pool: #2E8FA8;
+  --accent-pool-rgb: 46,143,168;
+  /* spa teal → slightly warmer/muted */
+  --accent-spa: #3DB89A;
+  --accent-positive: #4CA876;
+  /* amber stays but slightly deeper so it doesn't glare */
+  --accent-warning: #C88830;
+  --accent-warning-rgb: 200,136,48;
+  --accent-critical: #C04040;
+  /* platinum → warm-graphite */
+  --accent-lights: #A8B5BE;
+  --accent-lights-rgb: 168,181,190;
+  --sem-armed-away: #2E8C5E; --sem-armed-away-rgb: 46,140,94;
+  --sem-armed-stay: #2C8CAA; --sem-armed-stay-rgb: 44,140,170;
+  --sem-ready: #6B7A8E; --sem-ready-rgb: 107,122,142;
+  --sem-notready: #5566C8; --sem-notready-rgb: 85,102,200;
+  --sem-pending: #3D6FD6; --sem-pending-rgb: 61,111,214;
+  --sem-triggered: #CC2F35; --sem-triggered-rgb: 204,47,53;
+}
+/* hero: dim the synthesised water canvas at night so it doesn't blaze */
+body.ambient-night .pp-hero::before {
+  filter: brightness(0.82) saturate(0.9);
+}
+body.ambient-night .pp-hero-caustics { opacity: 0.25; }
+/* warmer vignette fade keyed to the night canvas color */
+body.ambient-night .pp-hero-vignette {
+  background:
+    linear-gradient(180deg, rgba(7,13,20,0.38) 0%, rgba(7,13,20,0.08) 30%, rgba(7,13,20,0.0) 48%, rgba(7,13,20,0.80) 82%, rgba(7,13,20,1.0) 100%),
+    linear-gradient(90deg, rgba(7,13,20,0.50) 0%, transparent 28%, transparent 72%, rgba(7,13,20,0.40) 100%);
+}
+/* hero metrics plate — warm tint, less glassy */
+body.ambient-night .pp-hero-right {
+  background: rgba(7,13,20,0.42);
+  border-color: rgba(255,248,234,0.06);
+}
+/* bottom nav bar — warmer canvas background */
+body.ambient-night .pp-switcher {
+  background: rgba(7,13,20,0.92);
+  border-top-color: rgba(255,248,234,0.07);
+}
+/* idle status pill: warm-glass instead of cool-white at night */
+body.ambient-night .pp-status-pill.idle {
+  background: rgba(255,250,242,0.08);
+  border-color: rgba(255,250,242,0.16);
+}
+/* AKVO preview chip — warmer dark overlay */
+body.ambient-night .pp-akvo-preview-chip {
+  background: rgba(7,13,20,0.82);
+  border-color: rgba(255,248,234,0.12);
+}
+
 /* stale banner */
 .pp-stale {
   position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 200;
@@ -185,6 +251,8 @@ body.light-mode .pp-sub { color: #0F2E3A; }
 body.light-mode .pp-status-pill { background: rgba(255,255,255,0.85); border-color: rgba(46,158,94,0.45); color: #1F7E48; }
 .pp-status-pill.idle { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.22); color: var(--text-secondary); }
 .pp-status-pill.idle .pp-status-dot { background: var(--text-secondary); animation: none; }
+/* light-mode: white-on-white bg/border is invisible — use a dark-keyed tint instead */
+body.light-mode .pp-status-pill.idle { background: rgba(20,40,55,0.06); border-color: rgba(20,40,55,0.16); }
 .pp-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-positive); animation: pp-pulse-dot 3s ease-in-out infinite; }
 @keyframes pp-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.65;} }
 
@@ -310,8 +378,11 @@ body.light-mode .pp-depth-bar-track { background: rgba(20,40,55,0.10); }
 body.light-mode .pp-preset-btn { background: rgba(255,255,255,0.55); border-color: rgba(20,40,55,0.08); }
 .pp-preset-btn-label { font-size: 11px; font-weight: 500; letter-spacing: 0.05em; color: var(--text-secondary); display: block; }
 .pp-preset-btn-depth { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-.pp-akvo-safety-note { margin-top: 12px; padding: 9px 12px; background: rgba(var(--accent-warning-rgb),0.08); border: 1px solid rgba(var(--accent-warning-rgb),0.18); border-radius: 10px; font-size: 11px; color: rgba(var(--accent-warning-rgb),0.80); display: flex; align-items: flex-start; gap: 7px; line-height:1.35; }
-body.light-mode .pp-akvo-safety-note { color: var(--accent-warning); }
+/* AKVO safety note — muted inline info line; no caution-tape block on the flagship.
+ * Safety meaning is preserved: icon + text state PLC mediation; the note is just
+ * understated so it doesn't dominate the card. var(--text-dim) adapts across all
+ * three themes without a per-theme override. */
+.pp-akvo-safety-note { margin-top: 10px; padding: 3px 0; font-size: 10.5px; color: var(--text-dim); display: flex; align-items: flex-start; gap: 6px; line-height: 1.35; }
 
 .pp-akvo-preview-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .pp-akvo-preview-chip {

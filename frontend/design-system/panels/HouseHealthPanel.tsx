@@ -48,6 +48,39 @@ const STATUS_WORD: Record<HealthStatus, string> = {
   ok: 'OK', attention: 'Attention', critical: 'Critical', unknown: 'Not configured',
 };
 
+// ── Display-only label mapping for infrastructure entity id patterns ───────────
+// Never touches entity ids, hook fields, or types — pure render-time text
+// substitution so homeowners see friendly names instead of raw sensor.backup_…
+// entity strings. Extend freely; the hook/contract is untouched.
+const ENTITY_LABELS: Record<string, string> = {
+  'sensor.backup_state':             'HA Backup',
+  'sensor.backup_last_successful':   'Last Successful Backup',
+  'sensor.backup_last_attempt':      'Last Backup Attempt',
+  'sensor.backup_automatic_enabled': 'Automatic Backups',
+  'sensor.backup_total_backups':     'Total Backups',
+  'sensor.backup_days_until_next':   'Days to Next Backup',
+};
+
+/**
+ * Return a human-readable display label for an entity (display-only; entity ids
+ * and hook fields are never changed). Priority order:
+ *   1. friendly_name already resolved by the hook (name ≠ id)
+ *   2. Explicit ENTITY_LABELS map
+ *   3. sensor.backup_* heuristic → "Backup · Foo Bar"
+ *   4. Generic: strip domain prefix, prettify underscores
+ */
+const toFriendlyName = (id: string, name: string): string => {
+  if (name && name !== id) return name;
+  if (ENTITY_LABELS[id]) return ENTITY_LABELS[id];
+  const bk = id.match(/^sensor\.backup_(.+)$/);
+  if (bk) {
+    const label = bk[1].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return `Backup · ${label}`;
+  }
+  // Generic prettifier: strip domain, replace underscores.
+  return id.replace(/^[^.]+\./, '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 // ── animated status dot — pulses on attention, fast-pulses on critical ───────
 const StatusDot = ({ status, size = 10 }: { status: HealthStatus; size?: number }) => (
   <span
@@ -158,6 +191,26 @@ const HouseHealthPanel = () => {
 
   const heroVerdictTone = useMemo<HealthStatus>(() => a.overall, [a.overall]);
 
+  // Lead the hero with the GOOD news: when all monitored devices are online
+  // and there are no faults, the headline is the positive, confident message.
+  // The fact that some integrations aren't yet configured is demoted to a small
+  // sub-callout below the verdict line — not the dominant headline.
+  const heroHeadline = useMemo<string>(() => {
+    if (
+      c.offlineCount === 0 &&
+      c.problemCount === 0 &&
+      a.overall !== 'critical' &&
+      a.overall !== 'attention'
+    ) {
+      return 'Everything essential is online';
+    }
+    return a.headline;
+  }, [a.overall, a.headline, c.offlineCount, c.problemCount]);
+
+  // True when some integrations are absent (unknown) but connectivity itself is
+  // clean — used to show the demoted "awaiting connection" sub-callout.
+  const hasAbsentIntegrations = a.overall === 'unknown' && c.offlineCount === 0 && c.problemCount === 0;
+
   return (
     <PanelShell kind="house-health">
       <div className="hh-scope">
@@ -168,12 +221,20 @@ const HouseHealthPanel = () => {
           <div className="hh-hero-aura" />
           <div className="hh-hero-left">
             <div className="hh-hero-eyebrow">House Health · System Trust</div>
-            <div className="hh-hero-title">{a.headline}</div>
+            <div className="hh-hero-title">{heroHeadline}</div>
             <div className="hh-hero-verdict">
               <StatusDot status={a.overall} size={13} />
               <span className="hh-hero-verdict-word">{STATUS_WORD[a.overall]}</span>
               <span className="hh-hero-verdict-sub">{c.total} entities monitored</span>
             </div>
+            {hasAbsentIntegrations && (
+              <div className="hh-hero-sub-callout">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span>Power, network &amp; UPS integrations awaiting connection</span>
+              </div>
+            )}
           </div>
           {/* Stat-card cluster — top-right per shared header grammar */}
           <div className="hh-stat-cluster">
@@ -224,8 +285,8 @@ const HouseHealthPanel = () => {
                 {c.problems.map((p) => (
                   <div className="hh-list-row" key={p.id}>
                     <StatusDot status="critical" size={7} />
-                    <span className="hh-list-name">{p.name}</span>
-                    <span className="hh-list-id num">{p.id}</span>
+                    <span className="hh-list-name">{toFriendlyName(p.id, p.name)}</span>
+                    <span className="hh-list-id num">{p.id.split('.')[0]}</span>
                   </div>
                 ))}
               </div>
@@ -237,8 +298,8 @@ const HouseHealthPanel = () => {
                 {c.offline.slice(0, 8).map((o) => (
                   <div className="hh-list-row" key={o.id}>
                     <StatusDot status="attention" size={7} />
-                    <span className="hh-list-name">{o.name}</span>
-                    <span className="hh-list-id num">{o.id}</span>
+                    <span className="hh-list-name">{toFriendlyName(o.id, o.name)}</span>
+                    <span className="hh-list-id num">{o.id.split('.')[0]}</span>
                   </div>
                 ))}
                 {c.offline.length > 8 && (

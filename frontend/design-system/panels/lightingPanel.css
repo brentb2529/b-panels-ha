@@ -93,6 +93,10 @@ body.light-mode .ltp-hero-eyebrow { color: rgba(94,107,118,0.92); }
 body.light-mode .ltp-hero-title { text-shadow: none; }
 .ltp-hero-sub { margin-top: 13px; font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; max-width: 640px; }
 .ltp-hero-pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; background: rgba(var(--accent-lights-rgb),0.16); border: 1px solid rgba(var(--accent-lights-rgb),0.36); border-radius: 14px; font-size: 12px; font-weight: 600; color: var(--accent-lights); }
+/* light-mode: hero on-count pill — shift to the brighter platinum token so it
+   holds contrast against the light gradient (#D8DEE5→#ECEEF1). */
+body.light-mode .ltp-hero-pill { color: var(--accent-lights-bright); border-color: rgba(var(--accent-lights-rgb),0.52); }
+body.light-mode .ltp-hero-dot { background: var(--accent-lights-bright); }
 .ltp-hero-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-lights); animation: ltp-pulse-dot 3s ease-in-out infinite; }
 @keyframes ltp-pulse-dot { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.3);opacity:0.65;} }
 
@@ -226,3 +230,98 @@ body.light-mode .ltp-switcher { background: rgba(236,238,241,0.92); border-top-c
 .ltp-arm-stay { --arm-fg: var(--sem-armed-stay); --arm-bg: rgba(var(--sem-armed-stay-rgb),0.12); --arm-border: rgba(var(--sem-armed-stay-rgb),0.40); --arm-icon-bg: rgba(var(--sem-armed-stay-rgb),0.18); }
 .ltp-arm-pending { --arm-fg: var(--sem-pending); --arm-bg: rgba(var(--sem-pending-rgb),0.12); --arm-border: rgba(var(--sem-pending-rgb),0.40); --arm-icon-bg: rgba(var(--sem-pending-rgb),0.18); }
 .ltp-arm-triggered { --arm-fg: var(--sem-triggered); --arm-bg: rgba(var(--sem-triggered-rgb),0.16); --arm-border: rgba(var(--sem-triggered-rgb),0.50); --arm-icon-bg: rgba(var(--sem-triggered-rgb),0.22); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   AMBIENT-NIGHT  body.ambient-night .ltp-scope
+   ──────────────────────────────────────────────────────────────────────────────
+   Warm, dimmed variant of the platinum/neutral Lights identity. Cuts blue light
+   on the wall panel after dark while staying luxe and fully legible.
+   Recipe (shared across all panels):
+     • Text: warm off-white (#EFE7D9) — was cool #F3EFE6
+     • Surfaces: warm low-alpha glass (rgba(255,250,242,…))
+     • Accents: platinum → warm-graphite (desaturate ~15%, nudge warmer/dimmer)
+     • Hero: warm dark gradient — no cold blues, no photograph to dim here
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+body.ambient-night .ltp-scope {
+  --bg-canvas: #0D0B09;
+  --surface-glass: rgba(255,250,242,0.06);
+  --surface-glass-raised: rgba(255,250,242,0.10);
+  --glass-border: rgba(255,245,230,0.09);
+  --glass-border-bright: rgba(255,245,230,0.18);
+  --text-primary: #EFE7D9;
+  --text-secondary: rgba(239,231,217,0.70);
+  --text-dim: rgba(239,231,217,0.32);
+  /* platinum → warm-graphite: hue shifted ~8° warmer, saturation –15%, L –8% */
+  --accent-lights: #A8A89C; --accent-lights-rgb: 168,168,156;
+  --accent-lights-bright: #C2C2B2; --accent-lights-bright-rgb: 194,194,178;
+  --accent-shade: #7D97A8; --accent-shade-rgb: 125,151,168;
+}
+
+/* hero gradient — replace cold deep-navy with warm near-black (no blue bias) */
+body.ambient-night .ltp-hero-canvas {
+  background:
+    radial-gradient(ellipse 48% 36% at 74% 14%, rgba(168,168,156,0.16) 0%, transparent 66%),
+    radial-gradient(ellipse 38% 26% at 22% 30%, rgba(175,165,148,0.07) 0%, transparent 60%),
+    linear-gradient(168deg, #120F0C 0%, #0F0D0B 30%, #0D0B09 60%, #0B0908 80%, #0D0B09 100%);
+}
+body.ambient-night .ltp-hero-streak { opacity: 0.38; }
+body.ambient-night .ltp-hero-vignette {
+  background: linear-gradient(180deg, rgba(13,11,9,0.28) 0%, rgba(13,11,9,0.0) 46%, rgba(13,11,9,0.75) 84%, rgba(13,11,9,1.0) 100%);
+}
+/* eyebrow: hardcoded cold-platinum color → warm-graphite */
+body.ambient-night .ltp-hero-eyebrow { color: rgba(168,168,156,0.80); }
+/* metric cards: warm the hardcoded glass surface */
+body.ambient-night .ltp-hero-metric {
+  background: rgba(255,248,235,0.07);
+  border-color: rgba(255,245,225,0.11);
+  box-shadow: 0 1px 0 rgba(255,248,235,0.06) inset, 0 10px 26px rgba(0,0,0,0.45);
+}
+/* cards: deepen shadows for the darker canvas */
+body.ambient-night .ltp-card {
+  box-shadow: 0 1px 0 rgba(255,248,235,0.06) inset, 0 24px 48px rgba(0,0,0,0.62), 0 4px 12px rgba(0,0,0,0.38);
+}
+/* primary card: warm the hardcoded bg + border + accent ring */
+body.ambient-night .ltp-primary-card {
+  background: rgba(255,250,238,0.07);
+  border-color: rgba(var(--accent-lights-rgb),0.22);
+  box-shadow: 0 0 0 1px rgba(var(--accent-lights-rgb),0.10) inset,
+              0 1px 0 rgba(255,248,235,0.07) inset,
+              0 26px 54px rgba(0,0,0,0.64);
+}
+/* primary card glow overlays: dim the candlelight + shimmer so they don't glare */
+body.ambient-night .ltp-primary-card::before {
+  background:
+    radial-gradient(ellipse 60% 44% at 18% 88%, rgba(255,205,130,0.032) 0%, transparent 68%),
+    radial-gradient(ellipse 45% 32% at 88% 14%, rgba(var(--accent-lights-rgb),0.042) 0%, transparent 65%);
+}
+/* scene pills: warm the hardcoded surface bg */
+body.ambient-night .ltp-scene-pill {
+  background: rgba(255,248,232,0.04);
+  border-color: rgba(255,243,222,0.08);
+}
+/* sub-label section divider */
+body.ambient-night .ltp-sub-label { border-top-color: rgba(var(--accent-lights-rgb),0.13); }
+/* master row: warm tint from the accent token (auto via token) */
+body.ambient-night .ltp-master-row {
+  background: rgba(var(--accent-lights-rgb),0.06);
+  border-color: rgba(var(--accent-lights-rgb),0.15);
+}
+/* tracks: warm the inert filled-area colour */
+body.ambient-night .ltp-master-track { background: rgba(255,248,232,0.09); }
+/* per-area tiles: warm hardcoded glass bg */
+body.ambient-night .ltp-area-tile {
+  background: rgba(255,248,232,0.035);
+  border-color: rgba(255,243,222,0.07);
+}
+body.ambient-night .ltp-area-track { background: rgba(255,248,232,0.09); }
+/* toggle off-state: warm the hardcoded rgba */
+body.ambient-night .ltp-at-off { background: rgba(255,248,232,0.10); }
+/* shades: warm the row separator + track */
+body.ambient-night .ltp-shade-row { border-bottom-color: rgba(255,243,222,0.05); }
+body.ambient-night .ltp-shade-track { background: rgba(255,248,232,0.09); }
+/* switcher bar: warm the near-opaque bg + divider line */
+body.ambient-night .ltp-switcher {
+  background: rgba(13,11,9,0.91);
+  border-top-color: rgba(255,243,222,0.07);
+}

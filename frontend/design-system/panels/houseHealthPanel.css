@@ -60,7 +60,7 @@
 }
 .hh-scope .num { font-variant-numeric: tabular-nums; }
 
-/* ── light theme — cool-light column ─────────────────────────────────────── */
+/* ── light theme — token overrides ───────────────────────────────────────── */
 body.light-mode .hh-scope {
   --bg-canvas: #EAEDF2;
   --surface-glass: rgba(255, 255, 255, 0.76);
@@ -68,13 +68,183 @@ body.light-mode .hh-scope {
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-border-bright: rgba(0, 0, 0, 0.16);
   --text-primary: #15181C;
-  --text-secondary: rgba(21, 24, 28, 0.72);   /* raised from 0.58 */
-  --text-dim: rgba(21, 24, 28, 0.52);         /* raised from 0.34 */
+  --text-secondary: rgba(21, 24, 28, 0.72);
+  --text-dim: rgba(21, 24, 28, 0.52);
   --accent: #2E8C86;        --accent-rgb: 46, 140, 134;
   --st-ok: #2F9C66;        --st-ok-rgb: 47, 156, 102;
   --st-attention: #B06B1A; --st-attention-rgb: 176, 107, 26;
   --st-critical: #C6363B;  --st-critical-rgb: 198, 54, 59;
   --st-unknown: #6E7A86;   --st-unknown-rgb: 110, 122, 134;
+}
+
+/* ── light-mode element overrides — every surface gets definition on white ── */
+/* Without these, glass cards dissolve into the pale canvas and stat-card
+   values/labels lose contrast hierarchy. All rules are namespaced to hh-scope. */
+
+body.light-mode .hh-scope .hh-hero {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(0, 0, 0, 0.11);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.07);
+}
+body.light-mode .hh-scope .hh-stat-card {
+  background: rgba(255, 255, 255, 0.97);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.07);
+}
+body.light-mode .hh-scope .hh-stat-val {
+  color: var(--text-primary);
+}
+body.light-mode .hh-scope .hh-stat-ok .hh-stat-val    { color: var(--st-ok); }
+body.light-mode .hh-scope .hh-stat-attention .hh-stat-val { color: var(--st-attention); }
+body.light-mode .hh-scope .hh-stat-critical .hh-stat-val  { color: var(--st-critical); }
+body.light-mode .hh-scope .hh-stat-lab {
+  color: var(--text-primary);
+  opacity: 0.70;   /* raised from 0.60 — label contrast on white */
+}
+/* Group cards */
+body.light-mode .hh-scope .hh-card {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.06);
+}
+body.light-mode .hh-scope .hh-card-eyebrow {
+  color: var(--text-secondary);
+}
+body.light-mode .hh-scope .hh-card-title {
+  color: var(--text-primary);
+}
+body.light-mode .hh-scope .hh-tag {
+  background: rgba(46, 140, 134, 0.10);
+  border-color: rgba(46, 140, 134, 0.30);
+  color: var(--text-secondary);
+}
+body.light-mode .hh-scope .hh-note {
+  border-top-color: rgba(0, 0, 0, 0.10);
+  color: var(--text-secondary);
+}
+body.light-mode .hh-scope .hh-note-attention { color: var(--st-attention); }
+body.light-mode .hh-scope .hh-note-critical  { color: var(--st-critical); }
+body.light-mode .hh-scope .hh-note-unknown   { color: var(--text-dim); }
+/* Connectivity rollup numbers */
+body.light-mode .hh-scope .hh-rollup-divider {
+  background: rgba(0, 0, 0, 0.12);
+}
+body.light-mode .hh-scope .hh-rollup-lab {
+  color: var(--text-secondary);
+}
+/* List rows — need visible chip background on white */
+body.light-mode .hh-scope .hh-list-row {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+body.light-mode .hh-scope .hh-list-name { color: var(--text-primary); }
+body.light-mode .hh-scope .hh-list-id   { color: var(--text-dim); }
+body.light-mode .hh-scope .hh-list-more { color: var(--text-secondary); }
+body.light-mode .hh-scope .hh-list-label {
+  color: var(--text-secondary);
+}
+/* Feed rows in the overview card */
+body.light-mode .hh-scope .hh-feed-row {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.10);
+}
+body.light-mode .hh-scope .hh-feed-row.hh-feed-critical  { border-color: rgba(198, 54, 59, 0.40); }
+body.light-mode .hh-scope .hh-feed-row.hh-feed-attention { border-color: rgba(176, 107, 26, 0.38); }
+body.light-mode .hh-scope .hh-feed-text { color: var(--text-primary); }
+/* Metric cells */
+body.light-mode .hh-scope .hh-metric {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+body.light-mode .hh-scope .hh-metric-label { color: var(--text-secondary); }
+body.light-mode .hh-scope .hh-metric-value { color: var(--text-primary); }
+body.light-mode .hh-scope .hh-metric-absent .hh-metric-value { color: var(--text-dim); }
+/* Not-configured absent cards — very subtle dark-mode bg is nearly invisible on white */
+body.light-mode .hh-scope .hh-absent {
+  background: rgba(110, 122, 134, 0.11);
+  border-color: rgba(0, 0, 0, 0.18);
+  color: var(--text-secondary);
+}
+body.light-mode .hh-scope .hh-absent-title { color: var(--text-primary); }
+body.light-mode .hh-scope .hh-absent-note  { color: var(--text-secondary); }
+body.light-mode .hh-scope .hh-absent svg   { color: var(--st-unknown); }
+/* Safety rows */
+body.light-mode .hh-scope .hh-srow-key  { color: var(--text-secondary); }
+body.light-mode .hh-scope .hh-srow-muted { color: var(--text-secondary); }
+body.light-mode .hh-scope .hh-srow-aside { color: var(--text-dim); }
+/* Generator ring */
+body.light-mode .hh-scope .hh-gen-source-lab { color: var(--text-secondary); }
+/* WAN ISP label */
+body.light-mode .hh-scope .hh-wan-isp { color: var(--text-secondary); }
+/* All-clear messages */
+body.light-mode .hh-scope .hh-allclear { color: var(--st-ok); }
+/* Footer */
+body.light-mode .hh-scope .hh-foot { color: var(--text-dim); }
+/* Sub-callout in the hero */
+body.light-mode .hh-scope .hh-hero-sub-callout {
+  color: var(--text-secondary);
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ── ambient-night theme — warm, dimmed variant (zero → full) ─────────────── */
+/* Cuts blue light on a wall panel after dark while staying legible + luxe.
+   All token overrides follow the shared AMBIENT-NIGHT RECIPE in THEME_POLISH_SPEC.
+   Identity accent (slate-teal) is kept but desaturated ~15% and nudged warmer. */
+body.ambient-night .hh-scope {
+  --bg-canvas: #0B0907;                              /* warm very dark canvas */
+  --surface-glass: rgba(255, 250, 242, 0.06);        /* warm glass — recipe exact */
+  --surface-glass-raised: rgba(255, 250, 242, 0.10); /* warm raised glass */
+  --glass-border: rgba(255, 240, 220, 0.09);         /* warm-neutral low-alpha */
+  --glass-border-bright: rgba(255, 240, 220, 0.17);
+
+  /* Text: warm off-white; secondary/dim proportionally warm, ≥0.70 opacity floor */
+  --text-primary: #EFE7D9;                           /* recipe: warm off-white */
+  --text-secondary: rgba(239, 231, 217, 0.75);       /* ≥0.70 ✓ */
+  --text-dim: rgba(239, 231, 217, 0.52);             /* proportionally warm */
+
+  /* Accent: slate-teal → muted teal-slate (~15% desaturated, slightly dimmer) */
+  --accent: #4DA6A1;        --accent-rgb: 77, 166, 161;
+
+  /* Status semantics: keep hue identity, desaturate + slightly deepen so colours
+     don't glare at night; positive/warning/alert stay recognisable. */
+  --st-ok: #4CA878;        --st-ok-rgb: 76, 168, 120;        /* green: muted, still vivid */
+  --st-attention: #C98829; --st-attention-rgb: 201, 136, 41;  /* amber: stays, slightly deeper */
+  --st-critical: #C8393E;  --st-critical-rgb: 200, 57, 62;    /* red: stays recognisable */
+  --st-unknown: #7A8490;   --st-unknown-rgb: 122, 132, 144;   /* muted neutral */
+}
+
+/* Dim the hero aura in night mode — the accent radial gradient is expressive
+   by day; at night it should not fight for attention with warm darkness. */
+body.ambient-night .hh-scope .hh-hero-aura {
+  opacity: 0.72;
+}
+/* Tamp the top-of-scope radial gradient that provides the canvas accent wash —
+   it uses --accent-rgb automatically from the token swap above, but reduce
+   alpha slightly so the warm dark canvas reads as calm, not vivid. */
+body.ambient-night .hh-scope {
+  background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(var(--accent-rgb), 0.07), transparent 60%),
+    var(--bg-canvas);  /* was 0.10 → 0.07 in night mode for calm canvas */
+}
+/* Night: hero glass slightly warmer border + reduced backdrop saturation */
+body.ambient-night .hh-scope .hh-hero {
+  border-color: rgba(255, 240, 220, 0.11);
+  backdrop-filter: blur(24px) saturate(110%); /* reduced from 140% — less blue-pump at night */
+  -webkit-backdrop-filter: blur(24px) saturate(110%);
+}
+body.ambient-night .hh-scope .hh-card {
+  backdrop-filter: blur(20px) saturate(110%);
+  -webkit-backdrop-filter: blur(20px) saturate(110%);
+}
+/* Night: stat cards get warm border */
+body.ambient-night .hh-scope .hh-stat-card {
+  border-color: rgba(255, 240, 220, 0.10);
+}
+/* Night: sub-callout warm variant */
+body.ambient-night .hh-scope .hh-hero-sub-callout {
+  color: rgba(239, 231, 217, 0.65);
+  border-color: rgba(255, 240, 220, 0.09);
 }
 
 /* status colour helper — keyed off the status modifier on any element */
@@ -194,6 +364,23 @@ body.light-mode .hh-scope {
 .hh-hero-critical .hh-hero-verdict-word { color: var(--st-critical); }
 .hh-hero-unknown .hh-hero-verdict-word { color: var(--st-unknown); }
 .hh-hero-verdict-sub { font-size: 13px; color: var(--text-secondary); }
+
+/* Sub-callout: demoted note below the verdict line (e.g. "integrations awaiting
+   connection") — small, muted, non-alarming. Scoped inside hero-left. */
+.hh-hero-sub-callout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(var(--st-unknown-rgb), 0.08);
+  border: 1px solid rgba(var(--st-unknown-rgb), 0.22);
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.hh-hero-sub-callout svg { opacity: 0.75; flex-shrink: 0; }
 
 /* ── Stat-card cluster — top-right of hero (shared header grammar) ─────────── */
 .hh-stat-cluster {

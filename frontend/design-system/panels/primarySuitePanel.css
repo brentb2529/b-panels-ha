@@ -75,6 +75,32 @@ body.light-mode .ps-scope {
   --accent-shade-rgb: 94,130,174;
 }
 
+/* ── Ambient-night (warm dimmed) — bedroom: especially calm/warm ─────────── */
+/* Token set: desaturate accents ~15%, warm every hue, drop luminance ~12%. */
+body.ambient-night .ps-scope {
+  --bg-canvas: #0E0B09;
+  --surface-glass: rgba(255,250,242,0.050);
+  --surface-glass-raised: rgba(255,250,242,0.090);
+  --glass-border: rgba(255,248,235,0.090);
+  --glass-border-bright: rgba(255,248,235,0.170);
+  --text-primary: #EFE7D9;
+  --text-secondary: rgba(239,231,217,0.70);
+  --text-dim: rgba(239,231,217,0.46);
+  /* Platinum accent → warm-graphite; keep identity, desaturate + warm */
+  --accent-room: #BDB5A8;
+  --accent-room-rgb: 189,181,168;
+  --accent-bedside: #A8A09A;
+  --accent-bedside-rgb: 168,160,154;
+  /* Cerulean-cool → muted teal-slate */
+  --accent-climate: #6B8EA4;
+  --accent-climate-rgb: 107,142,164;
+  --accent-shade: #8DAABB;
+  --accent-shade-rgb: 141,170,187;
+  /* Heat stays recognizable, slightly deeper */
+  --accent-heat: #C85E38;
+  --accent-heat-rgb: 200,94,56;
+}
+
 /* ── Hero — calm dark bedroom, low cool light ───────────────────────────── */
 /* Fit-to-window: pinned hero, exactly 360px at the iPad target, clamped on
    shorter windows so the body region keeps usable height. */
@@ -136,7 +162,7 @@ body.light-mode .ps-metric { background: rgba(255,255,255,0.78); border-color: r
   grid-template-columns: 1.55fr 1fr 1fr;
   grid-template-rows: 1fr auto;
   align-items: stretch;
-  gap: 16px; overflow-y: auto; overflow-x: hidden;
+  gap: 16px; overflow: hidden;
 }
 .ps-card {
   background: var(--surface-glass); border: 1px solid var(--glass-border); border-radius: 20px;
@@ -223,12 +249,17 @@ body.light-mode .ps-track { background: rgba(22,22,30,0.12); }
 .ps-step-btn:active { transform: scale(0.94); }
 .ps-step-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 body.light-mode .ps-step-btn { background: rgba(255,255,255,0.7); border-color: rgba(0,0,0,0.08); }
+/* Arc track (rgba-white path) — invisible on white bg without this override */
+body.light-mode .ps-zone-arc svg path:first-child { stroke: rgba(22,22,30,0.14); }
 .ps-zone-mode-row { display: flex; gap: 8px; }
 .ps-zone-mode { flex: 1; padding: 9px 6px; text-align: center; border-radius: 11px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.09); font-size: 11px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 140ms ease; }
 .ps-zone-mode:hover { background: rgba(255,255,255,0.10); }
 body.light-mode .ps-zone-mode { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.07); }
 .ps-zone-mode.active { background: rgba(122,155,191,0.18); border-color: rgba(122,155,191,0.5); color: #B8CCE4; }
 .ps-zone-mode.active-heat { background: rgba(224,104,60,0.16); border-color: rgba(224,104,60,0.46); color: #E89A7A; }
+/* Active colors are too light on white — override for contrast */
+body.light-mode .ps-zone-mode.active { color: var(--accent-climate); }
+body.light-mode .ps-zone-mode.active-heat { color: var(--accent-heat); }
 .ps-zone-mode:disabled { opacity: 0.4; cursor: not-allowed; }
 .ps-zone-foot { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-secondary); padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.07); }
 body.light-mode .ps-zone-foot { border-top-color: rgba(0,0,0,0.07); }
@@ -244,6 +275,8 @@ body.light-mode .ps-shade-block { background: rgba(94,130,174,0.10); border-colo
 body.light-mode .ps-shade-preset { background: rgba(255,255,255,0.6); border-color: rgba(0,0,0,0.07); }
 .ps-shade-preset:hover { background: rgba(255,255,255,0.10); }
 .ps-shade-preset.active { background: rgba(122,155,191,0.18); border-color: rgba(122,155,191,0.45); color: #B8CCE4; }
+/* Active color too light on white bg — override for contrast */
+body.light-mode .ps-shade-preset.active { color: var(--accent-shade); }
 .ps-shade-preset:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* shade head right-group: graphic + percentage */
@@ -370,6 +403,116 @@ body.light-mode .ps-rooms-hub { background: rgba(255,255,255,0.7); border-color:
 
 /* stale-feed strip (honest connection state) */
 .ps-stale { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 120; padding: 5px 14px; border-radius: 12px; background: rgba(229,160,64,0.18); border: 1px solid rgba(229,160,64,0.45); color: #E5A040; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+
+/* ── Ambient-night component overrides — hardcoded rgba-white values ─────── */
+/* These can't be reached by the token block above because they use literal
+   rgba(255,255,255,…) rather than the token variables. Each is warmed from
+   blue-white toward candlelight-amber, matching a bedroom night state.       */
+
+body.ambient-night .ps-scope .ps-hero::before {
+  background:
+    radial-gradient(ellipse 48% 34% at 76% 16%, rgba(175,162,145,0.18) 0%, rgba(98,110,118,0.06) 44%, transparent 70%),
+    radial-gradient(ellipse 38% 26% at 22% 32%, rgba(148,136,124,0.10) 0%, transparent 60%),
+    linear-gradient(168deg, #160F0B 0%, #120D09 28%, #0F0A07 54%, #0C0807 78%, #0E0B09 100%);
+}
+body.ambient-night .ps-scope .ps-hero-vignette {
+  background: linear-gradient(180deg, rgba(14,11,9,0.38) 0%, rgba(14,11,9,0.06) 30%, rgba(14,11,9,0.0) 48%, rgba(14,11,9,0.82) 82%, rgba(14,11,9,1.0) 100%);
+}
+body.ambient-night .ps-scope .ps-hero-streak {
+  background: linear-gradient(90deg, transparent, rgba(175,160,140,0.28) 52%, rgba(188,172,152,0.38) 70%, transparent);
+  opacity: 0.5;
+}
+body.ambient-night .ps-scope .ps-eyebrow { color: rgba(189,181,168,0.82); }
+body.ambient-night .ps-scope .ps-status-pill {
+  background: rgba(189,181,168,0.13);
+  border-color: rgba(189,181,168,0.30);
+}
+body.ambient-night .ps-scope .ps-home-badge {
+  background: rgba(189,181,168,0.11);
+  border-color: rgba(189,181,168,0.28);
+}
+body.ambient-night .ps-scope .ps-card-primary {
+  background: rgba(255,250,242,0.065);
+  border-color: rgba(189,181,168,0.24);
+  box-shadow: 0 0 0 1px rgba(189,181,168,0.11) inset, 0 1px 0 rgba(255,250,242,0.07) inset,
+              0 10px 30px rgba(189,181,168,0.05), 0 26px 54px rgba(0,0,0,0.58);
+}
+body.ambient-night .ps-scope .ps-card-accent { color: rgba(189,181,168,0.88); }
+body.ambient-night .ps-scope .ps-scene {
+  background: rgba(255,250,242,0.038);
+  border-color: rgba(255,248,235,0.08);
+}
+body.ambient-night .ps-scope .ps-scene:hover {
+  background: rgba(255,250,242,0.07);
+  border-color: rgba(255,248,235,0.15);
+}
+body.ambient-night .ps-scope .ps-scene.just-fired {
+  background: rgba(189,181,168,0.18);
+  border-color: var(--accent-room);
+  box-shadow: 0 0 20px rgba(189,181,168,0.20), 0 0 0 1px rgba(189,181,168,0.26);
+}
+body.ambient-night .ps-scope .ps-group-row {
+  background: rgba(255,250,242,0.038);
+  border-color: rgba(255,248,235,0.08);
+}
+body.ambient-night .ps-scope .ps-toggle.off { background: rgba(255,250,242,0.12); }
+body.ambient-night .ps-scope .ps-track { background: rgba(255,250,242,0.11); }
+body.ambient-night .ps-scope .ps-step-btn {
+  background: rgba(255,250,242,0.055);
+  border-color: rgba(255,248,235,0.11);
+}
+body.ambient-night .ps-scope .ps-step-btn:hover { background: rgba(255,250,242,0.10); }
+body.ambient-night .ps-scope .ps-zone-mode {
+  background: rgba(255,250,242,0.038);
+  border-color: rgba(255,248,235,0.08);
+}
+body.ambient-night .ps-scope .ps-zone-mode:hover { background: rgba(255,250,242,0.07); }
+body.ambient-night .ps-scope .ps-zone-mode.active {
+  background: rgba(107,142,164,0.16);
+  border-color: rgba(107,142,164,0.45);
+  color: #9DB8C8;
+}
+body.ambient-night .ps-scope .ps-zone-mode.active-heat {
+  background: rgba(200,94,56,0.14);
+  border-color: rgba(200,94,56,0.42);
+  color: #D4856A;
+}
+body.ambient-night .ps-scope .ps-zone-foot { border-top-color: rgba(255,248,235,0.07); }
+body.ambient-night .ps-scope .ps-shade-block {
+  background: rgba(107,142,164,0.07);
+  border-color: rgba(107,142,164,0.20);
+}
+body.ambient-night .ps-scope .ps-shade-preset {
+  background: rgba(255,250,242,0.038);
+  border-color: rgba(255,248,235,0.08);
+}
+body.ambient-night .ps-scope .ps-shade-preset:hover { background: rgba(255,250,242,0.07); }
+body.ambient-night .ps-scope .ps-shade-preset.active {
+  background: rgba(141,170,187,0.16);
+  border-color: rgba(141,170,187,0.42);
+  color: #9DB8C8;
+}
+body.ambient-night .ps-scope .ps-fixture-row { border-bottom-color: rgba(255,248,235,0.06); }
+body.ambient-night .ps-scope .ps-media {
+  background: rgba(255,250,242,0.040);
+  border-color: rgba(255,248,235,0.09);
+}
+body.ambient-night .ps-scope .ps-media-dot {
+  box-shadow: 0 0 5px rgba(189,181,168,0.45);
+}
+body.ambient-night .ps-scope .ps-tp {
+  background: rgba(255,250,242,0.055);
+  border-color: rgba(255,248,235,0.09);
+}
+body.ambient-night .ps-scope .ps-media-foot { border-top-color: rgba(255,248,235,0.07); }
+body.ambient-night .ps-scope .ps-group-chip {
+  background: rgba(189,181,168,0.10);
+  border-color: rgba(189,181,168,0.26);
+}
+body.ambient-night .ps-scope .ps-footer {
+  box-shadow: 0 1px 0 rgba(255,250,242,0.06) inset, 0 8px 20px rgba(0,0,0,0.34);
+}
+body.ambient-night .ps-scope .ps-footer-sep { background: rgba(255,248,235,0.10); }
 
 @media (prefers-reduced-motion: reduce) {
   .ps-scope *, .ps-status-dot, .ps-arming-dot, .ps-card { animation: none !important; transition-duration: 0.001ms !important; }
