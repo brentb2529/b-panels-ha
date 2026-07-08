@@ -1411,6 +1411,13 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // reconcile skips devices written within a short window so it never reverts a
   // tile the user just tapped before its service call round-trips.
   const recentWriteRef = useRef<Map<string, number>>(new Map());
+  // The raw HA-entity-backed devices (id === entity_id), mirrored to a ref so the
+  // reconcile poll knows the exact set of entities we render — the precise target
+  // for update_entity hydration (composites in allDevicesForUpdate aren't entities).
+  const serviceDevicesRef = useRef<Device[]>([]);
+  // entity_id -> timestamp of the last update_entity hydration request. Throttles
+  // re-polling a stuck-unavailable entity so we never hammer a cloud integration.
+  const lastEntityRefreshRef = useRef<Map<string, number>>(new Map());
   // Track selected locations for WebSocket handler (location filtering)
   const selectedLocationsRef = useRef<string[]>([]);
   // Track the "Triggering Sensors" list for the WebSocket handler so only
@@ -1435,6 +1442,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     allDevicesForUpdate.current = devices;
   }, [devices]);
+  useEffect(() => {
+    serviceDevicesRef.current = serviceDevices;
+  }, [serviceDevices]);
 
   // Keep selectedLocationsRef in sync with SmartThings connection config
   useEffect(() => {
@@ -3153,6 +3163,29 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           });
           // prune the recent-write map so it can't grow unbounded
           for (const [k, t] of recentWriteRef.current) if (now - t > 30000) recentWriteRef.current.delete(k);
+
+          // HYDRATE stuck tiles: the reconcile above preserves last-known state
+          // through an unavailable/unknown value (never shows a wrong off), but a
+          // device that stays unavailable would then sit with no fresh status. So
+          // for every entity WE render that HA currently reports as a non-value,
+          // ask HA to re-poll it (homeassistant.update_entity) — nudging the
+          // integration to fetch a real value the next tick hydrates from. Targeted
+          // to our entities only, per-entity throttled to 2 min, and capped so we
+          // never hammer a cloud integration when many devices are down at once.
+          const ours = new Set(serviceDevicesRef.current.map(d => d.id));
+          const toHydrate: string[] = [];
+          for (const s of states) {
+            const id = s?.entity_id;
+            if (!id || !ours.has(id) || !isUnavailableRawState(s.state)) continue;
+            if (now - (lastEntityRefreshRef.current.get(id) || 0) < 120000) continue;
+            lastEntityRefreshRef.current.set(id, now);
+            toHydrate.push(id);
+            if (toHydrate.length >= 50) break;
+          }
+          if (toHydrate.length) {
+            homeAssistantService.refreshEntities(toHydrate).catch(() => { /* best-effort */ });
+          }
+          for (const [k, t] of lastEntityRefreshRef.current) if (now - t > 600000) lastEntityRefreshRef.current.delete(k);
         } catch { /* device reconcile is best-effort */ }
       } finally {
         running = false;

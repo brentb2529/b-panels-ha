@@ -149,6 +149,18 @@ class HomeAssistantService {
         await haClient.callService('alarmo', 'skip_delay', { entity_id: entityId });
     }
 
+    /**
+     * Ask HA to re-poll one or more entities (homeassistant.update_entity forces
+     * the backing integration to fetch a fresh value). Used by the reconcile poll
+     * to hydrate tiles whose entity is stuck 'unavailable'/'unknown' — so a device
+     * the cloud/bridge left stale gets a real status back instead of sitting blank.
+     * Best-effort: push-only integrations may treat it as a no-op, which is fine.
+     */
+    async refreshEntities(entityIds: string[]): Promise<void> {
+        if (!entityIds.length) return;
+        await haClient.callService('homeassistant', 'update_entity', { entity_id: entityIds });
+    }
+
     async controlMediaPlayer(deviceId: string, command: string, value: any, _connection?: ServiceConnection): Promise<void> {
         const serviceData: { entity_id: string, [key: string]: any } = { entity_id: deviceId };
         let service: string;
