@@ -577,6 +577,18 @@ export const isMovementSensor = (d: Device): boolean =>
     d.type === DeviceType.OccupancySensor ||
     MOVEMENT_DEVICE_CLASSES.has(String((d.capabilityData as any)?.deviceClass || '').toLowerCase());
 
+// HA reports 'unavailable' (device/integration temporarily offline) and 'unknown'
+// (no value yet) as first-class states. mapHaEntityToInternalDevice coerces every
+// domain via `state === 'on'`/`'open'`/`'locked'` etc., so those NON-values become
+// a DEFINITE off/closed/unlocked. SmartThings virtual devices flap to 'unavailable'
+// constantly (the ST cloud bridge polls), which would flip a tile to OFF while it's
+// really ON. Callers use this to PRESERVE the last-known state through such a blip
+// instead of overwriting it with a wrong definite value.
+const isUnavailableRawState = (state: any): boolean => {
+    const s = String(state ?? '').toLowerCase();
+    return s === 'unavailable' || s === 'unknown' || s === '';
+};
+
 const mapHaEntityToInternalDevice = (entity: any): Device | null => {
     const { entity_id, state, attributes } = entity;
     if (!entity_id || !attributes || attributes.hidden) return null;
@@ -2930,20 +2942,29 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                         }
                     }
 
+                    // A transient 'unavailable'/'unknown' must NOT overwrite the tile:
+                    // mapHaEntityToInternalDevice coerced it to a definite off/closed,
+                    // which would show the WRONG state (esp. SmartThings virtual devices
+                    // that flap constantly). Keep the last-known state; the next real
+                    // value (or the reconcile poll) refreshes it.
+                    const entUnavailable = isUnavailableRawState(new_state.state);
                     setServiceDevices(current => produce(current, draft => {
                         const deviceIndex = draft.findIndex(d => d.id === entity_id);
                         if (deviceIndex !== -1) {
+                            if (entUnavailable) return; // preserve last-known state through the blip
                             // Refresh state/battery, and keep inferred capabilities
                             // current (an entity can gain/lose features in HA).
                             draft[deviceIndex].state = updatedDevice.state;
                             draft[deviceIndex].battery = updatedDevice.battery;
                             draft[deviceIndex].capabilities = updatedDevice.capabilities;
                             draft[deviceIndex].capabilityData = updatedDevice.capabilityData;
-                        } else {
+                        } else if (!entUnavailable) {
                             // A new entity appeared in HA after initial load (e.g. a
                             // freshly-added integration like Whisker/Litter-Robot).
                             // Add it live so it shows on panels and in the Panel
                             // Builder without a reload. (devices is re-sorted by name.)
+                            // Skip while unavailable — wait for a real value so it
+                            // never first paints in a wrong state.
                             draft.push(updatedDevice);
                         }
                     }));
@@ -3108,6 +3129,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
           const now = Date.now();
           const fresh = new Map<string, Device>();
           for (const s of states) {
+            // Never reconcile a tile TO an 'unavailable'/'unknown' value — that
+            // coerces to a definite off/closed and would overwrite a correct
+            // last-known state (SmartThings virtual devices flap constantly).
+            // Leaving it out of `fresh` means the reconcile preserves the tile.
+            if (isUnavailableRawState(s?.state)) continue;
             const d = mapHaEntityToInternalDevice(s);
             if (d) fresh.set(d.id, d);
           }
