@@ -374,8 +374,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         os.makedirs(frontend_path, exist_ok=True)
 
-    # Serve the built SPA. Use the async API where available (HA 2024.7+),
-    # falling back to the legacy sync registration on older cores.
+    # Serve the built SPA. The entry document goes through a view that forces
+    # revalidation (registered first, so it wins over the static prefix);
+    # everything else is content-hashed and served statically.
+    if not hass.data.get(f"{DOMAIN}_index_view"):
+        hass.http.register_view(BPanelsIndexView(os.path.join(frontend_path, "index.html")))
+        hass.data[f"{DOMAIN}_index_view"] = True
     await _async_register_static(hass, FRONTEND_URL_BASE, frontend_path)
 
     if PANEL_URL_PATH not in hass.data.get(f"{DOMAIN}_panels", set()):
@@ -399,6 +403,42 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         frontend.async_remove_panel(hass, PANEL_URL_PATH)
         hass.data[f"{DOMAIN}_panels"].discard(PANEL_URL_PATH)
     return True
+
+
+class BPanelsIndexView(HomeAssistantView):
+    """Serve the SPA entry document with revalidation forced.
+
+    The rest of the frontend is registered as a static directory with
+    `cache_headers=False`, which makes Home Assistant send no `Cache-Control`
+    header at all. Chrome revalidates anyway, but Safari (and the iPad kiosks,
+    which are Safari) then applies *heuristic* caching and can hold both this
+    document and the hashed bundle it points at indefinitely — so a panel keeps
+    running a released-months-ago build with no visible clue.
+
+    The bundles are content-hashed and safe to cache forever; only this
+    document must always be revalidated, because it is what names them.
+    """
+
+    url = FRONTEND_INDEX
+    name = "b_panels:index"
+    requires_auth = False
+
+    def __init__(self, index_path: str) -> None:
+        self._index_path = index_path
+
+    async def get(self, request):
+        """Return index.html, never from cache without revalidating."""
+        from aiohttp import web
+
+        if not os.path.isfile(self._index_path):
+            return web.Response(status=404, text="B-Panels frontend not built")
+        return web.FileResponse(
+            self._index_path,
+            headers={
+                "Cache-Control": "no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+            },
+        )
 
 
 async def _async_register_static(

@@ -369,6 +369,9 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     }, [useHaEntities, endpointUrl, refresh, isEditor]);
 
     const state = (useHaEntities ? haGenerator!.state : details || {}) as Record<string, any>;
+    // Telemetry is present from either source. Gating the detail modal on
+    // `details` alone left it empty whenever the data came from entities.
+    const hasTelemetry = useHaEntities || details !== null;
     const isActive = state.active || false;
 
     // Derive warning reasons once per render — feeds both the inline caption
@@ -516,7 +519,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                     </div>
                 </div>
             </TileWrapper>
-            {showDetails && details && <GeneratorDetailModal name={device.name || 'Generator'} state={state} onClose={() => setShowDetails(false)} />}
+            {showDetails && hasTelemetry && <GeneratorDetailModal name={device.name || 'Generator'} state={state} onClose={() => setShowDetails(false)} />}
         </>
     );
 };
