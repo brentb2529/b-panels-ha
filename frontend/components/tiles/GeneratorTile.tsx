@@ -369,8 +369,10 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     }, [useHaEntities, endpointUrl, refresh, isEditor]);
 
     const state = (useHaEntities ? haGenerator!.state : details || {}) as Record<string, any>;
-    // Telemetry is present from either source. Gating the detail modal on
-    // `details` alone left it empty whenever the data came from entities.
+    // Telemetry is present, from EITHER source. Every "do we have data yet?"
+    // check must use this — `details` alone is null whenever the data comes
+    // from entities, which silently disabled the detail modal and its tap
+    // target when the tile was first switched over to Home Assistant.
     const hasTelemetry = useHaEntities || details !== null;
     const isActive = state.active || false;
 
@@ -386,7 +388,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     const prevRunning = useRef<any>(undefined);
 
     useEffect(() => {
-        if (!details && !haGenerator) return;
+        if (!hasTelemetry) return;
         const sig = reasons.map(r => `${r.severity}:${r.text}`).join('|');
         if (prevReasonSig.current && prevReasonSig.current !== sig) {
             const newErrs = reasons.filter(r => r.severity === 'error');
@@ -415,7 +417,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     // Status determination — drive badge color/animation from the SAME derived
     // reasons that feed the inline caption and modal banner. Active running
     // overrides to "active" blue with a pulse, unless something is error-level.
-    const siteStatus = state.status || (endpointUrl ? (details ? 'Unknown' : 'Loading') : 'Setup');
+    const siteStatus = state.status || (hasTelemetry ? 'Unknown' : (endpointUrl ? 'Loading' : 'Setup'));
     const hasError = reasons.some(r => r.severity === 'error');
     const hasWarning = reasons.some(r => r.severity === 'warning');
 
@@ -433,7 +435,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     }
 
     const handleClick = () => {
-        if (!isEditor && !isLocked && details) {
+        if (!isEditor && !isLocked && hasTelemetry) {
             setShowDetails(true);
         }
     };
