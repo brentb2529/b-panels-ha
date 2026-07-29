@@ -6,6 +6,7 @@ import TileWrapper from './TileWrapper';
 import { IconZap, IconSettings, IconCheck, IconAlertTriangle, IconX } from '../icons';
 import { fluidTextSm, fluidTextXs, fluidTextLg, fluidGap } from './tileScale';
 import { apiFetchGenerator } from '../../services/api';
+import { useEnergyTrakGenerator } from '../../hooks/useEnergyTrakGenerator';
 
 // The Generator tile is a config-stored virtual device. Its `device.state`
 // holds the tile CONFIG — { endpoint, siteId, refresh } — not live telemetry.
@@ -35,6 +36,11 @@ function resolveEndpointUrl(cfg: GeneratorConfig): string | null {
     }
     return endpoint;
 }
+
+// Shown wherever the generator does not report a field at all. Distinct from a
+// real 0: some units never report output voltage, RPM or load, so those rows
+// are genuinely absent rather than zero.
+const EM_DASH = '\u2014';
 
 // Derive human-readable reasons for why a generator tile is in warning / error
 // state. Returns the most important reasons first (so the tile can truncate to
@@ -229,22 +235,24 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
     const reasons = deriveReasons(state);
     const hasErrors = reasons.some(r => r.severity === 'error');
 
-    // Helper to format values nicely, handling 0 correctly but treating null/undefined as 'N/A'
+    // Format a value, keeping a real 0 but rendering absent data as an em dash.
     const fmt = (val: any, suffix = '') => {
-        if (val === undefined || val === null) return 'N/A';
+        if (val === undefined || val === null || val === '') return EM_DASH;
         return `${val}${suffix}`;
     };
+    // For plain string rows that would otherwise render blank when undefined.
+    const txt = (val: any) => (val === undefined || val === null || val === '' ? EM_DASH : String(val));
 
     const detailItems = [
-        { label: 'Status', value: state.status },
+        { label: 'Status', value: txt(state.status) },
         { label: 'Active', value: state.active ? 'Yes' : 'No' },
-        { label: 'Site Status', value: state.siteStatus, isHeader: true },
-        { label: 'Site Health', value: state.siteHealth },
-        { label: 'Grid Status', value: state.gridStatus },
-        { label: 'Grid Health', value: state.gridHealth },
-        { label: 'Utility Monitor', value: state.utilityMonitor },
-        { label: 'Generator Status', value: state.generatorStatus, isHeader: true },
-        { label: 'Generator Health', value: state.generatorHealth },
+        { label: 'Site Status', value: txt(state.siteStatus), isHeader: true },
+        { label: 'Site Health', value: txt(state.siteHealth) },
+        { label: 'Grid Status', value: txt(state.gridStatus) },
+        { label: 'Grid Health', value: txt(state.gridHealth) },
+        { label: 'Utility Monitor', value: txt(state.utilityMonitor) },
+        { label: 'Generator Status', value: txt(state.generatorStatus), isHeader: true },
+        { label: 'Generator Health', value: txt(state.generatorHealth) },
         { label: 'Battery Voltage', value: fmt(state.batteryVoltage, ' V') },
         { label: 'Engine Hours', value: fmt(state.engineHours, ' hrs') },
         { label: 'Grid Voltage', value: fmt(state.gridVoltage, ' V') },
@@ -255,11 +263,11 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
         { label: 'Starts', value: state.startsCount },
         { label: 'Trips', value: state.tripsCount },
         { label: 'Load Power', value: fmt(state.loadPower) },
-        { label: 'Smart Mode', value: state.smartModeEnabled === true ? `Enabled (${state.smartModeDetection || 'Auto'})` : state.smartModeEnabled === false ? 'Disabled' : 'N/A', isHeader: true },
-        { label: 'Heartbeat (cleanState)', value: state.cleanStateLastUpdated ? new Date(state.cleanStateLastUpdated).toLocaleString() : 'N/A' },
-        { label: 'Equipment Telemetry', value: state.equipmentDataTimestamp ? `${new Date(state.equipmentDataTimestamp).toLocaleString()} ${state.equipmentDataStale ? '(stale)' : '(fresh)'}` : 'N/A' },
-        { label: 'Last Updated', value: state.lastUpdated ? new Date(state.lastUpdated).toLocaleString() : 'N/A' },
-        { label: 'Polled At', value: state.polledAt ? new Date(state.polledAt).toLocaleString() : 'N/A' },
+        { label: 'Smart Mode', value: state.smartModeEnabled === true ? `Enabled (${state.smartModeDetection || 'Auto'})` : state.smartModeEnabled === false ? 'Disabled' : EM_DASH, isHeader: true },
+        { label: 'Heartbeat (cleanState)', value: state.cleanStateLastUpdated ? new Date(state.cleanStateLastUpdated).toLocaleString() : EM_DASH },
+        { label: 'Equipment Telemetry', value: state.equipmentDataTimestamp ? `${new Date(state.equipmentDataTimestamp).toLocaleString()} ${state.equipmentDataStale ? '(stale)' : '(fresh)'}` : EM_DASH },
+        { label: 'Last Updated', value: state.lastUpdated ? new Date(state.lastUpdated).toLocaleString() : EM_DASH },
+        { label: 'Polled At', value: state.polledAt ? new Date(state.polledAt).toLocaleString() : EM_DASH },
     ];
 
     return ReactDOM.createPortal(
@@ -329,12 +337,20 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     const endpointUrl = useMemo(() => resolveEndpointUrl(cfg), [cfg.endpoint, cfg.siteId]);
     const refresh = Math.max(15, Number(cfg.refresh) || 60); // seconds
 
-    // Live telemetry fetched from the configured endpoint (server-side proxy).
+    // Live telemetry. Preferred source is the `energytrak` HACS integration,
+    // which polls EnergyTrak from inside Home Assistant and publishes entities —
+    // no external poller, and it reads every device the site links to rather
+    // than only the first. The configured HTTP endpoint (a standalone poller on
+    // the LAN) remains as a fallback, so a panel keeps working until the
+    // integration is installed.
+    const { data: haGenerator } = useEnergyTrakGenerator(cfg.siteId);
+    const useHaEntities = haGenerator !== null;
+
     const [details, setDetails] = useState<Record<string, any> | null>(null);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!endpointUrl || isEditor) return;
+        if (useHaEntities || !endpointUrl || isEditor) return;
         let cancelled = false;
         const load = async () => {
             try {
@@ -350,14 +366,14 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
         load();
         const id = setInterval(load, refresh * 1000);
         return () => { cancelled = true; clearInterval(id); };
-    }, [endpointUrl, refresh, isEditor]);
+    }, [useHaEntities, endpointUrl, refresh, isEditor]);
 
-    const state = (details || {}) as Record<string, any>;
+    const state = (useHaEntities ? haGenerator!.state : details || {}) as Record<string, any>;
     const isActive = state.active || false;
 
     // Derive warning reasons once per render — feeds both the inline caption
     // and the change-notification tracker below.
-    const reasons = useMemo(() => deriveReasons(state), [details]);
+    const reasons = useMemo(() => deriveReasons(state), [details, haGenerator]);
     const topReason = reasons[0] || null;
 
     // State tracking for notifications: fire on reason-set transitions (so the
@@ -367,7 +383,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     const prevRunning = useRef<any>(undefined);
 
     useEffect(() => {
-        if (!details) return;
+        if (!details && !haGenerator) return;
         const sig = reasons.map(r => `${r.severity}:${r.text}`).join('|');
         if (prevReasonSig.current && prevReasonSig.current !== sig) {
             const newErrs = reasons.filter(r => r.severity === 'error');
@@ -426,9 +442,9 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     } : tile.animation;
 
     // Explicit null/undefined checks to display correct placeholder or 0
-    const engineHours = (state.engineHours !== undefined && state.engineHours !== null) ? Number(state.engineHours).toFixed(1) : '--';
-    const battVolts = (state.batteryVoltage !== undefined && state.batteryVoltage !== null) ? Number(state.batteryVoltage).toFixed(1) : '--';
-    const gridVolts = (state.gridVoltage !== undefined && state.gridVoltage !== null) ? Number(state.gridVoltage).toFixed(0) : '--';
+    const engineHours = (state.engineHours !== undefined && state.engineHours !== null) ? Number(state.engineHours).toFixed(1) : EM_DASH;
+    const battVolts = (state.batteryVoltage !== undefined && state.batteryVoltage !== null) ? Number(state.batteryVoltage).toFixed(1) : EM_DASH;
+    const gridVolts = (state.gridVoltage !== undefined && state.gridVoltage !== null) ? Number(state.gridVoltage).toFixed(0) : EM_DASH;
 
     // Show a setup caption when no endpoint is configured, or a fetch error.
     const setupReason: { severity: 'error' | 'warning' | 'info'; text: string } | null =
