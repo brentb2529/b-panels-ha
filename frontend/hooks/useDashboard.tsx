@@ -347,6 +347,7 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.RSSFeed:
         case DeviceType.Generator:
         case DeviceType.LitterRobot:
+        case DeviceType.AkvoFloor:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty

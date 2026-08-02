@@ -92,8 +92,18 @@ import {
   Podcast,
   ChevronRight,
   Activity,
+  Gauge,
+  Hand,
+  MoveVertical,
+  Layers,
+  Loader2,
 } from 'lucide-react';
 
+export const IconGauge = (props: React.ComponentProps<typeof Gauge>) => <Gauge {...props} />;
+export const IconHand = (props: React.ComponentProps<typeof Hand>) => <Hand {...props} />;
+export const IconMoveVertical = (props: React.ComponentProps<typeof MoveVertical>) => <MoveVertical {...props} />;
+export const IconLayers = (props: React.ComponentProps<typeof Layers>) => <Layers {...props} />;
+export const IconLoader2 = (props: React.ComponentProps<typeof Loader2>) => <Loader2 {...props} />;
 export const IconSun = (props: React.ComponentProps<typeof Sun>) => <Sun {...props} />;
 export const IconMoon = (props: React.ComponentProps<typeof Moon>) => <Moon {...props} />;
 export const IconThermometer = (props: React.ComponentProps<typeof Thermometer>) => <Thermometer {...props} />;

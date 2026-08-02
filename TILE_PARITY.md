@@ -88,6 +88,62 @@ the gateway's units.
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
 state + `volume_level` + `media_title`/`media_artist`/`entity_picture` + `shuffle`/`repeat`.
 
+## AKVO Movable Floor (custom `akvo`) — bespoke SAFETY-CRITICAL surface 🟡
+
+`DeviceType.AkvoFloor`, one self-driven virtual tile. **Monitor-first**; the
+command region is heavily guarded and issues exactly ONE thing. Discovers AKVO
+entities dynamically by the `akvo`/`movable_floor` prefix (no hardcoded ids;
+each field resolved by id-suffix).
+
+| Field | HA entity | In surface? |
+| --- | --- | --- |
+| main floor / baja position (m, signed; −=above deck) | `sensor.*_main_floor_position` / `*_baja_position` | ✅ position gauges (deck-relative bar) |
+| motor currents (A) | `sensor.*_main_floor_motor_current` / `*_baja_motor_current` | ✅ chips |
+| active configuration | `sensor.*_active_configuration` | ✅ banner + reconcile target |
+| system ready / fault / e-stop / moving / comms / ready-for-cmds | `binary_sensor.*_{system_ready,system_fault,emergency_stop,floors_moving,bad_modbus_comm,ready_for_external_commands}` | ✅ status banner + chips + gate |
+| drive faults (main/baja: vfd, overtravel up/down, motor_overload, direction, no_movement, off_speed, position_ref, relative_position) | `binary_sensor.*` | ✅ faults panel (active-first, severity-ranked) |
+| 14 top-plate faults | `binary_sensor.*` | ✅ faults panel |
+| configuration request (GATED COMMAND) | `select.*_configuration_request` | ✅ press-and-hold request, sentinel `—` filtered out |
+
+### Safety boundary
+
+The root `CLAUDE.md` rule is **AKVO is display-only; never wire raw
+motion/actuation**. This surface honors that: it renders **no** motion/stop/reset
+control (there is none and none must be added). The single sanctioned write is
+`select.select_option` on the watchdog-protected configuration-request select —
+the gated path the `akvo` integration owns and validates. AKVO is the safety
+authority; HA only sends a request it may accept or reject.
+
+### Command gate (fail-closed)
+
+Requests are enabled ONLY when ALL hold: `ready_for_external_commands` ON, AND
+`system_fault`/`emergency_stop`/`bad_modbus_comm` all OFF, AND `floors_moving`
+OFF, AND the request select is available. Any **unknown/absent** safety signal is
+treated as NOT safe (fail-closed). When blocked, the UI shows the specific reason
+("Emergency stop active" / "System fault active" / "Controller comms fault" /
+"Floor is moving" / "AKVO not ready for external commands" / "AKVO offline").
+The gate is re-checked in the hook at issue time (defense-in-depth) so a stale
+view can't fire.
+
+### Confirm UX
+
+**Press-and-hold (2 s)** per preset — no single tap can issue motion. A progress
+fill tracks the hold; releasing early cancels. The active configuration's button
+is disabled ("current"). On issue, the surface shows "Requesting `<preset>`…
+(AKVO validating)", then "Moving → `<config>`…", reconciled against
+`floors_moving` + `active_configuration` (cleared on motion/arrival or a 12 s
+timeout). Position/motion/fault are always real state — never optimistic.
+
+### Graceful degradation
+
+Binds via `subscribeEntities` (no polling); stale/reconnect indicator; responsive
+wall + mobile (monitor/command reflow); light/dark. If no AKVO entities are
+present, an explanatory empty state renders. Absent individual entities show
+"unknown"/"--" and the gate fails closed.
+
+Source: `components/tiles/AkvoFloorSurface.tsx`, `hooks/useAkvoFloor.ts`,
+`services/akvo.ts` (model + gate + the one gated command).
+
 ---
 
 ### Build order (each verified for parity before next)
