@@ -50,6 +50,11 @@ export enum DeviceType {
   // (or any URL) in a sandboxed iframe. HA-aware — resolves a relative
   // dashboard path against the configured HA connection's base URL.
   HACustomCard = 'HA_CUSTOM_CARD',
+  // Surface 5 — UniFi Protect security / cameras composite.
+  // Discovers all HA camera.* entities + sibling binary_sensor/event/light
+  // entities dynamically. Display-only: no RTSP creds, no plate text (PII),
+  // no floodlight control (equipment-gated).
+  UnifiSecurity = 'UNIFI_SECURITY',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home
