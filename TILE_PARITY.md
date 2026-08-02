@@ -83,6 +83,86 @@ per-unit mode/fan/roomTemp/setPoint/errorCode → one `climate.<unit>` per indoo
 unit (`hvac_mode`/`fan_mode`/`current_temperature`/`temperature`). Composite groups
 the gateway's units.
 
+## Air Control surface (per-room climate, e.g. Airzone) — bespoke marquee 🟡
+
+A dedicated multi-zone surface (`DeviceType.AirControl`, one virtual tile) that
+discovers **every** controllable `climate.*` entity live and renders one control
+card per zone, grouped by Airzone master/slave topology.
+
+| Per-room field | HA source | In tile? |
+| --- | --- | --- |
+| room name | `climate.*` `friendly_name` (else humanized entity_id) | ✅ header |
+| current temperature | `climate` `current_temperature` | ✅ |
+| current humidity | `climate` `current_humidity`, else paired `sensor.<zone>_humidity` | ✅ (if present) |
+| target setpoint | `climate` `temperature` (range → midpoint, stepping disabled) | ✅ large |
+| hvac_mode | `climate` state + `hvac_modes` | ✅ tap-to-cycle → `climate.set_hvac_mode` |
+| fan_mode | `climate` `fan_mode` + `fan_modes` (feature-gated) | ✅ tap-to-cycle → `climate.set_fan_mode` |
+| hvac_action / running | `climate` `hvac_action` | ✅ running badge |
+| setpoint ± | `climate` `target_temp_step`/`min_temp`/`max_temp` | ✅ → `climate.set_temperature` |
+| master/slave role | `is_master` / `master_zone` / `slave_zones` (LOCKED, contract v0.2) | ✅ badge + grouping |
+
+Discovery: binds generically to `climate.*`, excludes pool/spa heaters by id
+(`/climate\..*(pool|spa)/i`). Controls are optimistic and reconciled against
+`subscribeEntities`; offline zones render disabled.
+
+### Master/slave grouping (Airzone topology — LOCKED, ENTITY_CONTRACT v0.2)
+
+The read-only climate attributes `is_master` (bool), `master_zone`
+(`"system:zone"`, slaves only), `slave_zones` (`"system:zone"[]`, masters only),
+and **`zone_id`** (`"system:zone"`, every zone) are consumed here.
+
+The `"system:zone"` ids in `master_zone`/`slave_zones` are correlated to concrete
+`entity_id`s **entirely from entity state**: each `climate.*` entity carries its
+own `zone_id` attribute, so `zoneIdMapFromEntities` (in `services/climate.ts`)
+builds `entity_id → "system:zone"` straight from the subscribed states. **No
+admin / `config/device_registry/list` call is needed** — master/slave grouping
+works for non-admin and read-only-token wall-panel kiosks.
+
+The device-registry join (`getClimateZoneIdMap` in `haClient.ts`, identifier
+`{entry_id}_{system_zone_id}`) is kept ONLY as a fallback for entities that lack
+`zone_id` (older firmware / pre-merge); it runs at most once and only for the
+zones still missing an id. If neither path resolves a zone, it degrades to a
+standalone tile.
+
+- **Grouping:** a master renders as a card with its resolved slave cards nested
+  beneath in a bordered cluster (full-row, sub-grid). The header shows a
+  **Master** / **Slave** badge.
+- **Standalone:** a zone with no topology attrs, `is_master` true + empty
+  `slave_zones`, or a slave whose master can't be resolved, renders exactly as a
+  plain card (pre-topology behavior).
+
+### Mode-routing UX decision
+
+A SLAVE zone cannot change its own `hvac_mode` (the integration hard-fails
+`set_hvac_mode` on a slave; the routing fix is a separate equipment-gated PR).
+Chosen behavior — **route the slave's mode change to the master's `entity_id`**
+when the master is resolvable (calling the master works today):
+
+- Slave with resolved master → mode control **stays enabled**; pressing it calls
+  `climate.set_hvac_mode` on the **master** entity, with a "via `<master>`" hint.
+  The optimistic patch is applied to the master; slaves follow via real state.
+- Slave whose master is **unresolved** (master entity not present, or attrs
+  missing on older firmware) → mode control is **disabled** and the tile shows
+  "Mode follows `<master>`". We never call `set_hvac_mode` on a slave entity.
+- Setpoint and fan_mode are always per-slave (those work on slave entities).
+
+### Graceful degradation
+
+When the topology attrs are absent (older Airzone firmware / pre-merge
+instances) and the device-registry fallback also can't resolve a zone, that zone
+falls through to **standalone** rendering — identical to the pre-topology
+surface. Nothing crashes; no zone is dropped. Because the primary correlation is
+now the state `zone_id` attribute, this no longer depends on admin rights:
+**non-admin / read-only-token kiosks get full grouping**.
+
+**Verify:** the simulated zones appear as cards; a master shows its slaves
+nested with a Master badge; a slave's mode button either routes "via master" or
+shows "Mode follows master".
+
+Source: `components/tiles/AirControlSurface.tsx` + `RoomClimateTile.tsx`,
+`hooks/useClimateZones.ts`, `services/climate.ts` (model + grouping + routing),
+`services/haClient.ts` (`getClimateZoneIdMap`).
+
 ## Sonos (core `sonos`) — SonosPlayerTile ⛔
 
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`

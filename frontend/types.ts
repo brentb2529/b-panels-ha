@@ -40,6 +40,11 @@ export enum DeviceType {
   Flair = 'FLAIR',
   CoolMaster = 'COOLMASTER',
   PoolFloor = 'POOL_FLOOR',
+  // Bespoke per-room air-control surface. A single virtual tile that discovers
+  // every controllable `climate.*` zone live (via subscribeEntities) and renders
+  // one independent control card per zone. Not backed by one entity — it
+  // self-drives through services/haClient.ts, like the Flair structure card.
+  AirControl = 'AIR_CONTROL',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type

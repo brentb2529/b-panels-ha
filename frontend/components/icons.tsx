@@ -92,8 +92,16 @@ import {
   Podcast,
   ChevronRight,
   Activity,
+  Fan,
+  Wind,
+  Gauge,
+  Loader2,
 } from 'lucide-react';
 
+export const IconFan = (props: React.ComponentProps<typeof Fan>) => <Fan {...props} />;
+export const IconWind = (props: React.ComponentProps<typeof Wind>) => <Wind {...props} />;
+export const IconGauge = (props: React.ComponentProps<typeof Gauge>) => <Gauge {...props} />;
+export const IconLoader2 = (props: React.ComponentProps<typeof Loader2>) => <Loader2 {...props} />;
 export const IconSun = (props: React.ComponentProps<typeof Sun>) => <Sun {...props} />;
 export const IconMoon = (props: React.ComponentProps<typeof Moon>) => <Moon {...props} />;
 export const IconThermometer = (props: React.ComponentProps<typeof Thermometer>) => <Thermometer {...props} />;
