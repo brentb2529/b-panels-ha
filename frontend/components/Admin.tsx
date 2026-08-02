@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDashboard } from '../hooks/useDashboard';
 import { Device, DeviceService, DashboardPanel, TileConfig, DeviceType, MediaItem, AllowedIP, ServiceConnection, TileDisplayOverride, TileAnimationConfig, HighlightSectionConfig, SonosNotification, SonosNotificationEventType, IdleMode } from '../types';
-import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves } from './icons';
+import { IconPlus, IconTrash2, IconChevronDown, IconFolder, IconLock, IconExpand, IconAlertTriangle, IconLayoutGrid, IconLightbulb, IconSquare, IconSun, IconThermometer, IconPersonStanding, IconDoorOpen, IconKeyboard, IconFlame, IconShield, IconZap, IconCamera, IconTv, IconVideo, IconX, IconCopy, IconPencil, IconSettings, IconArrowRight, IconLink, IconShieldAlert, IconArrowLeft, IconMusic, IconAlertOctagon, IconHome, IconCloud, IconCloudSun, IconServer, IconHistory, IconRss, IconDroplets, IconQrCode, IconUsers, IconCpu, IconRefreshCw, IconInfo, IconVolume2, IconCat, IconWifi, IconWaves, IconWind } from './icons';
 import { produce } from 'immer';
 import Tile from './Tile';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -37,6 +37,8 @@ const TilePreviewIcon = ({ type }: { type: DeviceType }) => {
         case DeviceType.SonosPlayer: return <IconMusic {...iconProps} />;
         case DeviceType.PanicButton: return <IconAlertOctagon {...iconProps} className="w-8 h-8 text-red-400" />;
         case DeviceType.AlarmHistory: return <IconHistory {...iconProps} className="w-8 h-8 text-blue-400" />;
+        case DeviceType.AirControl: return <IconWind {...iconProps} className="w-8 h-8 text-sky-400" />;
+        case DeviceType.AkvoFloor: return <IconWaves {...iconProps} className="w-8 h-8 text-cyan-400" />;
         case DeviceType.RSSFeed: return <IconRss {...iconProps} className="w-8 h-8 text-orange-400" />;
         case DeviceType.WaterSensor: 
         case DeviceType.Valve: return <IconDroplets {...iconProps} className="w-8 h-8 text-blue-400" />;
@@ -1837,6 +1839,8 @@ const VirtualDeviceManager = () => {
         { value: DeviceType.CameraGroup, label: 'Camera Group' },
         { value: DeviceType.PanicButton, label: 'Panic Button' },
         { value: DeviceType.AlarmHistory, label: 'Alarm History' },
+        { value: DeviceType.AirControl, label: 'Air Control (Climate Zones)' },
+        { value: DeviceType.AkvoFloor, label: 'AKVO Movable Floor' },
         { value: DeviceType.RSSFeed, label: 'RSS Feed' },
         { value: DeviceType.InternetMonitor, label: 'Internet Monitor' },
         { value: DeviceType.FishingReport, label: 'Fishing Report' },
