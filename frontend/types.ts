@@ -40,6 +40,8 @@ export enum DeviceType {
   Flair = 'FLAIR',
   CoolMaster = 'COOLMASTER',
   PoolFloor = 'POOL_FLOOR',
+  // Mitsubishi City Multi AE-200E direct integration (ae200 custom component)
+  AE200 = 'AE200',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type
@@ -822,4 +824,51 @@ export interface PoolFloorState {
 
   // Currently active command bit (0=reset, 1-8=config, null=none)
   activeCommandBit:      number | null;
+}
+
+// ── Mitsubishi City Multi AE-200E Direct Integration ─────────────────────────
+// One composite card per AE-200E controller (controller_id prefix), grouping
+// all indoor unit groups managed by that controller.
+
+export type Ae200HvacMode = 'heat' | 'cool' | 'dry' | 'fan_only' | 'auto' | 'off';
+export type Ae200FanMode  = 'AUTO' | 'LOW' | 'MID2' | 'MID1' | 'HIGH';
+// swing_mode / AirDirection from ae200: numeric angles or named presets
+export type Ae200SwingMode = 'auto' | 'horizontal' | 'vertical' | '1' | '2' | '3' | '4' | '5';
+
+export interface Ae200Group {
+  // The entity_id of the climate entity for this group
+  entityId: string;
+  name: string;
+  // HVAC
+  mode: Ae200HvacMode;
+  isOn: boolean;
+  fanMode: Ae200FanMode;
+  swingMode: Ae200SwingMode | null;
+  currentTemp: number | null;
+  setpoint: number | null;
+  minTemp: number | null;
+  maxTemp: number | null;
+  tempUnit: '°C' | '°F';
+  // Sensors
+  inletTemp: number | null;          // sensor.*_inlet_temperature
+  filterDirty: boolean;              // binary_sensor.*_filter (problem class)
+  hasError: boolean;                 // binary_sensor.*_error (problem class)
+  isOnline: boolean;                 // unavailable → false
+  // Derived: is the compressor/demand active this cycle?
+  isActive: boolean;
+}
+
+export interface Ae200Controller {
+  // e.g. "ae200_office" — the common prefix of all entities on this controller
+  controllerId: string;
+  name: string;
+  outdoorTemp: number | null;        // sensor.*_outdoor_temp
+  groups: Ae200Group[];
+  isOnline: boolean;
+}
+
+export interface Ae200State {
+  controllers: Ae200Controller[];
+  // Stale-data indicator: ms since last HA entity update across all controllers
+  lastUpdatedMs: number | null;
 }

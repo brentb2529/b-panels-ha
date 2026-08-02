@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, Ae200State, Ae200Group, Ae200HvacMode, Ae200FanMode, Ae200SwingMode } from '../types';
 import { produce } from 'immer';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
@@ -1378,21 +1378,181 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { flairComposites: [comp], flairMemberIds: members };
   }, [serviceDevices]);
 
+  // ── AE-200E (Mitsubishi City Multi direct) composite builder ─────────────────
+  // Discovers all entities with an `ae200` prefix, groups them by controller,
+  // and builds one Ae200Controller card per controller id. Members are hidden
+  // from the individual device list — only the composite card is shown.
+  //
+  // Entity naming conventions assumed from the ae200 custom component:
+  //   climate.ae200_<controller>_<group>        — one per indoor unit group
+  //   sensor.<controller>_<group>_inlet_temperature
+  //   sensor.<controller>_outdoor_temp
+  //   binary_sensor.<controller>_<group>_filter
+  //   binary_sensor.<controller>_<group>_error
+  const { ae200Composites, ae200MemberIds } = useMemo(() => {
+    const empty = { ae200Composites: [] as Device[], ae200MemberIds: new Set<string>() };
+
+    // All entities whose entity_id starts with a domain we care about and contains 'ae200'
+    const ae200Climates  = serviceDevices.filter(d => /^climate\.ae200_/i.test(d.id));
+    if (ae200Climates.length === 0) return empty;
+
+    const members = new Set<string>();
+
+    // Helper: pull the raw capabilityData.rawState or the mapped state from any device
+    const rawOf = (d: Device | undefined): any => (d?.capabilityData as any)?.rawState;
+    // Helper: extract a numeric sensor value from a device's state
+    const numericState = (d: Device | undefined): number | null => {
+      if (!d) return null;
+      const v = typeof d.state === 'number' ? d.state : parseFloat(String(d.state));
+      return isFinite(v) ? v : null;
+    };
+
+    // Group climate entities by controller id.
+    // entity_id = climate.ae200_<controller>_<groupSlug>
+    // controller = everything between 'ae200_' and the last '_<groupSlug>' part.
+    // We identify the controller as the shared prefix among climate entities.
+    //
+    // Strategy: split off 'ae200_' prefix, then treat all but the final segment as
+    // the controller key. e.g. climate.ae200_office_zone1 → controller='office', group='zone1'
+    // For single-segment: climate.ae200_zone1 → controller='default', group='zone1'
+    const controllerMap = new Map<string, { climates: Device[] }>();
+
+    for (const d of ae200Climates) {
+      // Strip domain and 'ae200_' prefix
+      const slug = d.id.replace(/^climate\.ae200_/i, '');
+      const parts = slug.split('_');
+      // Use all-but-last parts as controller key; last part is group slug
+      const controllerKey = parts.length > 1 ? parts.slice(0, -1).join('_') : 'default';
+      if (!controllerMap.has(controllerKey)) controllerMap.set(controllerKey, { climates: [] });
+      controllerMap.get(controllerKey)!.climates.push(d);
+    }
+
+    const composites: Device[] = [];
+
+    for (const [controllerId, { climates }] of controllerMap.entries()) {
+      // Find outdoor temp sensor for this controller
+      const outdoorSensorId = `ae200_${controllerId}_outdoor_temp`;
+      const outdoorSensor = serviceDevices.find(d =>
+        /^sensor\./i.test(d.id) && (
+          d.id.toLowerCase().includes(`ae200_${controllerId}_outdoor`) ||
+          d.id.toLowerCase().includes(`ae200_outdoor_temp`)
+        )
+      );
+      if (outdoorSensor) members.add(outdoorSensor.id);
+
+      const outdoorTemp = outdoorSensor ? numericState(outdoorSensor) : null;
+
+      // Build one Ae200Group per climate entity
+      const groups: Ae200Group[] = climates.map(climate => {
+        members.add(climate.id);
+        const raw = rawOf(climate);
+        const climateState = climate.state as any;
+
+        // Extract group slug from entity id
+        const slug = climate.id.replace(/^climate\.ae200_/i, '').replace(new RegExp(`^${controllerId}_`, 'i'), '');
+
+        // Find sibling sensors / binary_sensors
+        const inletId = serviceDevices.find(d =>
+          /^sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_${controllerId}_${slug}_inlet_temperature`)
+        ) || serviceDevices.find(d =>
+          /^sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_inlet`)
+        );
+        const filterSensor = serviceDevices.find(d =>
+          /^binary_sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_filter`)
+        );
+        const errorSensor = serviceDevices.find(d =>
+          /^binary_sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_error`)
+        );
+
+        if (inletId) members.add(inletId.id);
+        if (filterSensor) members.add(filterSensor.id);
+        if (errorSensor) members.add(errorSensor.id);
+
+        const isUnavailable = raw === 'unavailable' || String(climateState?.mode ?? raw ?? '').toLowerCase() === 'unavailable';
+        const mode = (isUnavailable ? 'off' : (typeof climateState?.mode === 'string' ? climateState.mode : (typeof raw === 'string' ? raw : 'off'))) as Ae200HvacMode;
+        const isOn = !isUnavailable && mode !== 'off';
+
+        // Infer isActive: active = mode is on and demand is likely
+        const curTemp  = typeof climateState?.currentTemp === 'number' ? climateState.currentTemp : null;
+        const setpoint = typeof climateState?.setpoint    === 'number' ? climateState.setpoint    : null;
+        let isActive = false;
+        if (isOn && curTemp !== null && setpoint !== null) {
+          if (mode === 'cool') isActive = curTemp > setpoint + 0.3;
+          else if (mode === 'heat') isActive = curTemp < setpoint - 0.3;
+          else if (mode === 'dry' || mode === 'fan_only') isActive = true;
+          else isActive = Math.abs(curTemp - setpoint) > 0.3;
+        } else if (isOn && (mode === 'fan_only' || mode === 'dry')) {
+          isActive = true;
+        }
+
+        const rawAttr = (climate.capabilityData as any)?.attributes || {};
+        const tempUnit: '°C' | '°F' = String(rawAttr.temperature_unit || '').includes('F') ? '°F' : '°C';
+
+        return {
+          entityId: climate.id,
+          name: climate.name,
+          mode,
+          isOn,
+          fanMode: (climateState?.fan ?? rawAttr.fan_mode ?? 'AUTO') as Ae200FanMode,
+          swingMode: (rawAttr.swing_mode ?? null) as Ae200SwingMode | null,
+          currentTemp: curTemp,
+          setpoint,
+          minTemp: typeof rawAttr.min_temp === 'number' ? rawAttr.min_temp : null,
+          maxTemp: typeof rawAttr.max_temp === 'number' ? rawAttr.max_temp : null,
+          tempUnit,
+          inletTemp: inletId ? numericState(inletId) : null,
+          filterDirty: filterSensor ? filterSensor.state === true || String(filterSensor.state).toLowerCase() === 'on' : false,
+          hasError: errorSensor ? errorSensor.state === true || String(errorSensor.state).toLowerCase() === 'on' : false,
+          isOnline: !isUnavailable,
+          isActive,
+        };
+      });
+
+      const controllerName = controllerId === 'default'
+        ? 'AE-200E'
+        : controllerId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const isOnline = groups.some(g => g.isOnline);
+
+      const state: Ae200State = {
+        controllers: [{
+          controllerId,
+          name: controllerName,
+          outdoorTemp,
+          groups,
+          isOnline,
+        }],
+        lastUpdatedMs: Date.now(),
+      };
+
+      const compositeDevice: Device = {
+        id: `ae200:${controllerId}`,
+        name: controllerName,
+        type: DeviceType.AE200,
+        service: DeviceService.HomeAssistant,
+        state,
+      };
+      composites.push(compositeDevice);
+    }
+
+    return { ae200Composites: composites, ae200MemberIds: members };
+  }, [serviceDevices]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
     // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !ae200MemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
     // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    ae200Composites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, ae200Composites, ae200MemberIds]);
 
   // id -> Device lookup, derived directly from `devices`. Memoized (not a
   // useState + effect) so it updates in the same render as `devices` — no extra

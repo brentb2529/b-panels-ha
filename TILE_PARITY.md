@@ -83,6 +83,28 @@ per-unit mode/fan/roomTemp/setPoint/errorCode → one `climate.<unit>` per indoo
 unit (`hvac_mode`/`fan_mode`/`current_temperature`/`temperature`). Composite groups
 the gateway's units.
 
+## Mitsubishi City Multi AE-200E Direct (`ae200` custom component) ✅
+
+One composite card per AE-200E controller, auto-discovered by `ae200_` prefix.
+
+| Original field | HA entity | In tile? |
+| --- | --- | --- |
+| hvac_mode (heat/cool/dry/fan_only/auto/off) | `climate.ae200_*` `hvac_mode` | ✅ mode ring + label |
+| fan_mode (AUTO/LOW/MID2/MID1/HIGH) | `climate.ae200_*` `fan_mode` | ✅ fan bar meter + tap-to-cycle |
+| swing_mode / AirDirection | `climate.ae200_*` `swing_mode` | ✅ vane angle indicator |
+| current_temperature | `climate.ae200_*` | ✅ large readout + delta arc |
+| temperature (setpoint) | `climate.ae200_*` | ✅ setpoint + ±0.5 controls |
+| min_temp / max_temp | `climate.ae200_*` attributes | ✅ clamped to these bounds |
+| inlet return-air temp | `sensor.*_inlet_temperature` | ✅ footer stat |
+| outdoor unit temp | `sensor.*_outdoor_temp` | ✅ header chip |
+| filter dirty | `binary_sensor.*_filter` (problem) | ✅ pulsing FILTER badge |
+| error code | `binary_sensor.*_error` (problem) | ✅ pulsing ERROR badge |
+
+**Composite id:** `ae200:<controllerId>` · **DeviceType:** `AE200`
+**Controls:** mode tap-cycle, ±setpoint buttons, fan tap-cycle via `updateDeviceState(entityId, payload)`
+**Optimistic + reconcile:** 8 s stale window with PENDING header badge
+**Graceful degradation:** renders an empty placeholder card when no `climate.ae200_*` entities found
+
 ## Sonos (core `sonos`) — SonosPlayerTile ⛔
 
 playbackState, volume, track (title/artist/album/art), playMode → `media_player.<room>`
