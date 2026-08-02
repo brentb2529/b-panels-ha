@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
 import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
 import { produce } from 'immer';
+import { useCoolMasterComposites } from './useCoolMasterSurface';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
 import * as haClient from '../services/haClient';
@@ -1064,6 +1065,15 @@ export const useDashboardActions = () => {
 
 export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [serviceDevices, setServiceDevices] = useState<Device[]>([]);
+  // Raw HA entity state snapshot (entity_id → HassEntity). Updated on every
+  // subscribeEntities push alongside serviceDevices. CoolMaster composites read
+  // per-unit attributes (fan_modes, swing_modes, temperature_unit, hvac_modes)
+  // directly from this ref — mapHaEntityToInternalDevice doesn't forward them.
+  const rawEntitiesRef = useRef<Record<string, any>>({});
+  // Trigger CoolMaster composite recompute when raw entities change. We keep a
+  // separate state counter so the useMemo dependency updates without copying the
+  // full map into React state.
+  const [rawEntitiesVersion, setRawEntitiesVersion] = useState(0);
   // entity_id -> HA device_id, used to group an integration's split entities
   // (e.g. a Litter-Robot's vacuum + sensors) back into one composite tile.
   const [entityDeviceMap, setEntityDeviceMap] = useState<Record<string, string>>({});
@@ -1378,21 +1388,32 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { flairComposites: [comp], flairMemberIds: members };
   }, [serviceDevices]);
 
+  // CoolMasterNet: one composite card per indoor unit, discovered dynamically
+  // from climate.* entities. Raw entity snapshot is used for per-unit attribute
+  // data (fan_modes, swing_modes, temperature_unit) not forwarded by the mapper.
+  // rawEntitiesVersion triggers recompute on every WS push without copying the map.
+  const { coolMasterComposites, coolMasterMemberIds } = useCoolMasterComposites(
+    serviceDevices,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useMemo(() => rawEntitiesRef.current, [rawEntitiesVersion])
+  );
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
     // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !coolMasterMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
     // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    coolMasterComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, coolMasterComposites, coolMasterMemberIds]);
 
   // id -> Device lookup, derived directly from `devices`. Memoized (not a
   // useState + effect) so it updates in the same render as `devices` — no extra
@@ -3041,6 +3062,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     }
                 }
                 prevEntities = entities;
+                // Update raw snapshot for CoolMaster composite assembly.
+                rawEntitiesRef.current = entities;
+                setRawEntitiesVersion(v => v + 1);
             });
             haUnsubsRef.current.push(unsubEntities);
             setHaWsState('connected');
