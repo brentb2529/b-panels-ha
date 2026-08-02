@@ -1,7 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useMemo, useRef } from 'react';
-import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState } from '../types';
+import { Device, TileConfig, DeviceService, DeviceType, DashboardPanel, ServiceConnection, User, MediaItem, AllowedIP, AlarmState, AppNotification, HighlightSectionConfig, ArmingEvent, SonosNotification, SonosNotificationEventType, InternetMonitorConfig, CheckEndpoint, FishingReportConfig, LitterRobotState, LitterRobotStatus, FlairState, GeneratorRehlkoState, Ae200State, Ae200Group, Ae200HvacMode, Ae200FanMode, Ae200SwingMode } from '../types';
 import { produce } from 'immer';
+import { useCoolMasterComposites } from './useCoolMasterSurface';
 import { homeAssistantService } from '../services/homeassistant';
 import { inferCapabilityProfile } from '../services/haCapabilities';
 import * as haClient from '../services/haClient';
@@ -346,7 +347,18 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.AlarmHistory:
         case DeviceType.RSSFeed:
         case DeviceType.Generator:
+        case DeviceType.GeneratorRehlko:
         case DeviceType.LitterRobot:
+        case DeviceType.AirControl:
+        // Pool surface is self-driven via usePoolSurface; its device.state is
+        // not used for rendering. An empty object is the correct default.
+        case DeviceType.IntelliCenterPool:
+        case DeviceType.AkvoFloor:
+        case DeviceType.UnifiSecurity:
+        // Security Area compilation panel is self-driven via useUnifiSurface +
+        // subscribeEntities. device.state carries optional SecurityAreaConfig
+        // (areaName, showEvents, showSensors, maxCameras); empty object is safe.
+        case DeviceType.SecurityArea:
             return {};
 
         // Generic HA entities carry their own value from the mapper; an empty
@@ -1064,6 +1076,15 @@ export const useDashboardActions = () => {
 
 export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [serviceDevices, setServiceDevices] = useState<Device[]>([]);
+  // Raw HA entity state snapshot (entity_id → HassEntity). Updated on every
+  // subscribeEntities push alongside serviceDevices. CoolMaster composites read
+  // per-unit attributes (fan_modes, swing_modes, temperature_unit, hvac_modes)
+  // directly from this ref — mapHaEntityToInternalDevice doesn't forward them.
+  const rawEntitiesRef = useRef<Record<string, any>>({});
+  // Trigger CoolMaster composite recompute when raw entities change. We keep a
+  // separate state counter so the useMemo dependency updates without copying the
+  // full map into React state.
+  const [rawEntitiesVersion, setRawEntitiesVersion] = useState(0);
   // entity_id -> HA device_id, used to group an integration's split entities
   // (e.g. a Litter-Robot's vacuum + sensors) back into one composite tile.
   const [entityDeviceMap, setEntityDeviceMap] = useState<Record<string, string>>({});
@@ -1378,21 +1399,314 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     return { flairComposites: [comp], flairMemberIds: members };
   }, [serviceDevices]);
 
+  // CoolMasterNet: one composite card per indoor unit, discovered dynamically
+  // from climate.* entities. Raw entity snapshot is used for per-unit attribute
+  // data (fan_modes, swing_modes, temperature_unit) not forwarded by the mapper.
+  // rawEntitiesVersion triggers recompute on every WS push without copying the map.
+  const { coolMasterComposites, coolMasterMemberIds } = useCoolMasterComposites(
+    serviceDevices,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useMemo(() => rawEntitiesRef.current, [rawEntitiesVersion])
+  );
+
+  // Kohler / Rehlko standby-generator composite. The HA core `rehlko`
+  // integration splits one generator into ~25 prefixed sensor/binary_sensor
+  // entities (sensor.generator_*, binary_sensor.generator_*). We fold them back
+  // into ONE display-only status card, mirroring the Flair composite pattern.
+  // DISPLAY-ONLY: rehlko exposes no control entities, so nothing here is wired
+  // to a service call. Bound by naming prefix so it works regardless of the
+  // device's friendly name (entity_ids are `<device slug>_<key>`); we accept a
+  // `generator_` or `rehlko_` object-id prefix. Lives purely in serviceDevices,
+  // so it stays live via subscribeEntities with no polling.
+  const { generatorRehlkoComposites, generatorRehlkoMemberIds } = useMemo(() => {
+    const empty = { generatorRehlkoComposites: [] as Device[], generatorRehlkoMemberIds: new Set<string>() };
+
+    // Object-id (after the domain dot) for an entity device id.
+    const objId = (id: string) => id.split('.').slice(1).join('.');
+    // A generator member: sensor/binary_sensor whose object-id starts with the
+    // generator/rehlko prefix. (The `_oil_pressure` binary_sensor is the fault;
+    // the `_oil_pressure` sensor is the psi reading — both are valid members.)
+    const PREFIX_RE = /^(generator|rehlko)[_-]/i;
+    const members = serviceDevices.filter(d => {
+      const [domain] = d.id.split('.');
+      return (domain === 'sensor' || domain === 'binary_sensor') && PREFIX_RE.test(objId(d.id));
+    });
+    if (members.length === 0) return empty;
+
+    const raw = (d: Device) => String((d.capabilityData as any)?.rawState ?? '');
+    const dc = (d: Device) => String((d.capabilityData as any)?.deviceClass ?? '').toLowerCase();
+    // Find one member by a suffix on its object-id (anchored to end).
+    const find = (suffix: RegExp) => members.find(d => suffix.test(objId(d.id)));
+    const num = (d: Device | undefined): number | null => {
+      if (!d) return null;
+      const n = parseFloat(raw(d));
+      return Number.isFinite(n) ? n : null;
+    };
+    const txt = (d: Device | undefined): string | null => {
+      if (!d) return null;
+      const s = raw(d);
+      return s && !['unknown', 'unavailable', ''].includes(s.toLowerCase()) ? s : null;
+    };
+    const boolOf = (d: Device | undefined): boolean | null => {
+      if (!d) return null;
+      const s = raw(d).toLowerCase();
+      if (['on', 'true'].includes(s)) return true;
+      if (['off', 'false'].includes(s)) return false;
+      return null;
+    };
+
+    // Resolve each logical field from its entity. Suffixes are anchored ($) so
+    // e.g. `_voltage` doesn't swallow `_utility_voltage` / `_battery_voltage`.
+    const engineStateE = find(/_engine_state$/);
+    const statusE = find(/_status$/);
+    const powerSourceE = find(/_power_source$/);
+    const autoRunE = find(/_auto_run$/);
+    const connectivityE = find(/_connectivity$/) || members.find(d => dc(d) === 'connectivity');
+    // oil-pressure PROBLEM binary_sensor vs the psi sensor: split by domain.
+    const oilProblemE = members.find(d => d.id.startsWith('binary_sensor.') && /_oil_pressure$/.test(objId(d.id)));
+    const oilPsiE = members.find(d => d.id.startsWith('sensor.') && /_oil_pressure$/.test(objId(d.id)));
+
+    const engineState = txt(engineStateE);
+    const status = txt(statusE);
+    const runningWord = `${engineState ?? ''} ${status ?? ''}`.toLowerCase();
+    const isExercising = /exerc/.test(runningWord);
+    const isRunning = /run|crank|exerc/.test(runningWord) && !/standby|ready|off|stop/.test(engineState?.toLowerCase() ?? '');
+
+    const psRaw = txt(powerSourceE)?.toLowerCase() ?? null;
+    const powerSource: 'utility' | 'generator' | null =
+      psRaw == null ? null : /gen/.test(psRaw) ? 'generator' : /util|mains|grid/.test(psRaw) ? 'utility' : null;
+
+    // binary_sensor with device_class=problem is ON when there IS a problem.
+    const oilPressureProblem = boolOf(oilProblemE);
+
+    const state: GeneratorRehlkoState = {
+      generatorName: 'Generator',
+      isConnected: boolOf(connectivityE),
+      isPreview: members.some(d => (d.capabilityData as any)?.preview === true)
+        || members.some(d => /\(preview\)/i.test(d.name)),
+      engineState, status, isRunning, isExercising, powerSource,
+      autoRun: boolOf(autoRunE),
+      oilPressureProblem,
+      batteryVoltage: num(find(/_battery_voltage$/)),
+      engineFrequency: num(find(/_(engine_)?frequency$/)),
+      // Generator output (avg) voltage: exactly `_voltage` (or `_voltage_avg`),
+      // NOT `_battery_voltage` / `_utility_voltage` (anchored negative lookbehind
+      // isn't portable, so match the precise suffixes instead).
+      generatorVoltage: num(members.find(d =>
+        d.id.startsWith('sensor.') && /(^|_)(generator|rehlko)_voltage(_avg)?$/.test(objId(d.id)))),
+      utilityVoltage: num(find(/_utility_voltage$/)),
+      loadWatts: num(find(/_load$/)),
+      loadPercent: num(find(/_load_percent$/)),
+      engineSpeed: num(find(/_engine_speed$/)),
+      coolantTemp: num(find(/_coolant_temp(erature)?$/)),
+      oilTemp: num(find(/_(lube_)?oil_temp(erature)?$/)),
+      controllerTemp: num(find(/_controller_temp(erature)?$/)),
+      oilPressure: num(oilPsiE),
+      totalRuntimeHours: num(find(/_total_runtime$/) || find(/_runtime$/)),
+      nextExercise: txt(find(/_next_exercise$/)),
+      lastRun: txt(find(/_last_run$/) || find(/_last_ran$/)),
+      lastMaintenance: txt(find(/_last_maintenance$/)),
+      nextMaintenance: txt(find(/_next_maintenance$/)),
+      memberEntityIds: members.map(d => d.id),
+    };
+
+    // Derive the card name from the longest common prefix of the member
+    // friendly names (e.g. "Generator …") so the card title reads naturally.
+    const baseName = (() => {
+      const n = engineStateE?.name || statusE?.name || members[0]?.name || 'Generator';
+      // Strip the trailing entity-specific words to get the device name.
+      return n.replace(/\s+(engine state|status|power source|connectivity|.*)$/i, '').trim() || 'Generator';
+    })();
+    state.generatorName = baseName;
+
+    const memberIds = new Set(members.map(d => d.id));
+    const comp: Device = {
+      id: 'rehlko:generator',
+      name: baseName,
+      type: DeviceType.GeneratorRehlko,
+      service: DeviceService.HomeAssistant,
+      state,
+    };
+    return { generatorRehlkoComposites: [comp], generatorRehlkoMemberIds: memberIds };
+  }, [serviceDevices]);
+
+  // ── AE-200E (Mitsubishi City Multi direct) composite builder ─────────────────
+  // Discovers all entities with an `ae200` prefix, groups them by controller,
+  // and builds one Ae200Controller card per controller id. Members are hidden
+  // from the individual device list — only the composite card is shown.
+  //
+  // Entity naming conventions assumed from the ae200 custom component:
+  //   climate.ae200_<controller>_<group>        — one per indoor unit group
+  //   sensor.<controller>_<group>_inlet_temperature
+  //   sensor.<controller>_outdoor_temp
+  //   binary_sensor.<controller>_<group>_filter
+  //   binary_sensor.<controller>_<group>_error
+  const { ae200Composites, ae200MemberIds } = useMemo(() => {
+    const empty = { ae200Composites: [] as Device[], ae200MemberIds: new Set<string>() };
+
+    // All entities whose entity_id starts with a domain we care about and contains 'ae200'
+    const ae200Climates  = serviceDevices.filter(d => /^climate\.ae200_/i.test(d.id));
+    if (ae200Climates.length === 0) return empty;
+
+    const members = new Set<string>();
+
+    // Helper: pull the raw capabilityData.rawState or the mapped state from any device
+    const rawOf = (d: Device | undefined): any => (d?.capabilityData as any)?.rawState;
+    // Helper: extract a numeric sensor value from a device's state
+    const numericState = (d: Device | undefined): number | null => {
+      if (!d) return null;
+      const v = typeof d.state === 'number' ? d.state : parseFloat(String(d.state));
+      return isFinite(v) ? v : null;
+    };
+
+    // Group climate entities by controller id.
+    // entity_id = climate.ae200_<controller>_<groupSlug>
+    // controller = everything between 'ae200_' and the last '_<groupSlug>' part.
+    // We identify the controller as the shared prefix among climate entities.
+    //
+    // Strategy: split off 'ae200_' prefix, then treat all but the final segment as
+    // the controller key. e.g. climate.ae200_office_zone1 → controller='office', group='zone1'
+    // For single-segment: climate.ae200_zone1 → controller='default', group='zone1'
+    const controllerMap = new Map<string, { climates: Device[] }>();
+
+    for (const d of ae200Climates) {
+      // Strip domain and 'ae200_' prefix
+      const slug = d.id.replace(/^climate\.ae200_/i, '');
+      const parts = slug.split('_');
+      // Use all-but-last parts as controller key; last part is group slug
+      const controllerKey = parts.length > 1 ? parts.slice(0, -1).join('_') : 'default';
+      if (!controllerMap.has(controllerKey)) controllerMap.set(controllerKey, { climates: [] });
+      controllerMap.get(controllerKey)!.climates.push(d);
+    }
+
+    const composites: Device[] = [];
+
+    for (const [controllerId, { climates }] of controllerMap.entries()) {
+      // Find outdoor temp sensor for this controller
+      const outdoorSensorId = `ae200_${controllerId}_outdoor_temp`;
+      const outdoorSensor = serviceDevices.find(d =>
+        /^sensor\./i.test(d.id) && (
+          d.id.toLowerCase().includes(`ae200_${controllerId}_outdoor`) ||
+          d.id.toLowerCase().includes(`ae200_outdoor_temp`)
+        )
+      );
+      if (outdoorSensor) members.add(outdoorSensor.id);
+
+      const outdoorTemp = outdoorSensor ? numericState(outdoorSensor) : null;
+
+      // Build one Ae200Group per climate entity
+      const groups: Ae200Group[] = climates.map(climate => {
+        members.add(climate.id);
+        const raw = rawOf(climate);
+        const climateState = climate.state as any;
+
+        // Extract group slug from entity id
+        const slug = climate.id.replace(/^climate\.ae200_/i, '').replace(new RegExp(`^${controllerId}_`, 'i'), '');
+
+        // Find sibling sensors / binary_sensors
+        const inletId = serviceDevices.find(d =>
+          /^sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_${controllerId}_${slug}_inlet_temperature`)
+        ) || serviceDevices.find(d =>
+          /^sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_inlet`)
+        );
+        const filterSensor = serviceDevices.find(d =>
+          /^binary_sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_filter`)
+        );
+        const errorSensor = serviceDevices.find(d =>
+          /^binary_sensor\./i.test(d.id) && d.id.toLowerCase().includes(`ae200_`) && d.id.toLowerCase().includes(`${slug}_error`)
+        );
+
+        if (inletId) members.add(inletId.id);
+        if (filterSensor) members.add(filterSensor.id);
+        if (errorSensor) members.add(errorSensor.id);
+
+        const isUnavailable = raw === 'unavailable' || String(climateState?.mode ?? raw ?? '').toLowerCase() === 'unavailable';
+        const mode = (isUnavailable ? 'off' : (typeof climateState?.mode === 'string' ? climateState.mode : (typeof raw === 'string' ? raw : 'off'))) as Ae200HvacMode;
+        const isOn = !isUnavailable && mode !== 'off';
+
+        // Infer isActive: active = mode is on and demand is likely
+        const curTemp  = typeof climateState?.currentTemp === 'number' ? climateState.currentTemp : null;
+        const setpoint = typeof climateState?.setpoint    === 'number' ? climateState.setpoint    : null;
+        let isActive = false;
+        if (isOn && curTemp !== null && setpoint !== null) {
+          if (mode === 'cool') isActive = curTemp > setpoint + 0.3;
+          else if (mode === 'heat') isActive = curTemp < setpoint - 0.3;
+          else if (mode === 'dry' || mode === 'fan_only') isActive = true;
+          else isActive = Math.abs(curTemp - setpoint) > 0.3;
+        } else if (isOn && (mode === 'fan_only' || mode === 'dry')) {
+          isActive = true;
+        }
+
+        const rawAttr = (climate.capabilityData as any)?.attributes || {};
+        const tempUnit: '°C' | '°F' = String(rawAttr.temperature_unit || '').includes('F') ? '°F' : '°C';
+
+        return {
+          entityId: climate.id,
+          name: climate.name,
+          mode,
+          isOn,
+          fanMode: (climateState?.fan ?? rawAttr.fan_mode ?? 'AUTO') as Ae200FanMode,
+          swingMode: (rawAttr.swing_mode ?? null) as Ae200SwingMode | null,
+          currentTemp: curTemp,
+          setpoint,
+          minTemp: typeof rawAttr.min_temp === 'number' ? rawAttr.min_temp : null,
+          maxTemp: typeof rawAttr.max_temp === 'number' ? rawAttr.max_temp : null,
+          tempUnit,
+          inletTemp: inletId ? numericState(inletId) : null,
+          filterDirty: filterSensor ? filterSensor.state === true || String(filterSensor.state).toLowerCase() === 'on' : false,
+          hasError: errorSensor ? errorSensor.state === true || String(errorSensor.state).toLowerCase() === 'on' : false,
+          isOnline: !isUnavailable,
+          isActive,
+        };
+      });
+
+      const controllerName = controllerId === 'default'
+        ? 'AE-200E'
+        : controllerId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const isOnline = groups.some(g => g.isOnline);
+
+      const state: Ae200State = {
+        controllers: [{
+          controllerId,
+          name: controllerName,
+          outdoorTemp,
+          groups,
+          isOnline,
+        }],
+        lastUpdatedMs: Date.now(),
+      };
+
+      const compositeDevice: Device = {
+        id: `ae200:${controllerId}`,
+        name: controllerName,
+        type: DeviceType.AE200,
+        service: DeviceService.HomeAssistant,
+        state,
+      };
+      composites.push(compositeDevice);
+    }
+
+    return { ae200Composites: composites, ae200MemberIds: members };
+  }, [serviceDevices]);
+
   const devices = useMemo(() => {
     const uniqueDeviceMap = new Map<string, Device>();
     // Add virtual devices (including synthetic) first
     allVirtualDevices.forEach(d => uniqueDeviceMap.set(d.id, d));
     // Then service devices, except those folded into a composite card.
     serviceDevices.forEach(d => {
-      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
+      if (!robotMemberIds.has(d.id) && !petMemberIds.has(d.id) && !flairMemberIds.has(d.id) && !coolMasterMemberIds.has(d.id) && !generatorRehlkoMemberIds.has(d.id) && !ae200MemberIds.has(d.id)) uniqueDeviceMap.set(d.id, d);
     });
     // Finally the composite cards.
     robotComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     petComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
     flairComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    coolMasterComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    generatorRehlkoComposites.forEach(d => uniqueDeviceMap.set(d.id, d));
+    ae200Composites.forEach(d => uniqueDeviceMap.set(d.id, d));
 
     return Array.from(uniqueDeviceMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds]);
+  }, [serviceDevices, allVirtualDevices, robotComposites, robotMemberIds, petComposites, petMemberIds, flairComposites, flairMemberIds, coolMasterComposites, coolMasterMemberIds, generatorRehlkoComposites, generatorRehlkoMemberIds, ae200Composites, ae200MemberIds]);
 
   // id -> Device lookup, derived directly from `devices`. Memoized (not a
   // useState + effect) so it updates in the same render as `devices` — no extra
@@ -3041,6 +3355,9 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     }
                 }
                 prevEntities = entities;
+                // Update raw snapshot for CoolMaster composite assembly.
+                rawEntitiesRef.current = entities;
+                setRawEntitiesVersion(v => v + 1);
             });
             haUnsubsRef.current.push(unsubEntities);
             setHaWsState('connected');

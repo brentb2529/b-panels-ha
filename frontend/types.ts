@@ -31,6 +31,12 @@ export enum DeviceType {
   SmokeDetector = 'SMOKE_DETECTOR',
   CarbonMonoxideDetector = 'CARBON_MONOXIDE_DETECTOR',
   Generator = 'GENERATOR',
+  // Standby-generator status surface bound to the Home Assistant core `rehlko`
+  // integration (Kohler / RDC2). Distinct from `Generator` above, which is the
+  // legacy EnergyTrak/genmon HTTP-proxy tile. DISPLAY-ONLY: rehlko exposes no
+  // control entities, so this surface renders telemetry and never commands the
+  // unit. Built as a composite from the generator's prefixed HA entities.
+  GeneratorRehlko = 'GENERATOR_REHLKO',
   LitterRobot = 'LITTER_ROBOT',
   Vacuum = 'VACUUM',
   Pet = 'PET',
@@ -40,6 +46,23 @@ export enum DeviceType {
   Flair = 'FLAIR',
   CoolMaster = 'COOLMASTER',
   PoolFloor = 'POOL_FLOOR',
+  // Bespoke per-room air-control surface. A single virtual tile that discovers
+  // every controllable `climate.*` zone live (via subscribeEntities) and renders
+  // one independent control card per zone. Not backed by one entity — it
+  // self-drives through services/haClient.ts, like the Flair structure card.
+  AirControl = 'AIR_CONTROL',
+  // SAFETY-CRITICAL bespoke surface for the AKVO Movable Floor. A single virtual
+  // tile that monitors the akvo integration's read entities and offers the ONE
+  // gated request path (select.select_option on the configuration-request
+  // select). Self-driven via services/haClient.ts; never commands raw motion.
+  AkvoFloor = 'AKVO_FLOOR',
+  // Lutron HomeWorks QSX self-driven surface. Discovers lights/covers/scenes/
+  // buttons/keypad-LEDs by domain, groups by area, and renders rich controls
+  // (dimmer+CCT/color, animated shade/blind, scene buttons, keypad+LED indicators).
+  // Contract: ENTITY_CONTRACT.md "Lighting / shades / scenes / keypads" (LOCKED).
+  LutronSurface = 'LUTRON_SURFACE',
+  // Mitsubishi City Multi AE-200E direct integration (ae200 custom component)
+  AE200 = 'AE200',
   // Fallback type for Home Assistant entities whose domain isn't explicitly
   // mapped to a bespoke type above. The tile and (later) command routing are
   // driven by the inferred `capabilities` rather than a per-type
@@ -50,6 +73,39 @@ export enum DeviceType {
   // (or any URL) in a sandboxed iframe. HA-aware — resolves a relative
   // dashboard path against the configured HA connection's base URL.
   HACustomCard = 'HA_CUSTOM_CARD',
+
+  // Surface 1 — Pool / Spa (Pentair IntelliCenter).
+  // Self-driven: the tile hooks directly into subscribeEntities and resolves
+  // all IntelliCenter entities at runtime. See hooks/usePoolSurface.ts.
+  // Bind by OBJTYPE/OBJNAM attributes, NOT by literal entity_id.
+  IntelliCenterPool = 'INTELLICENTER_POOL',
+  // Surface 5 — UniFi Protect security / cameras composite.
+  // Discovers all HA camera.* entities + sibling binary_sensor/event/light
+  // entities dynamically. Display-only: no RTSP creds, no plate text (PII),
+  // no floodlight control (equipment-gated).
+  UnifiSecurity = 'UNIFI_SECURITY',
+
+  // Surface 6 — Pool Area compilation panel.
+  // Flagship multi-integration surface composing IntelliCenter (pool/spa),
+  // AKVO Movable Floor (monitor + guarded preset), and Lutron lights/shades
+  // filtered to pool/patio/spa areas — all in one immersive view with an
+  // animated water-caustics backdrop. Configurable via device.state JSON
+  // (see PoolAreaConfig in PoolCompilationTile.tsx). AKVO safety is fully
+  // preserved: the embedded AkvoSectionContent replicates the same
+  // HoldToRequest gate and single select.select_option write path.
+  PoolArea = 'POOL_AREA',
+
+  // Surface 7 — Security Area compilation panel.
+  // Immersive area/function dashboard for cameras and security sensors.
+  // Composes UniFi Protect camera wall (HA-proxied streams, smart-detect
+  // chips, motion/doorbell pulses, floodlight state display-only), a
+  // cross-camera recent-events timeline, and any HA contact/lock sensors
+  // (graceful degradation if none). Configurable via device.state JSON
+  // (see SecurityAreaConfig in SecurityCompilationTile.tsx).
+  // SECURITY CONTRACT: no RTSP creds, no plate text (PII), no floodlight
+  // control, no arm/disarm, no recording-mode change, no siren control —
+  // all security-hardware writes are deferred/equipment-gated.
+  SecurityArea = 'SECURITY_AREA',
 }
 
 // A small, stable vocabulary of what an entity can *do*, inferred from Home
@@ -702,6 +758,55 @@ export interface FlairStructure {
   activeRoomCount: number;
 }
 
+// ---------------------------------------------------------------------------
+// Kohler / Rehlko standby generator (HA core `rehlko`) — composite card state
+// ---------------------------------------------------------------------------
+// DISPLAY-ONLY telemetry composed from the generator's prefixed HA entities
+// (sensor.generator_* / binary_sensor.generator_*). rehlko ships NO control
+// entities, so this state object carries no command surface. A numeric/string
+// field is `null` when the controller didn't report it (availability varies per
+// unit) — the tile renders "n/a" rather than a fake 0.
+export interface GeneratorRehlkoState {
+  // Identification / liveness
+  generatorName: string;
+  isConnected: boolean | null;     // binary_sensor.*_connectivity (controller online)
+  isPreview: boolean;              // representative fixture, NOT live telemetry
+
+  // Hero
+  engineState: string | null;      // sensor.*_engine_state (Off/Standby/Running/…)
+  status: string | null;           // sensor.*_status (ReadyToRun/Running/…)
+  isRunning: boolean;              // derived: engineState/status == running/exercise
+  isExercising: boolean;           // derived: exercise cycle
+  powerSource: 'utility' | 'generator' | null; // sensor.*_power_source
+  autoRun: boolean | null;         // binary_sensor.*_auto_run (AUTO mode armed)
+
+  // Attention (the only shipped fault is oil-pressure problem)
+  oilPressureProblem: boolean | null; // binary_sensor.*_oil_pressure (problem class; true = problem)
+
+  // Vitals (null when not reported)
+  batteryVoltage: number | null;   // V
+  engineFrequency: number | null;  // Hz
+  generatorVoltage: number | null; // V (avg)
+  utilityVoltage: number | null;   // V (avg)
+  loadWatts: number | null;        // W
+  loadPercent: number | null;      // %
+  engineSpeed: number | null;      // rpm
+  coolantTemp: number | null;      // °F
+  oilTemp: number | null;          // °F
+  controllerTemp: number | null;   // °F
+  oilPressure: number | null;      // psi
+  totalRuntimeHours: number | null;// h
+
+  // Schedule / maintenance (ISO 8601 strings)
+  nextExercise: string | null;
+  lastRun: string | null;
+  lastMaintenance: string | null;
+  nextMaintenance: string | null;
+
+  // Member entity_ids that fed this composite (diagnostic / detail modal).
+  memberEntityIds: string[];
+}
+
 export interface FlairState {
   // Identification
   structureId: string;
@@ -822,4 +927,51 @@ export interface PoolFloorState {
 
   // Currently active command bit (0=reset, 1-8=config, null=none)
   activeCommandBit:      number | null;
+}
+
+// ── Mitsubishi City Multi AE-200E Direct Integration ─────────────────────────
+// One composite card per AE-200E controller (controller_id prefix), grouping
+// all indoor unit groups managed by that controller.
+
+export type Ae200HvacMode = 'heat' | 'cool' | 'dry' | 'fan_only' | 'auto' | 'off';
+export type Ae200FanMode  = 'AUTO' | 'LOW' | 'MID2' | 'MID1' | 'HIGH';
+// swing_mode / AirDirection from ae200: numeric angles or named presets
+export type Ae200SwingMode = 'auto' | 'horizontal' | 'vertical' | '1' | '2' | '3' | '4' | '5';
+
+export interface Ae200Group {
+  // The entity_id of the climate entity for this group
+  entityId: string;
+  name: string;
+  // HVAC
+  mode: Ae200HvacMode;
+  isOn: boolean;
+  fanMode: Ae200FanMode;
+  swingMode: Ae200SwingMode | null;
+  currentTemp: number | null;
+  setpoint: number | null;
+  minTemp: number | null;
+  maxTemp: number | null;
+  tempUnit: '°C' | '°F';
+  // Sensors
+  inletTemp: number | null;          // sensor.*_inlet_temperature
+  filterDirty: boolean;              // binary_sensor.*_filter (problem class)
+  hasError: boolean;                 // binary_sensor.*_error (problem class)
+  isOnline: boolean;                 // unavailable → false
+  // Derived: is the compressor/demand active this cycle?
+  isActive: boolean;
+}
+
+export interface Ae200Controller {
+  // e.g. "ae200_office" — the common prefix of all entities on this controller
+  controllerId: string;
+  name: string;
+  outdoorTemp: number | null;        // sensor.*_outdoor_temp
+  groups: Ae200Group[];
+  isOnline: boolean;
+}
+
+export interface Ae200State {
+  controllers: Ae200Controller[];
+  // Stale-data indicator: ms since last HA entity update across all controllers
+  lastUpdatedMs: number | null;
 }
