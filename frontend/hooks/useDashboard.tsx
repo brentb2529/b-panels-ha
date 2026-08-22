@@ -1220,7 +1220,8 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       const vac = grp.find(d => d.type === DeviceType.Vacuum);
       if (!vac) return;
       const find = (re: RegExp) => grp.find(d => d.id !== vac.id && re.test(d.id));
-      const wasteS = find(/waste/i);
+      // Sensor only: LR5 also has button.*_reset_waste_drawer, which must not win.
+      const wasteS = grp.find(d => d.id !== vac.id && d.id.startsWith('sensor.') && /waste/i.test(d.id)) || find(/waste[_ ]?(drawer|level)$/i);
       const litterS = find(/litter[_ ]?level/i)
         || grp.find(d => d.id !== vac.id && /litter/i.test(d.id) && (d.capabilityData as any)?.unit === '%');
       // Only Litter-Robots become composite cards; generic vacuums stay as VacuumTile.
