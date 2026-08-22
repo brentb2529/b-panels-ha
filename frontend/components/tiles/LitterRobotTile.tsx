@@ -153,9 +153,18 @@ const LitterRobotDetailModal = ({ device, onClose, onCommand }: {
 
     if (state.isLR4) {
         detailItems.push(
-            { label: 'LR4 Sensors', value: null, isHeader: true },
+            { label: state.isLR5 ? 'Sensors' : 'LR4 Sensors', value: null, isHeader: true },
             { label: 'Litter Level', value: fmt(state.litterLevel, '%') },
             { label: 'Pet Weight', value: state.petWeight ? fmt(state.petWeight, ' lbs') : 'N/A' },
+        );
+    }
+    if (state.isLR5) {
+        detailItems.push(
+            { label: 'Drawer Removed', value: state.isDrawerRemoved ? 'YES' : 'No' },
+            { label: 'Bonnet Removed', value: state.isBonnetRemoved ? 'YES' : 'No' },
+            { label: 'Laser Dirty', value: state.isLaserDirty ? 'YES' : 'No' },
+            { label: 'Scoops Saved', value: state.scoopsSaved ?? 'N/A' },
+            { label: 'Next Filter Change', value: state.nextFilterReplacement ? fmtDate(state.nextFilterReplacement) : 'N/A' },
         );
     }
 

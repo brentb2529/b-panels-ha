@@ -1236,12 +1236,25 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       const lightCtl = grp.find(d => d.id !== vac.id && /night[_ ]?light/i.test(d.id))
         || grp.find(d => d.id !== vac.id && /globe[_ ]?light/i.test(d.id));
       const lockSw = grp.find(d => d.id !== vac.id && /panel[_ ]?lock|lockout/i.test(d.id));
-      const resetBtn = grp.find(d => /reset/i.test(d.id));
+      // LR5 exposes both "Reset" (unit) and "Reset waste drawer" (gauge); the
+      // tile's Reset action is the drawer-gauge reset (LR4 only has that one).
+      const resetBtn = grp.find(d => /reset[_ ]?waste/i.test(d.id)) || grp.find(d => /reset/i.test(d.id));
+      // LR5 Pro-only entities.
+      const drawerRemovedS = find(/drawer[_ ]?removed/i);
+      const bonnetRemovedS = find(/bonnet[_ ]?removed/i);
+      const laserDirtyS = find(/laser[_ ]?dirty/i);
+      const scoopsS = find(/scoops[_ ]?saved/i);
+      const filterS = find(/filter[_ ]?replacement/i);
+      const isLR5 = grp.some(d => /litter[_ ]?robot[_ ]?5|\blr5\b/i.test(`${d.id} ${d.name}`)) || !!scoopsS || !!filterS;
+      const isLR5Pro = isLR5 && grp.some(d => /5[_ ]?pro\b/i.test(`${d.id} ${d.name}`));
 
       const vacState = String(vac.state ?? '').toLowerCase();
       const statusCode = statusS ? String(statusS.state ?? '') : '';
       const online = vac.isOnline !== false && vacState !== 'unavailable' && statusCode.toLowerCase() !== 'offline';
-      const normalizedStatus = normalizeLitterStatus(statusCode || vacState, vacState, online);
+      let normalizedStatus = normalizeLitterStatus(statusCode || vacState, vacState, online);
+      // LR5 reports bonnet/drawer removal as separate problem sensors rather
+      // than (only) a status code; surface them the same way LR4 "br" is.
+      if (online && normalizedStatus === 'READY' && truthy(bonnetRemovedS)) normalizedStatus = 'BONNET_REMOVED';
       const waste = numOf(wasteS) ?? 0;
       const litter = numOf(litterS);
       const lightOn = lightCtl ? String(lightCtl.state).toLowerCase() !== 'off' : undefined;
@@ -1250,7 +1263,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
 
       const lrState: LitterRobotState = {
         id: did, serial: did, name,
-        model: litter !== undefined ? 'Litter-Robot 4' : 'Litter-Robot',
+        model: isLR5 ? (isLR5Pro ? 'Litter-Robot 5 Pro' : 'Litter-Robot 5') : litter !== undefined ? 'Litter-Robot 4' : 'Litter-Robot',
         isOnline: online, powerStatus: online ? 'on' : 'off',
         unitStatus: statusCode, statusText: statusCode, statusCode, normalizedStatus,
         cycleCount: 0, cyclesAfterDrawerFull: 0,
@@ -1265,6 +1278,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         lastSeen: lastSeenS ? String(lastSeenS.state) : undefined,
         isLR4: litter !== undefined, litterLevel: litter, petWeight: numOf(petS),
         isLR3: litter === undefined,
+        isLR5, isDrawerRemoved: drawerRemovedS ? truthy(drawerRemovedS) : undefined,
+        isBonnetRemoved: bonnetRemovedS ? truthy(bonnetRemovedS) : undefined,
+        isLaserDirty: laserDirtyS ? truthy(laserDirtyS) : undefined,
+        scoopsSaved: numOf(scoopsS),
+        nextFilterReplacement: filterS && !/^(unknown|unavailable)$/i.test(String(filterS.state)) ? String(filterS.state) : undefined,
         haEntities: { vacuum: vac.id, nightLight: lightCtl?.id, panelLock: lockSw?.id, reset: resetBtn?.id },
       };
 

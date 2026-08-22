@@ -440,6 +440,14 @@ export interface LitterRobotState {
   lastSeen?: string;
   setupDate?: string;
 
+  // LR5 (Pro)-specific
+  isLR5?: boolean;
+  isDrawerRemoved?: boolean;
+  isBonnetRemoved?: boolean;
+  isLaserDirty?: boolean;
+  scoopsSaved?: number;
+  nextFilterReplacement?: string;
+
   // LR4-specific
   isLR4: boolean;
   litterLevel?: number;
