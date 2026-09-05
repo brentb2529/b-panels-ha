@@ -1,0 +1,558 @@
+/*
+ * B-Panels Liquid Glass Design System — CSS Custom Property Tokens
+ *
+ * Every surface/tile imports this file (or picks it up via index.html).
+ * All values are pure CSS custom properties — no Tailwind needed.
+ *
+ * TOKEN GROUPS
+ * ─────────────────────────────────────────────────────────────────────
+ *  --glass-*        Material definition (blur, saturation, brightness, tint)
+ *  --glass-lN-backdrop  Pre-composed backdrop-filter string (blur+sat+bright)
+ *  --elev-*         Shadow / elevation scale (0 = flat → 5 = floating)
+ *  --specular-*     Highlight overlays for top-lit surfaces
+ *  --sheen-*        Diagonal sheen gradient sweep across glass
+ *  --rim-*          Fine beveled rim (bright top edge + dark bottom edge)
+ *  --glow-*         Accent halo recipes for active cards/controls
+ *  --radius-*       Continuous-rounded corner radii (squircle-feel)
+ *  --spring-*       Motion easing curves + duration scale
+ *  --type-*         Type-scale (size + weight + tracking)
+ *  --space-*        Spacing scale (4 pt grid)
+ *  --accent-*       Semantic device accents (unchanged from base theme)
+ *  --surface-*      Background RGB channel triplets (unchanged from base)
+ *
+ * DARK (default :root), LIGHT (body.light-mode), AMBIENT-NIGHT (body.ambient-night)
+ * — glass materiality changes between themes; accent hues are inherited from
+ * the base theme tokens already set in index.html.
+ *
+ * ITERATION 2 — intensified for a more luminous, premium "liquid glass" read:
+ * higher saturation/brightness backdrop, lower bg opacity (more show-through),
+ * a sheen sweep + a beveled rim on every glass surface, stronger but soft
+ * multilayer float shadows, and readable warm/cool accent halos.
+ */
+
+/* ── DARK default ───────────────────────────────────────────────────────── */
+:root {
+  /* Glass material levels ───────────────────────────────────────────────── */
+  /* Each level now exposes a pre-composed --glass-lN-backdrop string so the
+     vibrancy recipe (blur + saturation + brightness) is defined ONCE and reused.
+     brightness() lifts the frosted material so the background reads luminously
+     instead of muddy — the key change that gives dark mode life. */
+
+  /* Level 1 — base tile surface */
+  --glass-l1-blur:       16px;
+  --glass-l1-saturate:   1.9;
+  --glass-l1-brightness: 1.08;
+  --glass-l1-bg:         rgba(24, 32, 46, 0.60);
+  --glass-l1-border:     rgba(255, 255, 255, 0.14);
+  --glass-l1-tint:       rgba(255, 255, 255, 0.05);
+  --glass-l1-backdrop:   blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate)) brightness(var(--glass-l1-brightness));
+
+  /* Level 2 — elevated card */
+  --glass-l2-blur:       22px;
+  --glass-l2-saturate:   2.1;
+  --glass-l2-brightness: 1.10;
+  --glass-l2-bg:         rgba(32, 43, 62, 0.50);
+  --glass-l2-border:     rgba(255, 255, 255, 0.18);
+  --glass-l2-tint:       rgba(255, 255, 255, 0.07);
+  --glass-l2-backdrop:   blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate)) brightness(var(--glass-l2-brightness));
+
+  /* Level 3 — control buttons (compact glass beads) */
+  --glass-l3-blur:       10px;
+  --glass-l3-saturate:   1.8;
+  --glass-l3-brightness: 1.12;
+  --glass-l3-bg:         rgba(44, 57, 78, 0.50);
+  --glass-l3-border:     rgba(255, 255, 255, 0.16);
+  --glass-l3-tint:       rgba(255, 255, 255, 0.06);
+  --glass-l3-backdrop:   blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate)) brightness(var(--glass-l3-brightness));
+
+  /* Level 4 — cluster wrapper (deepest, most transparent) */
+  --glass-l4-blur:       30px;
+  --glass-l4-saturate:   2.3;
+  --glass-l4-brightness: 1.04;
+  --glass-l4-bg:         rgba(13, 19, 31, 0.46);
+  --glass-l4-border:     rgba(255, 255, 255, 0.10);
+  --glass-l4-tint:       rgba(255, 255, 255, 0.035);
+  --glass-l4-backdrop:   blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate)) brightness(var(--glass-l4-brightness));
+
+  /* Vibrancy tint strength — accent bleeds into glass bg */
+  --glass-accent-tint-strength: 0.18;
+
+  /* Elevation / shadow scale ────────────────────────────────────────────── */
+  /* Stronger but soft: a tight contact shadow + a wide diffuse drop + a hairline
+     ring. The cards now visibly float above the panel. */
+  --elev-0:  none;
+  --elev-1:  0 1px 2px rgba(0,0,0,0.28),
+             0 6px 14px -3px rgba(0,0,0,0.42),
+             0 0 0 0.5px rgba(0,0,0,0.22);
+  --elev-2:  0 2px 6px rgba(0,0,0,0.32),
+             0 12px 28px -6px rgba(0,0,0,0.54),
+             0 0 0 0.5px rgba(0,0,0,0.26);
+  --elev-3:  0 4px 12px rgba(0,0,0,0.36),
+             0 22px 48px -8px rgba(0,0,0,0.62),
+             0 0 0 0.5px rgba(0,0,0,0.28);
+  --elev-4:  0 8px 22px rgba(0,0,0,0.40),
+             0 34px 70px -10px rgba(0,0,0,0.70),
+             0 0 0 0.5px rgba(0,0,0,0.32);
+  --elev-5:  0 16px 40px rgba(0,0,0,0.44),
+             0 54px 104px -14px rgba(0,0,0,0.78),
+             0 0 0 0.5px rgba(0,0,0,0.36);
+
+  /* Specular / highlight overlays ──────────────────────────────────────── */
+  /* More pronounced top-lit glare — a brighter, tighter highlight that reads as
+     a light source above the glass. */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,255,255,0.24) 0%,
+      rgba(255,255,255,0.10) 20%,
+      rgba(255,255,255,0.00) 48%,
+      rgba(0,0,0,0.14) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      152deg,
+      rgba(255,255,255,0.34) 0%,
+      rgba(255,255,255,0.14) 16%,
+      rgba(255,255,255,0.00) 44%,
+      rgba(0,0,0,0.18) 100%
+    );
+
+  /* Sheen — a narrow diagonal band of light sweeping across the surface, the
+     hallmark of real glass catching a reflection. Layered ABOVE the specular. */
+  --sheen-default:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 32%,
+      rgba(255,255,255,0.08) 46%,
+      rgba(255,255,255,0.14) 50%,
+      rgba(255,255,255,0.06) 54%,
+      transparent 68%,
+      transparent 100%
+    );
+
+  /* Rim — a fine beveled edge: bright top-left light + dark bottom-right shade,
+     composed as inset box-shadows so it traces the rounded border crisply. */
+  --rim-light:  inset 0 1px 0 rgba(255,255,255,0.30),
+                inset 1px 0 0 rgba(255,255,255,0.10);
+  --rim-shade:  inset 0 -1px 0 rgba(0,0,0,0.28),
+                inset -1px 0 0 rgba(0,0,0,0.14);
+  --rim:        var(--rim-light), var(--rim-shade);
+  /* Back-compat: --specular-bevel was the old single bright top edge. */
+  --specular-bevel: inset 0 1px 0 rgba(255,255,255,0.30);
+
+  /* Accent glow recipes ─────────────────────────────────────────────────── */
+  /* Readable halos for active cards. Used as: box-shadow with a color-mix on the
+     mode accent. These define the spread/blur; callers supply the color. */
+  --glow-soft-spread:    22px;
+  --glow-soft-strength:  0.40;
+  --glow-strong-spread:  34px;
+  --glow-strong-strength: 0.55;
+  /* Inner accent wash strength (color-mix % into the glass bg for active cards) */
+  --glow-tint-strength:  0.22;
+
+  /* Continuous-rounded radii ────────────────────────────────────────────── */
+  --radius-surface:  1.25rem;
+  --radius-card:     1.0rem;
+  --radius-control:  0.75rem;
+  --radius-chip:     0.5rem;
+  --radius-pill:     9999px;
+  --radius-tile:     var(--radius-card);
+
+  /* Motion: spring-eased curves ────────────────────────────────────────── */
+  --spring-snappy:   cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-gentle:   cubic-bezier(0.22, 1.0,  0.36, 1);
+  --spring-bounce:   cubic-bezier(0.25, 1.8,  0.5,  1);
+
+  --dur-instant:     80ms;
+  --dur-fast:        160ms;
+  --dur-medium:      260ms;
+  --dur-slow:        420ms;
+  --dur-enter:       320ms;
+  --dur-exit:        200ms;
+
+  /* Type scale ──────────────────────────────────────────────────────────── */
+  --font-display:    -apple-system, "SF Pro Display", system-ui, sans-serif;
+  --font-body:       -apple-system, "SF Pro Text",    system-ui, sans-serif;
+  --font-numeric:    "SF Mono", "Menlo", ui-monospace, monospace;
+
+  --type-hero:       clamp(2.5rem, 5cqw, 3.5rem);
+  --type-xl:         1.5rem;
+  --type-lg:         1.125rem;
+  --type-md:         0.9375rem;
+  --type-sm:         0.8125rem;
+  --type-xs:         0.6875rem;
+  --type-2xs:        0.5625rem;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-heavy:    800;
+
+  --tracking-tight:  -0.025em;
+  --tracking-default: -0.01em;
+  --tracking-loose:  0.04em;
+  --tracking-caps:   0.08em;
+
+  /* Spacing scale (4pt grid) ────────────────────────────────────────────── */
+  --space-1:   0.25rem;
+  --space-2:   0.5rem;
+  --space-3:   0.75rem;
+  --space-4:   1.0rem;
+  --space-5:   1.25rem;
+  --space-6:   1.5rem;
+  --space-8:   2.0rem;
+  --space-10:  2.5rem;
+  --space-12:  3.0rem;
+}
+
+/* ── LIGHT mode ─────────────────────────────────────────────────────────── */
+/* Premium COOL-TINTED light glass (not flat white). The frosted material carries
+   a faint slate/blue cast so it reads as real glass over a cool canvas, with
+   genuine layered depth — deeper, multi-stop shadows + visible elevation so
+   cards float — and a refined (not blown-out) top-edge specular. Background
+   subtly shows through (lower bg opacity + high saturation). */
+body.light-mode {
+  --glass-l1-blur:       22px;
+  --glass-l1-saturate:   1.8;
+  --glass-l1-brightness: 1.02;
+  --glass-l1-bg:         rgba(232, 238, 248, 0.55);   /* cool slate-tinted */
+  --glass-l1-border:     rgba(255, 255, 255, 0.55);
+  --glass-l1-tint:       rgba(226, 234, 247, 0.30);
+  --glass-l1-backdrop:   blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate)) brightness(var(--glass-l1-brightness));
+
+  --glass-l2-blur:       28px;
+  --glass-l2-saturate:   2.0;
+  --glass-l2-brightness: 1.03;
+  --glass-l2-bg:         rgba(238, 243, 251, 0.46);
+  --glass-l2-border:     rgba(255, 255, 255, 0.62);
+  --glass-l2-tint:       rgba(222, 231, 246, 0.34);
+  --glass-l2-backdrop:   blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate)) brightness(var(--glass-l2-brightness));
+
+  --glass-l3-blur:       13px;
+  --glass-l3-saturate:   1.7;
+  --glass-l3-brightness: 1.04;
+  --glass-l3-bg:         rgba(240, 245, 252, 0.62);
+  --glass-l3-border:     rgba(255, 255, 255, 0.70);
+  --glass-l3-tint:       rgba(228, 236, 248, 0.40);
+  --glass-l3-backdrop:   blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate)) brightness(var(--glass-l3-brightness));
+
+  --glass-l4-blur:       34px;
+  --glass-l4-saturate:   2.1;
+  --glass-l4-brightness: 1.00;
+  --glass-l4-bg:         rgba(220, 229, 244, 0.40);   /* deeper cool layer */
+  --glass-l4-border:     rgba(255, 255, 255, 0.48);
+  --glass-l4-tint:       rgba(210, 222, 240, 0.34);
+  --glass-l4-backdrop:   blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate)) brightness(var(--glass-l4-brightness));
+
+  --glass-accent-tint-strength: 0.16;
+
+  /* Real depth: cool-cast, multi-stop shadows that lift cards noticeably above
+     the canvas (the previous near-flat whites read washed-out). */
+  --elev-1:  0 1px 2px rgba(30,41,59,0.10),
+             0 8px 16px -4px rgba(30,41,59,0.16),
+             0 0 0 0.5px rgba(30,41,59,0.05);
+  --elev-2:  0 2px 6px rgba(30,41,59,0.12),
+             0 14px 30px -6px rgba(30,41,59,0.20),
+             0 0 0 0.5px rgba(30,41,59,0.06);
+  --elev-3:  0 5px 14px rgba(30,41,59,0.14),
+             0 26px 54px -10px rgba(30,41,59,0.24),
+             0 0 0 0.5px rgba(30,41,59,0.07);
+  --elev-4:  0 10px 26px rgba(30,41,59,0.15),
+             0 40px 80px -12px rgba(30,41,59,0.28),
+             0 0 0 0.5px rgba(30,41,59,0.08);
+  --elev-5:  0 18px 44px rgba(30,41,59,0.16),
+             0 60px 112px -16px rgba(30,41,59,0.32),
+             0 0 0 0.5px rgba(30,41,59,0.09);
+
+  /* Refined top-edge specular — present but NOT blown out to pure white */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,255,255,0.65) 0%,
+      rgba(255,255,255,0.26) 22%,
+      rgba(255,255,255,0.00) 50%,
+      rgba(30,41,59,0.05) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      152deg,
+      rgba(255,255,255,0.78) 0%,
+      rgba(255,255,255,0.36) 18%,
+      rgba(255,255,255,0.00) 46%,
+      rgba(30,41,59,0.06) 100%
+    );
+  --sheen-default:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 32%,
+      rgba(255,255,255,0.24) 46%,
+      rgba(255,255,255,0.38) 50%,
+      rgba(255,255,255,0.20) 54%,
+      transparent 68%,
+      transparent 100%
+    );
+  /* Cool-cast rim: crisp white top, faint slate bottom shade for the bevel */
+  --rim-light:  inset 0 1px 0 rgba(255,255,255,0.85),
+                inset 1px 0 0 rgba(255,255,255,0.45);
+  --rim-shade:  inset 0 -1px 0 rgba(30,41,59,0.08),
+                inset -1px 0 0 rgba(30,41,59,0.05);
+  --rim:        var(--rim-light), var(--rim-shade);
+  --specular-bevel: inset 0 1px 0 rgba(255,255,255,0.85);
+}
+
+/* ── AMBIENT-NIGHT mode ──────────────────────────────────────────────────── */
+/* Refined deep DIM-WARM glass: a near-black CHARCOAL material (neutral, NOT
+   brown) with a RESTRAINED warm accent that lives only in the rim/specular/tint
+   and a faint warm cast in the bg — low blue light for night viewing without
+   making everything muddy brown. Elegant and dark; matches the navy theme's
+   polish, just warmer and dimmer. */
+body.ambient-night {
+  /* Charcoal bg with only a whisper of warmth (R slightly > B). Low saturation
+     so the surface stays neutral-dark, not amber-washed. */
+  --glass-l1-blur:       16px;
+  --glass-l1-saturate:   1.4;
+  --glass-l1-brightness: 1.00;
+  --glass-l1-bg:         rgba(20, 19, 17, 0.66);   /* near-black charcoal */
+  --glass-l1-border:     rgba(255, 222, 170, 0.10);/* warm accent: rim only */
+  --glass-l1-tint:       rgba(255, 214, 150, 0.022);
+  --glass-l1-backdrop:   blur(var(--glass-l1-blur)) saturate(var(--glass-l1-saturate)) brightness(var(--glass-l1-brightness));
+
+  --glass-l2-blur:       20px;
+  --glass-l2-saturate:   1.5;
+  --glass-l2-brightness: 1.01;
+  --glass-l2-bg:         rgba(26, 25, 22, 0.56);
+  --glass-l2-border:     rgba(255, 222, 170, 0.12);
+  --glass-l2-tint:       rgba(255, 214, 150, 0.028);
+  --glass-l2-backdrop:   blur(var(--glass-l2-blur)) saturate(var(--glass-l2-saturate)) brightness(var(--glass-l2-brightness));
+
+  --glass-l3-blur:       9px;
+  --glass-l3-saturate:   1.4;
+  --glass-l3-brightness: 1.03;
+  --glass-l3-bg:         rgba(34, 32, 28, 0.56);
+  --glass-l3-border:     rgba(255, 216, 160, 0.12);
+  --glass-l3-tint:       rgba(255, 210, 140, 0.025);
+  --glass-l3-backdrop:   blur(var(--glass-l3-blur)) saturate(var(--glass-l3-saturate)) brightness(var(--glass-l3-brightness));
+
+  --glass-l4-blur:       26px;
+  --glass-l4-saturate:   1.5;
+  --glass-l4-brightness: 0.98;
+  --glass-l4-bg:         rgba(13, 12, 11, 0.54);   /* deepest charcoal */
+  --glass-l4-border:     rgba(255, 222, 170, 0.08);
+  --glass-l4-tint:       rgba(255, 210, 140, 0.018);
+  --glass-l4-backdrop:   blur(var(--glass-l4-blur)) saturate(var(--glass-l4-saturate)) brightness(var(--glass-l4-brightness));
+
+  --glass-accent-tint-strength: 0.16;
+
+  /* Deep, soft float shadows (matches navy depth) */
+  --elev-1:  0 1px 2px rgba(0,0,0,0.40),
+             0 6px 14px -3px rgba(0,0,0,0.56),
+             0 0 0 0.5px rgba(0,0,0,0.30);
+  --elev-2:  0 2px 6px rgba(0,0,0,0.44),
+             0 12px 28px -6px rgba(0,0,0,0.64),
+             0 0 0 0.5px rgba(0,0,0,0.32);
+  --elev-3:  0 4px 12px rgba(0,0,0,0.48),
+             0 22px 48px -8px rgba(0,0,0,0.70),
+             0 0 0 0.5px rgba(0,0,0,0.34);
+  --elev-4:  0 8px 22px rgba(0,0,0,0.52),
+             0 34px 70px -10px rgba(0,0,0,0.76),
+             0 0 0 0.5px rgba(0,0,0,0.36);
+  --elev-5:  0 16px 40px rgba(0,0,0,0.56),
+             0 54px 104px -14px rgba(0,0,0,0.82),
+             0 0 0 0.5px rgba(0,0,0,0.38);
+
+  /* Restrained warm specular — a gentle amber top glint, fading to neutral.
+     Most of the surface stays charcoal; the warmth is a highlight, not a wash. */
+  --specular-default:
+    linear-gradient(
+      160deg,
+      rgba(255,222,170,0.13) 0%,
+      rgba(255,216,160,0.05) 20%,
+      rgba(255,255,255,0.00) 46%,
+      rgba(0,0,0,0.18) 100%
+    );
+  --specular-strong:
+    linear-gradient(
+      152deg,
+      rgba(255,222,170,0.18) 0%,
+      rgba(255,216,160,0.07) 16%,
+      rgba(255,255,255,0.00) 42%,
+      rgba(0,0,0,0.22) 100%
+    );
+  --sheen-default:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 34%,
+      rgba(255,224,176,0.07) 47%,
+      rgba(255,224,176,0.12) 50%,
+      rgba(255,224,176,0.05) 53%,
+      transparent 66%,
+      transparent 100%
+    );
+  /* Warm-accent rim: subtle amber top light, neutral-dark bottom shade */
+  --rim-light:  inset 0 1px 0 rgba(255,224,176,0.20),
+                inset 1px 0 0 rgba(255,224,176,0.07);
+  --rim-shade:  inset 0 -1px 0 rgba(0,0,0,0.34),
+                inset -1px 0 0 rgba(0,0,0,0.18);
+  --rim:        var(--rim-light), var(--rim-shade);
+  --specular-bevel: inset 0 1px 0 rgba(255,224,176,0.20);
+}
+
+/* ── Liquid Glass animation keyframes ───────────────────────────────────── */
+@keyframes glass-mount {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes glass-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.7; }
+  70%  { box-shadow: 0 0 0 8px currentColor; opacity: 0; }
+  100% { box-shadow: 0 0 0 0 currentColor; opacity: 0; }
+}
+
+@keyframes glass-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes glass-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Slow, continuous sheen drift for hero surfaces (optional; opt-in via class).
+   A barely-perceptible reflection travel that makes large glass feel alive. */
+@keyframes glass-sheen-drift {
+  0%   { background-position: -140% 0, 0 0, 0 0; }
+  100% { background-position:  140% 0, 0 0, 0 0; }
+}
+
+/* ── Animated domain widgets ─────────────────────────────────────────────
+   Keyframes for the reusable motion library (AnimatedFan, BuildBar,
+   LivingModeIcon). All decorative loops are neutralized by the global
+   prefers-reduced-motion killswitch; widgets also render a deliberate static
+   state for that case. */
+
+/* Fan: continuous blade rotation. Speed is set per-instance via duration. */
+@keyframes widget-fan-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Airflow: concentric arcs/lines emanating outward and fading — "fan blowing".
+   Scale + fade so each wave grows away from the hub then dissolves. */
+@keyframes widget-airflow {
+  0%   { opacity: 0;    transform: scale(0.55); }
+  20%  { opacity: 0.85; }
+  100% { opacity: 0;    transform: scale(1.5); }
+}
+
+/* Airflow streak: horizontal breeze lines drifting across (cool/fan). */
+@keyframes widget-breeze-drift {
+  0%   { opacity: 0;    transform: translateX(-30%); }
+  25%  { opacity: 0.9; }
+  100% { opacity: 0;    transform: translateX(60%); }
+}
+
+/* Heat shimmer: a vertical warm-air wobble + opacity flicker for flame life. */
+@keyframes widget-heat-shimmer {
+  0%, 100% { transform: translateY(0)     scaleY(1);    opacity: 0.92; }
+  35%      { transform: translateY(-0.5px) scaleY(1.07); opacity: 1;    }
+  70%      { transform: translateY(0.4px)  scaleY(0.96); opacity: 0.85; }
+}
+
+/* Flame flicker: a faster, subtler hue/scale jitter for the heat icon glow. */
+@keyframes widget-flame-flicker {
+  0%, 100% { opacity: 0.55; transform: scale(1);    }
+  40%      { opacity: 0.95; transform: scale(1.12); }
+  60%      { opacity: 0.7;  transform: scale(0.95); }
+}
+
+/* Cool drift: a gentle floating sway for the snowflake / breeze icon. */
+@keyframes widget-cool-drift {
+  0%, 100% { transform: translateY(0)    rotate(0deg);   }
+  50%      { transform: translateY(-1.5px) rotate(8deg);  }
+}
+
+/* Idle breathe: a barely-there scale pulse for active-but-idle states. */
+@keyframes widget-idle-breathe {
+  0%, 100% { opacity: 0.7; transform: scale(1);    }
+  50%      { opacity: 1;   transform: scale(1.05); }
+}
+
+/* Dry shimmer: rising droplet/vapor for the dehumidify state. */
+@keyframes widget-dry-rise {
+  0%   { opacity: 0;   transform: translateY(2px) scale(0.8); }
+  30%  { opacity: 0.9; }
+  100% { opacity: 0;   transform: translateY(-3px) scale(1.1); }
+}
+
+/* BuildBar fill: the meter's fill grows from 0 to its target width on mount.
+   The actual target width is set inline; this just provides the easing curve
+   via transition (not a keyframe) — see component. A subtle traveling
+   highlight conveys "live/building". */
+@keyframes widget-bar-glint {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%);  }
+}
+
+/* ── Climate instrument-card responsive layout (RoomClimateTile) ───────────
+   The card is a container (container-type: inline-size). Mobile-first:
+   STACK the telemetry rail over a full-width control console so the console
+   never gets crammed (the −/+ steppers were colliding with the setpoint at
+   narrow widths). Only go side-by-side once the card is wide enough (>=20rem)
+   to comfortably fit both regions. These class hooks let inline-styled tiles
+   use a real @container query (inline styles can't carry @container rules). */
+
+.bp-clim-body {
+  display: flex;
+  flex-direction: column;   /* mobile-first: stacked */
+  gap: var(--space-3);
+}
+.bp-clim-rail,
+.bp-clim-console {
+  width: 100%;              /* full card width when stacked */
+}
+/* Stacked setpoint row: centered with guaranteed gaps so the steppers and the
+   big number always have breathing room and never touch. */
+.bp-clim-setpoint-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+/* Wide cards (wall grid / desktop): two regions side-by-side. */
+@container (min-width: 20rem) {
+  .bp-clim-body {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .bp-clim-rail {
+    flex: 1 1 7.5rem;
+    width: auto;
+    min-width: 7rem;
+  }
+  .bp-clim-console {
+    flex: 1 1 9rem;
+    width: auto;
+    min-width: 8.5rem;
+  }
+  /* In the narrower side-by-side console, keep the steppers pinned to the edges
+     with the number centered between them — still a real gap on both sides. */
+  .bp-clim-setpoint-row {
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+}
