@@ -5,6 +5,7 @@ import { IconLightbulb } from '../icons';
 import TileWrapper from './TileWrapper';
 import TileSlider from './TileSlider';
 import { fluidIcon, fluidTextXl, fluidTextXs } from './tileScale';
+import { kelvinToHex } from '../LightControlModal';
 
 type LutronLightState = {
     level: number;
@@ -29,30 +30,6 @@ const hsToHex = (hs: [number, number]) => {
             .padStart(2, '0');
     };
     return `#${f(0)}${f(8)}${f(4)}`;
-};
-
-const hexToHs = (hex: string): [number, number] => {
-    const clean = hex.replace('#', '');
-    const r = parseInt(clean.substring(0, 2), 16) / 255;
-    const g = parseInt(clean.substring(2, 4), 16) / 255;
-    const b = parseInt(clean.substring(4, 6), 16) / 255;
-
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const delta = max - min;
-
-    let h = 0;
-    if (delta !== 0) {
-        if (max === r) h = ((g - b) / delta) % 6;
-        else if (max === g) h = (b - r) / delta + 2;
-        else h = (r - g) / delta + 4;
-        h = Math.round(h * 60);
-        if (h < 0) h += 360;
-    }
-
-    const l = (max + min) / 2;
-    const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-    return [h, Math.round(s * 100)];
 };
 
 const DEFAULT_COLOR_TEMP_RANGE: ColorTempRange = { min: 2000, max: 6500 };
@@ -136,12 +113,23 @@ const parseLutronState = (device: Device): LutronLightState => {
 // Simple dimmer tile for non-Lutron devices
 const SimpleDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
     const { updateDeviceState, requestPin } = useDashboardActions();
-    const [level, setLevel] = useState(device.state as number);
+    // `device.state` is a plain number for brightness-only lights, but be
+    // defensive: a colour-capable light carries an object, and mis-routing it
+    // here used to render NaN%.
+    const readLevel = (st: Device['state']): number => {
+        if (typeof st === 'number') return st;
+        if (st && typeof st === 'object' && !Array.isArray(st)) {
+            const lvl = (st as Record<string, any>).level;
+            return typeof lvl === 'number' ? lvl : 0;
+        }
+        return st ? 100 : 0;
+    };
+    const [level, setLevel] = useState(readLevel(device.state));
     const isActive = level > 0;
     const isLocked = !!tile.isLocked;
 
     useEffect(() => {
-        setLevel(device.state as number);
+        setLevel(readLevel(device.state));
     }, [device.state]);
 
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +197,7 @@ const SimpleDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
 };
 
 // Lutron dimmer tile with color and color temperature support
-const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
+const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName, onEnlarge }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string; onEnlarge?: (device: Device) => void }) => {
     const { updateDeviceState, requestPin } = useDashboardActions();
     const parsedState = useMemo(() => parseLutronState(device), [device]);
 
@@ -225,15 +213,36 @@ const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
         setColorTemp(parsedState.colorTemp);
     }, [parsedState]);
 
-    const buildOutgoingState = (updates: Partial<LutronLightState> = {}) => ({
-        level: updates.level ?? level,
-        isOn: updates.isOn ?? (updates.level ?? level) > 0,
-        hsColor: updates.hsColor ?? parsedState.hsColor,
-        colorTemp: updates.colorTemp ?? colorTemp,
-        colorTempRange: parsedState.colorTempRange,
-        supportsColor: parsedState.supportsColor,
-        supportsColorTemp: parsedState.supportsColorTemp,
-    });
+    // Show what the light is actually doing: its colour when in colour mode,
+    // otherwise the rendered colour of its current temperature.
+    const swatchHex = parsedState.hsColor
+        ? colorHex
+        : (colorTemp !== undefined ? kelvinToHex(colorTemp) : colorHex);
+
+    // Colour and colour-temperature are mutually exclusive on the wire: a light
+    // is in `hs` mode or `color_temp` mode, never both, and the service layer
+    // prefers hsColor when it is present. So only ever carry the one the caller
+    // is actually setting — a brightness change or a toggle carries neither and
+    // lets the light keep whatever colour it already has. Passing both is what
+    // made the temperature slider silently do nothing on a light that was in
+    // colour mode.
+    const buildOutgoingState = (updates: Partial<LutronLightState> = {}) => {
+        const out: Record<string, any> = {
+            level: updates.level ?? level,
+            isOn: updates.isOn ?? (updates.level ?? level) > 0,
+            colorTempRange: parsedState.colorTempRange,
+            supportsColor: parsedState.supportsColor,
+            supportsColorTemp: parsedState.supportsColorTemp,
+        };
+        if (updates.hsColor !== undefined) {
+            out.hsColor = updates.hsColor;
+            out.colorTemp = undefined;
+        } else if (updates.colorTemp !== undefined) {
+            out.colorTemp = updates.colorTemp;
+            out.hsColor = undefined;
+        }
+        return out;
+    };
 
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (isEditor || isLocked) return;
@@ -267,22 +276,6 @@ const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
         }
     };
 
-    const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (isEditor || isLocked) return;
-        const nextHex = e.target.value;
-        const hsColor = hexToHs(nextHex);
-        const desiredLevel = level > 0 ? level : 100;
-        setColorHex(nextHex);
-        setLevel(desiredLevel);
-        updateDeviceState(device.id, buildOutgoingState({ level: desiredLevel, hsColor, isOn: true }));
-    };
-
-    const handleColorTempCommit = () => {
-        if (isEditor || isLocked || colorTemp === undefined) return;
-        const desiredLevel = level > 0 ? level : 100;
-        updateDeviceState(device.id, buildOutgoingState({ colorTemp, level: desiredLevel, isOn: true }));
-    };
-
     return (
         <TileWrapper
             label={tile.label || ''}
@@ -310,36 +303,20 @@ const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
                         disabled={isEditor || isLocked}
                     />
                 </div>
-                {parsedState.supportsColor && (
-                    <div className="px-2 pb-1 flex items-center gap-2">
-                        <input
-                            type="color"
-                            value={colorHex}
-                            onChange={handleColorChange}
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={isEditor || isLocked}
-                            className={`h-8 w-full rounded-control border border-gray-600 bg-transparent p-0 ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                        />
-                        <span className="text-gray-300 whitespace-nowrap" style={fluidTextXs}>Color</span>
-                    </div>
-                )}
-                {parsedState.supportsColorTemp && parsedState.colorTempRange && (
+                {/* One control, not three: a 1x1 tile cannot hold icon + brightness
+                    + colour + a colour-temperature slider without clipping the
+                    readout. The swatch opens the full picker (preset whites, fine
+                    colour temperature, arbitrary colour) instead. */}
+                {(parsedState.supportsColor || parsedState.supportsColorTemp) && (
                     <div className="px-2 pb-1">
-                        <div className="flex justify-between text-gray-400 mb-0.5" style={fluidTextXs}>
-                            <span>Warm</span>
-                            <span className="font-mono tabular-nums">{colorTemp ?? parsedState.colorTempRange.min}K</span>
-                            <span>Cool</span>
-                        </div>
-                        <TileSlider
-                            value={colorTemp ?? parsedState.colorTempRange.min}
-                            min={parsedState.colorTempRange.min}
-                            max={parsedState.colorTempRange.max}
-                            accentColor="#f8fafc"
-                            trackBackground="linear-gradient(to right, #f59e0b, #ffffff, #7dd3fc)"
-                            onChange={(e) => setColorTemp(parseInt(e.target.value, 10))}
-                            onCommit={handleColorTempCommit}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); if (!isEditor && !isLocked) onEnlarge?.(device); }}
                             disabled={isEditor || isLocked}
-                        />
+                            className={`w-full h-8 rounded-control border border-gray-600 flex items-center justify-center gap-2 ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-gray-400'}`}
+                        >
+                            <span className="w-4 h-4 rounded-full border border-black/40 shrink-0" style={{ backgroundColor: swatchHex }} />
+                            <span className="text-gray-300 whitespace-nowrap" style={fluidTextXs}>Colors</span>
+                        </button>
                     </div>
                 )}
             </div>
@@ -347,12 +324,28 @@ const LutronDimmerTile = ({ device, tile, isEditor, cornerClassName }: { device:
     );
 };
 
-// Main DimmerTile component that routes to the appropriate implementation
-const DimmerTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
-    const isLutron = device.service === DeviceService.Lutron;
+// Route on CAPABILITY, not on which integration the device came from.
+//
+// This used to be `device.service === DeviceService.Lutron`, which meant every
+// colour-capable Home Assistant light fell through to SimpleDimmerTile. Those
+// lights carry a rich object state, so the simple tile read `device.state as
+// number` on an object and showed a bare brightness slider with no colour
+// control at all. Any integration that reports colour support now gets the
+// full tile.
+const DimmerTile = ({ device, tile, isEditor, cornerClassName, onEnlarge }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string; onEnlarge?: (device: Device) => void }) => {
+    const st = device.state;
+    const stateHasColor =
+        st && typeof st === 'object' && !Array.isArray(st)
+            ? Boolean((st as Record<string, any>).supportsColor || (st as Record<string, any>).supportsColorTemp)
+            : false;
+    const isColorCapable =
+        Boolean(device.supportsColor) ||
+        Boolean(device.supportsColorTemp) ||
+        stateHasColor ||
+        device.service === DeviceService.Lutron;
 
-    if (isLutron) {
-        return <LutronDimmerTile device={device} tile={tile} isEditor={isEditor} cornerClassName={cornerClassName} />;
+    if (isColorCapable) {
+        return <LutronDimmerTile device={device} tile={tile} isEditor={isEditor} cornerClassName={cornerClassName} onEnlarge={onEnlarge} />;
     }
 
     return <SimpleDimmerTile device={device} tile={tile} isEditor={isEditor} cornerClassName={cornerClassName} />;
