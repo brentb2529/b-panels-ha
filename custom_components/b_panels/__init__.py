@@ -34,6 +34,8 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_GEODROPS_PROBES,
+    CONF_GEODROPS_SA,
     DOMAIN,
     FRONTEND_DIR,
     FRONTEND_INDEX,
@@ -394,7 +396,80 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         hass.data.setdefault(f"{DOMAIN}_panels", set()).add(PANEL_URL_PATH)
 
+    # Options carry the irrigation config; re-run setup when they change so a
+    # credential or probe-mapping edit takes effect without a restart.
+    entry.async_on_unload(entry.add_update_listener(async_update_options))
+
+    await _async_setup_irrigation(hass, entry)
+
     return True
+
+
+# Tempest entity ids feeding ET0. Discovered by device_class/suffix rather than
+# hardcoded, so a station swap doesn't silently zero the water balance.
+_WEATHER_SUFFIXES = {
+    "air_temperature": "_air_temperature",
+    "relative_humidity": "_relative_humidity",
+    "wind_speed": "_wind_speed",
+    "solar_radiation": "_solar_radiation",
+    "dew_point": "_dew_point",
+    "precipitation": "_precipitation",
+}
+
+
+def _discover_weather_entities(hass: HomeAssistant) -> dict[str, str]:
+    """Map ET0 input -> entity_id from whatever weather station is present.
+
+    Matches on suffix and rejects derived variants (e.g. `_precipitation_rate`,
+    `_precipitation_type`) by requiring an exact tail match.
+    """
+    found: dict[str, str] = {}
+    for state in hass.states.async_all("sensor"):
+        eid = state.entity_id
+        for key, suffix in _WEATHER_SUFFIXES.items():
+            if key in found:
+                continue
+            if eid.endswith(suffix):
+                found[key] = eid
+    return found
+
+
+async def _async_setup_irrigation(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Start the GeoDrops poller and Rachio run capture, if configured.
+
+    Irrigation is optional: with no service account configured the whole
+    subsystem stays dormant and B-Panels behaves exactly as before.
+    """
+    from .irrigation_store import IrrigationRunStore
+
+    sa = entry.options.get(CONF_GEODROPS_SA)
+    probes = entry.options.get(CONF_GEODROPS_PROBES) or []
+
+    # The run store is worth running even without GeoDrops: Rachio history is
+    # perishable (no long-term statistics, ~10 day recorder purge) and cannot be
+    # reconstructed after the fact.
+    run_store = IrrigationRunStore(hass)
+    await run_store.async_load()
+    tracked = sorted({
+        e for e in hass.states.async_entity_ids("switch")
+        if "rachio" in e
+    })
+    await run_store.async_start(tracked)
+    hass.data.setdefault(DOMAIN, {})["irrigation_store"] = run_store
+    _LOGGER.debug("irrigation: tracking %d Rachio switches", len(tracked))
+
+    if not sa or not probes:
+        _LOGGER.debug("irrigation: GeoDrops not configured; poller not started")
+        return
+
+    from .irrigation_coordinator import IrrigationCoordinator
+
+    coordinator = IrrigationCoordinator(
+        hass, sa, probes, run_store, weather=_discover_weather_entities(hass)
+    )
+    hass.data[DOMAIN]["irrigation_coordinator"] = coordinator
+    await coordinator.async_config_entry_first_refresh()
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -402,6 +477,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if PANEL_URL_PATH in hass.data.get(f"{DOMAIN}_panels", set()):
         frontend.async_remove_panel(hass, PANEL_URL_PATH)
         hass.data[f"{DOMAIN}_panels"].discard(PANEL_URL_PATH)
+
+    data = hass.data.get(DOMAIN, {})
+    if data.get("irrigation_coordinator"):
+        await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+        data.pop("irrigation_coordinator", None)
+    run_store = data.pop("irrigation_store", None)
+    if run_store:
+        await run_store.async_stop()
     return True
 
 
@@ -517,3 +600,8 @@ async def websocket_save_config(
     # re-fetch -> their setConfig auto-saves -> broadcast -> ...). Clobber
     # protection is now the empty-save guard above + the client only saving on
     # real user edits (never on a load).
+
+
+async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Re-run setup when the irrigation options change."""
+    await hass.config_entries.async_reload(entry.entry_id)

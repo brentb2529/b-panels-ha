@@ -45,6 +45,9 @@ export enum DeviceType {
   // driven by the inferred `capabilities` rather than a per-type
   // implementation, so entities from new integrations render without
   // per-module code.
+  // Soil-moisture + water-balance view for one irrigation zone, fed by the
+  // GeoDrops poller in the b_panels integration (see docs/GEODROPS.md).
+  Irrigation = 'IRRIGATION',
   Generic = 'GENERIC',
   // Phase 6 escape hatch: embeds a custom Home Assistant Lovelace / HACS card
   // (or any URL) in a sandboxed iframe. HA-aware — resolves a relative
