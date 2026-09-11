@@ -10,7 +10,7 @@ import { StoredConfig } from '../hooks/useDashboard';
 import { AdminUser } from '../types';
 import * as haClient from './haClient';
 
-// --- Config storage (HA WebSocket custom command, localStorage fallback) ------
+// --- Config storage (HA WebSocket custom command) -----------------------------
 export const apiGetConfig = async (): Promise<StoredConfig | null> => {
     return (await haClient.getDashboardConfig()) as StoredConfig | null;
 };

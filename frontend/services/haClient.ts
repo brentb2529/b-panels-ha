@@ -363,28 +363,32 @@ export async function getCameraStreamUrl(entityId: string): Promise<string | nul
 }
 
 // --- Dashboard config storage (custom WebSocket commands) ---------------------
-// Backed by the b_panels integration's storage. Falls back to localStorage in
-// standalone dev where the custom commands are not registered.
+// Backed by the b_panels integration's storage. There is deliberately NO
+// localStorage fallback: a kiosk that booted while HA was unreachable used to
+// load a months-old cached copy, then auto-save it over the real config. If HA
+// can't be reached the load fails and the caller retries.
+
+// `_rev` of the stored config this tab last read or wrote. Sent with every save
+// so the integration can refuse a save built on an older config.
+let serverRev: number | undefined;
 
 export async function getDashboardConfig(): Promise<any | null> {
+    const conn = await getConnection();
+    const result: any = await conn.sendMessagePromise({
+        type: 'b_panels/config/get',
+    });
+    // The command may return the config directly or wrapped in { config }.
+    const config = result && typeof result === 'object' && 'config' in result
+        ? result.config ?? null
+        : result ?? null;
+    serverRev = typeof config?._rev === 'number' ? config._rev : undefined;
+    // Delete the copy older builds cached, so nothing can ever load it again.
     try {
-        const conn = await getConnection();
-        const result: any = await conn.sendMessagePromise({
-            type: 'b_panels/config/get',
-        });
-        // The command may return the config directly or wrapped in { config }.
-        if (result && typeof result === 'object' && 'config' in result) {
-            return result.config ?? null;
-        }
-        return result ?? null;
+        localStorage.removeItem(LOCAL_CONFIG_KEY);
     } catch {
-        try {
-            const raw = localStorage.getItem(LOCAL_CONFIG_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch {
-            return null;
-        }
+        /* ignore */
     }
+    return config;
 }
 
 // Stable per-tab id so a panel can ignore the config-updated broadcast it
@@ -392,21 +396,16 @@ export async function getDashboardConfig(): Promise<any | null> {
 export const PANEL_SOURCE_ID =
     Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+// Rejects on failure, including `stale_rev` when another panel saved since this
+// tab loaded; the caller must reload rather than retry the same config.
 export async function saveDashboardConfig(config: any): Promise<void> {
-    try {
-        const conn = await getConnection();
-        await conn.sendMessagePromise({
-            type: 'b_panels/config/save',
-            config,
-            source: PANEL_SOURCE_ID,
-        });
-    } catch {
-        try {
-            localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(config));
-        } catch {
-            /* ignore */
-        }
-    }
+    const conn = await getConnection();
+    const result: any = await conn.sendMessagePromise({
+        type: 'b_panels/config/save',
+        config: { ...config, _rev: serverRev },
+        source: PANEL_SOURCE_ID,
+    });
+    if (typeof result?.rev === 'number') serverRev = result.rev;
 }
 
 // Live config sync: fire `cb` when ANOTHER panel saves the config, so this panel

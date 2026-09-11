@@ -2032,14 +2032,23 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   // load triggers a save -> which (with the broadcast) made other panels reload
   // -> save -> a config-save feedback LOOP across panels (and a reconnect clobber).
   const justLoadedRef = useRef(false);
+  // True once HA has answered a config load. Until then `config` is the local
+  // default, and auto-saving it would overwrite the real dashboard.
+  const hasServerConfigRef = useRef(false);
+  const loadRetryRef = useRef<number | null>(null);
+  const loadConfigRef = useRef<(silent?: boolean) => void>(() => {});
 
   // FIX: Added loadConfig function definition and initial load effect.
   const loadConfig = useCallback((silent: boolean = false) => {
     if (!silent) setIsConfigLoading(true);
-    setConfigLoadError(null);
-    
+    // A silent retry leaves an existing error in place until it succeeds.
+    if (!silent) setConfigLoadError(null);
+    if (loadRetryRef.current) { clearTimeout(loadRetryRef.current); loadRetryRef.current = null; }
+
     apiGetConfig()
         .then(loadedConfig => {
+            hasServerConfigRef.current = true;
+            setConfigLoadError(null);
             const defaultConfig = getDefaultConfig();
             if (loadedConfig) {
                 const mergedConfig = produce(defaultConfig, draft => {
@@ -2194,14 +2203,21 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
         })
         .catch(error => {
             console.error("Failed to load configuration:", error);
-            setConfigLoadError(error.message || "Failed to load configuration.");
+            // A panel already showing a server config keeps showing it; only a
+            // panel that never loaded gets the error screen.
+            if (!hasServerConfigRef.current) {
+                setConfigLoadError(error?.message || "Failed to load configuration.");
+            }
             // IMPORTANT: Do NOT set default config here.
             // Setting default config would trigger auto-save and overwrite the server if the user is an admin!
+            // Retry unattended: a kiosk that boots during an outage has nobody to tap Retry.
+            loadRetryRef.current = window.setTimeout(() => loadConfigRef.current(true), 15_000);
         })
         .finally(() => {
             if (!silent) setIsConfigLoading(false);
         });
   }, []);
+  loadConfigRef.current = loadConfig;
 
   useEffect(() => {
       loadConfig();
@@ -2251,17 +2267,30 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     // what's stored, and saving it would (with the broadcast) ping-pong into a
     // save loop across panels. Only USER edits should auto-save.
     if (justLoadedRef.current) { justLoadedRef.current = false; return; }
+    if (!hasServerConfigRef.current) return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = window.setTimeout(async () => {
         try {
             await apiSaveConfig(config);
-            
+
             // FIX: Removed internal broadcast of 'config_updated' here.
             // This prevented a feedback loop where the client saving the config
             // would receive its own update via SSE and trigger a reload/refresh,
             // which caused UI disruption (e.g., losing focus in input fields).
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.code === 'stale_rev') {
+                // Another panel saved since we loaded. Take its config instead of
+                // overwriting it. Every arm/disarm hits this on all but one panel
+                // (each appends the same alarm-history entry), so only tell the
+                // user when they were likely the one editing.
+                console.warn('[B-Panels] Config changed on another panel; reloading instead of saving.', err);
+                if (Date.now() - lastInteractionRef.current < 60_000) {
+                    addNotification('Dashboard settings changed on another panel and were reloaded. Redo your last change if it is missing.', 'warning');
+                }
+                loadConfig(true);
+                return;
+            }
             // This can happen for read-only users.
             console.warn('Config save failed (might be read-only access):', err);
         }
@@ -4452,7 +4481,7 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
       activeDevicePanel,
       openDevicePanel,
       closeDevicePanel,
-      retryConfigLoad: loadConfig,
+      retryConfigLoad: () => loadConfig(),
       sendBroadcastNotification,
       dismissIntrusion,
       dismissServiceError, // ADDED

@@ -487,9 +487,8 @@ async def websocket_save_config(
 
     Hardened against the config-clobber wipe: a stale panel can otherwise
     overwrite the whole config (worst case, to empty). We (1) refuse a save that
-    would blank a populated config, (2) stamp a monotonic `_rev`, and (3) fire
-    `b_panels_config_updated` so other open panels live-refresh instead of
-    holding a stale copy that they later save back.
+    would blank a populated config, (2) refuse a save based on an older `_rev`
+    than the stored one, and (3) stamp a monotonic `_rev`.
     """
     store: Store | None = hass.data.get(DOMAIN, {}).get("store")
     if store is None:
@@ -508,7 +507,22 @@ async def websocket_save_config(
         )
         return
 
-    new_cfg["_rev"] = (current.get("_rev") or 0) + 1
+    # Compare-and-swap: the client sends back the `_rev` it loaded. Anything
+    # older than what's stored was built on a stale copy, and saving it would
+    # roll back every change since. On 2026-09-11 a kiosk that booted during a
+    # network outage loaded a June copy from localStorage and did exactly that
+    # on the next disarm. A missing `_rev` is treated as stale too.
+    current_rev = current.get("_rev")
+    base_rev = new_cfg.get("_rev")
+    if current_rev is not None and (not isinstance(base_rev, int) or base_rev < current_rev):
+        connection.send_error(
+            msg["id"],
+            "stale_rev",
+            f"Refused: config is based on rev {base_rev} but the stored config is at rev {current_rev}.",
+        )
+        return
+
+    new_cfg["_rev"] = (current_rev or 0) + 1
     await store.async_save(new_cfg)
     connection.send_result(msg["id"], {"success": True, "rev": new_cfg["_rev"]})
 
