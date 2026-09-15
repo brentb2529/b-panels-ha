@@ -341,6 +341,69 @@ export async function getEntityDeviceMap(): Promise<Record<string, string>> {
     return map;
 }
 
+// --- Airzone climate-zone topology id map (DEVICE-REGISTRY FALLBACK) ----------
+// Resolve `climate.*` entity_ids to their Airzone "system:zone" id (e.g. "1:2")
+// via the device registry. This is now a FALLBACK ONLY: each climate entity
+// exposes a `zone_id` attribute in its state (see climate.zoneIdMapFromEntities),
+// which needs no admin call and is the primary path. We keep this for entities
+// that somehow lack `zone_id` (older firmware / pre-merge instances).
+//
+// The Airzone integration names each zone's HA device with identifier
+// `f"{entry_id}_{system_zone_id}"` where system_zone_id = "{system}:{zone}".
+// We join entity_registry (entity_id → device_id) with device_registry
+// (device_id → identifiers) and extract the "<digits>:<digits>" suffix.
+//
+// device_registry/list is admin-gated; if it's unavailable (non-admin user)
+// this returns {} and the affected entities degrade to standalone grouping.
+// `onlyEntities`, when given, limits the result to those entity_ids (the ones
+// still missing a state-based zone_id), so a non-admin failure here is harmless
+// when the state path already covered everything. Never throws.
+export async function getClimateZoneIdMap(onlyEntities?: Set<string>): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (onlyEntities && onlyEntities.size === 0) return out;
+    try {
+        const conn = await getConnection();
+
+        // device_id → "system:zone" from the device registry identifiers.
+        const deviceZoneId: Record<string, string> = {};
+        let devices: any[] = [];
+        try {
+            const res: any = await conn.sendMessagePromise({ type: 'config/device_registry/list' });
+            devices = Array.isArray(res) ? res : Array.isArray(res?.devices) ? res.devices : [];
+        } catch (e) {
+            console.warn('[B-Panels] device_registry/list unavailable (non-admin?); zone_id-less climates degrade to standalone.', e);
+            return out;
+        }
+        // HA identifiers are [[domain, id], ...]. Match the trailing
+        // "<system>:<zone>" (digits:digits) regardless of the entry_id prefix.
+        const ZONE_RE = /(\d+:\d+)$/;
+        for (const d of devices) {
+            const ids: any[] = Array.isArray(d?.identifiers) ? d.identifiers : [];
+            for (const tuple of ids) {
+                const idStr = Array.isArray(tuple) ? String(tuple[1] ?? '') : String(tuple ?? '');
+                const m = idStr.match(ZONE_RE);
+                if (m && d.id) {
+                    deviceZoneId[d.id] = m[1];
+                    break;
+                }
+            }
+        }
+        if (Object.keys(deviceZoneId).length === 0) return out;
+
+        // entity_id → device_id, then join to "system:zone".
+        const entityDevice = await getEntityDeviceMap();
+        for (const [eid, did] of Object.entries(entityDevice)) {
+            if (!eid.startsWith('climate.')) continue;
+            if (onlyEntities && !onlyEntities.has(eid)) continue;
+            const zoneId = deviceZoneId[did];
+            if (zoneId) out[eid] = zoneId;
+        }
+    } catch (e) {
+        console.warn('[B-Panels] climate zone-id device-registry fallback failed; affected zones degrade to standalone.', e);
+    }
+    return out;
+}
+
 // --- Camera streams -----------------------------------------------------------
 // Resolve a live HLS stream URL for a Home Assistant `camera` entity via HA's
 // stream component (the `camera/stream` WS command). HA replies with a

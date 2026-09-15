@@ -100,6 +100,12 @@ class HomeAssistantService {
                 } else if (typeof newState.setpoint === 'number') {
                     service = 'set_temperature';
                     serviceData.temperature = newState.setpoint;
+                } else if (typeof newState.fanMode === 'string') {
+                    service = 'set_fan_mode';
+                    serviceData.fan_mode = newState.fanMode;
+                } else if (typeof newState.swingMode === 'string') {
+                    service = 'set_swing_mode';
+                    serviceData.swing_mode = newState.swingMode;
                 } else {
                     throw new Error(`Unsupported climate action for ${deviceId}`);
                 }

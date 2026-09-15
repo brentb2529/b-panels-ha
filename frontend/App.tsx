@@ -17,6 +17,9 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { apiValidateDeviceToken, bootstrapDeviceToken } from './services/api';
 import { IconRefreshCw } from './components/icons';
 import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
+import NavRail from './components/NavRail';
+import HomeOverview from './components/HomeOverview';
+import AreaView from './components/AreaView';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -130,23 +133,21 @@ const AppRoutes = () => {
     }>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route 
-        path="/admin" 
+      <Route
+        path="/admin"
         element={
           <ProtectedRoute>
             <Admin />
           </ProtectedRoute>
-        } 
+        }
       />
       <Route path="/dashboard/:panelId" element={<Dashboard />} />
+      <Route path="/home" element={<HomeOverview />} />
+      <Route path="/area/:areaKey" element={<AreaView />} />
       <Route path="/play/:triggerPath" element={<PlaySoundAndRedirect />} />
-      <Route 
-        path="/" 
-        element={firstPanelId ? <Navigate to={`/dashboard/${firstPanelId}`} replace /> : (
-            <ProtectedRoute>
-                <Admin />
-            </ProtectedRoute>
-        )}
+      <Route
+        path="/"
+        element={<Navigate to="/home" replace />}
       />
     </Routes>
     </Suspense>
@@ -450,16 +451,30 @@ const AppContent = () => {
   const isNativeShell = typeof window !== 'undefined' && (window as any).__bpanelsNative === true;
   const fillScreen = isDashboardRoute && !isNativeShell;
 
+  // Nav rail is shown on homeowner-facing routes (Home overview + Area views +
+  // dashboard panels). Hidden on admin, login, and native-shell kiosk mode (where
+  // the iOS shell owns navigation).
+  const isNavRoute =
+    location.pathname === '/home' ||
+    location.pathname.startsWith('/area/') ||
+    location.pathname.startsWith('/dashboard/');
+  const showNavRail = isNavRoute && !isNativeShell;
+
   // A DEFINITE viewport height (h-screen) gives the grid's `1fr` rows a fixed
   // box to divide, so the panel fills the screen exactly and content-heavy tiles
   // (News, etc.) stay constrained and scroll internally instead of ballooning.
   const chromeClass = "flex flex-col h-screen antialiased";
 
-  const mainContainerClass = fillScreen
-    ? "flex-1 overflow-hidden p-2" // fill the viewport; grid stretches, no scroll
-    : (isNativeShell
-        ? "flex-1 overflow-y-auto p-2" // native iPad kiosk: native scaling handles fit
-        : "flex-1 overflow-y-auto container mx-auto p-6 md:p-8"); // Admin/etc.
+  // /dashboard routes keep their p-2 gutter around the tile grid.
+  // /home and /area/* handle their own internal padding.
+  const isDashboardFill = fillScreen && location.pathname.startsWith('/dashboard/');
+  const mainContainerClass = isDashboardFill
+    ? "flex-1 overflow-hidden p-2" // tile grid: keep p-2 gutter
+    : (fillScreen
+        ? "flex-1 overflow-hidden"  // /home, /area/*: padding is internal
+        : (isNativeShell
+            ? "flex-1 overflow-y-auto p-2"
+            : "flex-1 overflow-y-auto container mx-auto p-6 md:p-8")); // Admin/etc.
 
   return (
     <>
@@ -472,9 +487,13 @@ const AppContent = () => {
       {!isAudioUnlocked && isDashboardRoute && <AudioUnlockModal onUnlock={unlockAudio} />}
        <div className={chromeClass}>
           <Header />
-          <main className={mainContainerClass}>
+          {/* Body row: NavRail (when on a homeowner nav route) + main content */}
+          <div className="flex flex-1 overflow-hidden">
+            {showNavRail && <NavRail />}
+            <main className={mainContainerClass} style={{ flex: 1, minWidth: 0 }}>
               <AppRoutes />
-          </main>
+            </main>
+          </div>
        </div>
        <VersionFooter />
     </>
