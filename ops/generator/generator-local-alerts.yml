@@ -117,6 +117,73 @@ groups:
       current_value: '{{ humanizeDuration $value }}'
       threshold: 120 seconds
       action: Inspect the RS-485 wiring and termination before it fails outright
+  - alert: BridgeWifiWeak
+    expr: generator_local_wi_fi_signal{site_id=~"$site_id"} < -72
+    for: 20m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: Generator {{ $labels.name }} bridge Wi-Fi weak ({{ $value }} dBm)
+      description: 'THE FAILURE THIS EXISTS TO PREDICT.
+
+
+        Between about -72 and -80 dBm an ESP32 stays associated and answers ping while being unable to
+        complete an API handshake. Nothing looks broken: the device is on the network, its web server
+        responds, and Home Assistant simply cannot reach it. It reads as a wedged bridge, and it is not.
+
+
+        Measured on this unit: it sat at -76 dBm after a reboot and was unreachable for twenty minutes
+        before the firmware watchdog restarted it. Healthy on the same install is around -64.
+
+
+        20m `for:` because RSSI is noisy and a single bad minute means nothing. This is a lagging indicator
+        of a physical problem -- the fix is an antenna or a location, not a setting.'
+      current_value: '{{ $value }} dBm'
+      threshold: -72 dBm sustained 20 minutes
+      action: Move the bridge out of the metal enclosure, fit an external antenna (ESP32-DevKitC-32U),
+        or bring an AP closer
+  - alert: BridgeRebooting
+    expr: generator_local_uptime{site_id=~"$site_id"} < 900
+    for: 25m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: Generator {{ $labels.name }} bridge keeps restarting
+      description: 'Uptime has stayed under 15 minutes for 25 minutes, which means the bridge is restarting
+        in a loop rather than running.
+
+
+        Most likely the api reboot_timeout watchdog (5 min) firing repeatedly: the bridge is alive but
+        no client can connect, so it restarts, and the underlying reason is still there when it comes
+        back. Check Wi-Fi signal first -- a weak link produces exactly this.
+
+
+        A single restart is normal after an OTA and will not trip this.'
+      current_value: '{{ $value }}s uptime'
+      action: Check bridge Wi-Fi signal and whether Home Assistant can reach it at all
+  - alert: BridgeOverheating
+    expr: generator_local_esp_internal_temperature{site_id=~"$site_id"} > 85
+    for: 30m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: Generator {{ $labels.name }} bridge running hot ({{ $value }}C)
+      description: 'The ESP32 die temperature has been above 85C for half an hour. This board lives in
+        a sealed enclosure on a generator pad; in summer, with the set running, that enclosure is the
+        hottest place on the property.
+
+
+        Around 100C the ESP32 becomes unstable before it shuts down, so this is a warning with room to
+        act. Typical here is around 60C.'
+      current_value: '{{ $value }} C'
+      threshold: 85 C
+      action: Shade or vent the enclosure
 - name: binfohub-warning
   interval: 60s
   rules:
