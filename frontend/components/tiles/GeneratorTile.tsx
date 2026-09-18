@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Device, TileConfig } from '../../types';
 import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
-import { IconCheck, IconAlertTriangle, IconX } from '../icons';
+import { IconCheck, IconAlertTriangle, IconX, IconPowerOff, IconWifiOff } from '../icons';
 import { fluidTextSm, fluidTextXs, fluidTextLg, fluidGap } from './tileScale';
 import { apiFetchGenerator } from '../../services/api';
 import { useEnergyTrakGenerator } from '../../hooks/useEnergyTrakGenerator';
@@ -196,31 +196,40 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
  * prefers-reduced-motion, where the colour alone still carries it.
  */
 /**
- * THE TILE IS THE GENERATOR.
+ * THE TILE IS THE GENERATOR — and specifically THIS generator.
  *
- * This used to be a card containing a picture of a generator: header, caption,
- * thumbnail, metric row, status list — five bands of chrome around a 60-pixel
- * drawing. The drawing was the only part anyone actually looked at, and it was
- * the smallest thing on the tile.
+ * Drawn from the actual unit on the pad, a Briggs & Stratton PowerProtect. The
+ * details that make it recognisable are not the ones a generic "generator"
+ * drawing reaches for:
  *
- * Now the machine fills the frame and everything else sits on it: the name and
- * badge over the lid, the readings on a data plate across its base, where a real
- * unit carries its plate.
+ *   - a single deep rounded dome for a roof, not a flat peaked lid
+ *   - a NARROW perforated intake bay on the left, not louvres spread across the
+ *     whole front (that one detail is why the previous drawing read as a window
+ *     air-conditioner)
+ *   - smooth panels with an embossed emblem on the access door
+ *   - a black control enclosure high on the right
+ *   - a black base plinth it stands on
  *
- * IT STILL HAS TO BEHAVE LIKE A TILE. Tiles are resized freely and come in any
- * aspect ratio, so this is absolutely positioned to its container and scales
- * with `meet` — never `slice`, which would crop the lid or the pad off a machine
- * whose whole job is to be recognisable by silhouette, and never `none`, which
- * would stretch it.
+ * Drawn rather than photographed on purpose: this repo is public and the product
+ * shot is the manufacturer's, a drawing recolours for fault and running states,
+ * and vector scales to any tile size without a second asset.
  *
- * Anchored xMidYMax — bottom, not centre. On a tall tile, centring left the set
- * hovering in the middle with a band of dead space beneath it, which reads as a
- * layout bug. Pinned to the bottom it stands on the floor of the tile and the
- * spare room ends up above it, where empty space is just headroom.
+ * IT STILL HAS TO BEHAVE LIKE A TILE. Absolutely positioned to its container and
+ * scaled with `meet` — never `slice`, which would crop the roof or the plinth off
+ * a machine whose whole job is to be recognisable by silhouette, and never
+ * `none`, which would stretch it. Anchored xMidYMax so it stands on the floor of
+ * the tile and any spare room becomes headroom above.
  */
 const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean }) => {
-    // Generated rather than hand-placed so spacing stays even at any size.
-    const slats = Array.from({ length: 11 }, (_, i) => 40.5 + i * 5.5);
+    // Perforated intake mesh. Generated rather than hand-placed so the grid
+    // stays even at any size, and kept as small dots because that is what it is
+    // -- punched perforations, not slats.
+    const mesh: { x: number; y: number }[] = [];
+    for (let r = 0; r < 18; r++) {
+        for (let c = 0; c < 5; c++) {
+            mesh.push({ x: 25 + c * 2.8 + (r % 2 ? 1.4 : 0), y: 41 + r * 3.05 });
+        }
+    }
     return (
         <svg
             viewBox="0 0 200 128"
@@ -232,90 +241,99 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
                 .gen-anim{animation:none !important; display:none}
                 .gen-anim-keep{animation:none !important}}`}</style>
             <defs>
-                <linearGradient id="genFace" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#e9edf2" />
-                    <stop offset="55%" stopColor="#c2c9d3" />
-                    <stop offset="100%" stopColor="#939ca9" />
+                {/* Brushed aluminium: bright across the upper third, falling away
+                    below, which is what gives the panels their sheen. */}
+                <linearGradient id="ppSkin" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f2f4f7" />
+                    <stop offset="22%" stopColor="#dfe3e9" />
+                    <stop offset="60%" stopColor="#c3c9d1" />
+                    <stop offset="100%" stopColor="#a4abb5" />
                 </linearGradient>
-                <linearGradient id="genSide" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#8a939f" />
-                    <stop offset="100%" stopColor="#666f7b" />
+                <linearGradient id="ppLid" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#fbfcfd" />
+                    <stop offset="45%" stopColor="#e3e7ec" />
+                    <stop offset="100%" stopColor="#b9c0c9" />
                 </linearGradient>
-                <linearGradient id="genRoof" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f6f8fb" />
-                    <stop offset="100%" stopColor="#c8d0da" />
+                <linearGradient id="ppBase" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3a3f47" />
+                    <stop offset="100%" stopColor="#15181c" />
                 </linearGradient>
-                <linearGradient id="genLouvre" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#dfe4ea" />
-                    <stop offset="45%" stopColor="#b7bfc9" />
-                    <stop offset="100%" stopColor="#7c8590" />
-                </linearGradient>
-                <radialGradient id="genHalo" cx="50%" cy="58%" r="62%">
+                <radialGradient id="ppHalo" cx="50%" cy="58%" r="62%">
                     <stop offset="0%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity={fault ? 0.3 : 0.2} />
                     <stop offset="100%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity="0" />
                 </radialGradient>
             </defs>
 
-            {/* Halo behind the machine rather than a glow around the tile: the
-                unit lights its own surroundings when it is doing something. */}
-            {(running || fault) && <rect x="0" y="0" width="200" height="128" fill="url(#genHalo)" />}
+            {(running || fault) && <rect x="0" y="0" width="200" height="128" fill="url(#ppHalo)" />}
 
-            {/* Ground, so the set is standing on something. */}
-            <path d="M0 116 L200 116 L200 128 L0 128 Z" fill="#0b0f14" opacity="0.5" />
-            <path d="M12 106 L182 106 L196 118 L26 118 Z" fill="#454c58" />
-            <path d="M12 106 L182 106 L182 109 L12 109 Z" fill="#6b7280" opacity="0.5" />
+            {/* Cabinet.
+                A BOX WITH A GENTLY ROUNDED TOP, not a dome. The first attempt
+                curved the roof up over a third of the height and came out
+                looking like a bread bin; on the real unit the sides run straight
+                for most of the cabinet and only the top corners are radiused,
+                with a shallow crown between them. Silhouette is the whole job
+                here, so this is the proportion that matters most. */}
+            <path d="M14 104 L14 40 Q14 27 30 26 L170 26 Q186 27 186 40 L186 104 Z"
+                  fill="url(#ppSkin)" stroke="#8d949e" strokeWidth="1.2" />
+            {/* Shallow crown along the top, catching the light. */}
+            <path d="M16 38 Q16 29 31 28 L169 28 Q184 29 184 38 Q100 33 16 38 Z"
+                  fill="url(#ppLid)" opacity="0.95" />
+            {/* Soft shoulder shadow just under the crown. */}
+            <path d="M14 41 Q100 37 186 41 L186 44 Q100 40 14 44 Z" fill="#9aa1ab" opacity="0.3" />
 
-            {/* Receding side, drawn first so the face overlaps it at the corner. */}
-            <path d="M164 26 L182 16 L182 104 L164 106 Z" fill="url(#genSide)" stroke="#59616e" strokeWidth="1.1" />
-            {/* Body face */}
-            <path d="M20 26 L164 26 L164 106 L20 106 Z" fill="url(#genFace)" stroke="#59616e" strokeWidth="1.5" />
-            {/* Overhanging peaked lid */}
-            <path d="M13 26 L171 26 L189 15 L31 15 Z" fill="url(#genRoof)" stroke="#8a939f" strokeWidth="1.1" />
-            <path d="M13 26 L171 26 L171 30 L13 30 Z" fill="#a7b0bb" opacity="0.75" />
-            <path d="M31 15 L189 15 L187 12 L33 12 Z" fill="#e2e8f0" />
-            <line x1="96" y1="15" x2="96" y2="26" stroke="#98a1ac" strokeWidth="0.8" opacity="0.8" />
+            {/* Panel seams. The real cabinet is three panels: a narrow intake
+                bay, the main access door, then the control end. */}
+            <line x1="44" y1="34" x2="44" y2="104" stroke="#9aa1ab" strokeWidth="0.9" opacity="0.9" />
+            <line x1="150" y1="32" x2="150" y2="104" stroke="#9aa1ab" strokeWidth="0.9" opacity="0.9" />
 
-            {/* Louvre bank.
-                Drawn as body-coloured slats with thin dark gaps between them,
-                NOT as a black panel with light stripes on it. That was the
-                single thing making this read as a window air-conditioner: on a
-                real set the louvres are pressed out of the same skin as the
-                enclosure and you see shadow between them, so the bank is mostly
-                light with dark lines, not mostly dark with light lines. */}
-            <rect x="30" y="38" width="116" height="62" rx="2" fill="#2b3340" />
-            {slats.map((y) => (
-                <g key={y}>
-                    <rect x="31" y={y} width="114" height="4.4" rx="1.1" fill="url(#genLouvre)" />
-                    <rect x="31" y={y + 3.6} width="114" height="1.4" fill="#0d1218" opacity="0.85" />
-                </g>
+            {/* Intake bay: perforated mesh, recessed, LEFT OF THE DOOR — not
+                louvres spread across the whole front. Getting this wrong is what
+                made the previous drawing read as a window air-conditioner. */}
+            <rect x="22" y="38" width="17" height="60" rx="2" fill="#20262e" stroke="#7f8690" strokeWidth="0.9" />
+            {mesh.map((d, i) => (
+                <circle key={i} cx={d.x} cy={d.y} r="0.85" fill="#767e89" opacity="0.7" />
             ))}
-            {/* Frame around the bank, so it sits IN the body rather than on it. */}
-            <rect x="30" y="38" width="116" height="62" rx="2" fill="none" stroke="#6c7480" strokeWidth="1.4" />
 
-            {/* Control panel door and status lamp. */}
-            <rect x="148" y="40" width="11" height="34" rx="1.5" fill="#aeb6c1" stroke="#69727f" strokeWidth="0.9" />
-            <circle cx="153.5" cy="78" r="1.5" fill="#69727f" />
-            <circle cx="153.5" cy="90" r="4"
+            {/* Access door with its embossed emblem. Deliberately an emblem
+                rather than the manufacturer's wordmark: this repo is public, and
+                a soft embossed badge reads correctly at tile size anyway. */}
+            <ellipse cx="97" cy="60" rx="21" ry="10.5" fill="none" stroke="#aeb5bf" strokeWidth="1.4" opacity="0.7" />
+            <ellipse cx="97" cy="59" rx="21" ry="10.5" fill="none" stroke="#ffffff" strokeWidth="0.6" opacity="0.45" />
+            <rect x="83" y="58" width="28" height="4" rx="2" fill="#b6bdc6" opacity="0.55" />
+            {/* Door latch, top centre, as on the real cabinet. */}
+            <circle cx="97" cy="40" r="2.4" fill="#8a919b" stroke="#6d747e" strokeWidth="0.7" />
+
+            {/* Control end: the black enclosure high on the right, and the
+                status lamp below it. */}
+            <rect x="157" y="38" width="21" height="23" rx="3" fill="#23272d" stroke="#14171b" strokeWidth="0.9" />
+            <rect x="160" y="41" width="15" height="9" rx="1.5" fill="#30353c" />
+            <circle cx="167.5" cy="70" r="4.6"
                 fill={fault ? '#ef4444' : running ? '#22c55e' : '#39414f'}
-                stroke="#2b3442" strokeWidth="0.7"
-                style={(running || fault) ? { filter: `drop-shadow(0 0 5px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
+                stroke="#23272d" strokeWidth="0.9"
+                style={(running || fault) ? { filter: `drop-shadow(0 0 6px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
                 {(running && !fault) && (
                     <animate className="gen-anim-keep" attributeName="opacity" values="1;0.45;1" dur="1.6s" repeatCount="indefinite" />
                 )}
             </circle>
 
-            {/* Exhaust. Haze only while the engine is turning and not faulted —
-                a faulted set is not moving air. */}
-            <rect x="170" y="88" width="12" height="7" rx="2" fill="#39414f" stroke="#2b3442" strokeWidth="0.7" />
+            {/* Black base plinth, with the two pad bolts. */}
+            <rect x="10" y="100" width="180" height="16" rx="2.5" fill="url(#ppBase)" />
+            <rect x="10" y="100" width="180" height="2.5" fill="#575d66" opacity="0.6" />
+            <circle cx="52" cy="108" r="2" fill="#4a5058" />
+            <circle cx="148" cy="108" r="2" fill="#4a5058" />
+            <path d="M6 116 L194 116 L194 120 L6 120 Z" fill="#000" opacity="0.45" />
+
+            {/* Exhaust haze, low on the right, only while the engine is actually
+                turning and not faulted — a faulted set is not moving air. */}
             {running && !fault && (
                 <g className="gen-anim">
-                    <circle cx="186" cy="89" r="3.4" fill="#cbd5e1" opacity="0.3">
-                        <animate attributeName="cy" values="89;74;66" dur="2.4s" repeatCount="indefinite" />
-                        <animate attributeName="r" values="2.4;5.6;7.6" dur="2.4s" repeatCount="indefinite" />
+                    <circle cx="190" cy="98" r="3.4" fill="#cbd5e1" opacity="0.3">
+                        <animate attributeName="cy" values="98;82;72" dur="2.4s" repeatCount="indefinite" />
+                        <animate attributeName="r" values="2.4;5.6;7.8" dur="2.4s" repeatCount="indefinite" />
                         <animate attributeName="opacity" values="0.32;0.15;0" dur="2.4s" repeatCount="indefinite" />
                     </circle>
-                    <circle cx="184" cy="89" r="2.6" fill="#cbd5e1" opacity="0.24">
-                        <animate attributeName="cy" values="89;76;69" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                    <circle cx="188" cy="98" r="2.6" fill="#cbd5e1" opacity="0.24">
+                        <animate attributeName="cy" values="98;84;75" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
                         <animate attributeName="r" values="1.8;4.4;6.2" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
                         <animate attributeName="opacity" values="0.26;0.12;0" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
                     </circle>
@@ -409,6 +427,149 @@ const RunningHero = ({ state }: { state: Record<string, any> }) => {
     );
 };
 
+
+/** Shared readout cell for the modal heroes. */
+const HeroReading = ({ label, value, unit }: { label: string; value?: number; unit?: string }) => (
+    <div className="flex flex-col items-center justify-center px-1">
+        <span className="text-[10px] uppercase tracking-wider text-gray-400">{label}</span>
+        <span className="font-bold text-white tabular-nums leading-tight" style={{ fontSize: 'clamp(0.95rem, 4.2vw, 1.4rem)' }}>
+            {value === undefined || Number.isNaN(value) ? EM_DASH : value.toFixed(unit === 'V' || unit === 'RPM' ? 0 : 1)}
+            {value !== undefined && !Number.isNaN(value) && unit
+                ? <span className="text-[11px] font-medium text-gray-400 ml-0.5">{unit}</span> : null}
+        </span>
+    </div>
+);
+
+const heroNum = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+
+/**
+ * FAULTED. The generator has tripped and will not answer an outage until it is
+ * cleared at the panel, which is the single sentence that matters and the one a
+ * row of grey key/value pairs buries.
+ *
+ * It names the actual alarms rather than saying "fault condition": the
+ * controller exposes 32 discrete bits and which one fired decides whether this
+ * is a dead battery or a seized engine.
+ */
+const FaultHero = ({ state, alarms }: { state: Record<string, any>; alarms: string[] }) => (
+    <div className="p-4 border-b border-red-500/40 bg-gradient-to-b from-red-900/45 to-transparent">
+        <style>{`@keyframes binfohubThrob{0%,100%{opacity:1}50%{opacity:.55}}
+            @media (prefers-reduced-motion: reduce){.binfohub-throb{animation:none !important}}`}</style>
+        <div className="flex items-center gap-3 mb-3">
+            <div className="binfohub-throb shrink-0 w-11 h-11 rounded-full bg-red-500/25 border-2 border-red-400 flex items-center justify-center"
+                 style={{ animation: 'binfohubThrob 1.4s ease-in-out infinite' }}>
+                <IconAlertTriangle className="w-6 h-6 text-red-300" />
+            </div>
+            <div className="min-w-0">
+                <div className="text-red-300 font-bold text-sm uppercase tracking-wider">Generator faulted</div>
+                <div className="text-[11px] text-gray-300">No standby power until this is cleared at the panel</div>
+            </div>
+        </div>
+        {alarms.length > 0 && (
+            <ul className="mb-3 space-y-1">
+                {alarms.slice(0, 6).map((a) => (
+                    <li key={a} className="text-sm text-red-200 flex items-start gap-1.5">
+                        <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                        <span className="leading-snug">{a}</span>
+                    </li>
+                ))}
+                {alarms.length > 6 && <li className="text-xs text-gray-400">+{alarms.length - 6} more</li>}
+            </ul>
+        )}
+        {/* Battery first: it is the most common cause of a set that will not run,
+            and the number you want before walking outside. */}
+        <div className="grid grid-cols-3 gap-1 pt-2 border-t border-white/10">
+            <HeroReading label="Battery" value={heroNum(state.batteryVoltage)} unit="V" />
+            <HeroReading label="Hours" value={heroNum(state.engineHours)} />
+            <HeroReading label="Trips" value={heroNum(state.tripsCount)} />
+        </div>
+    </div>
+);
+
+/**
+ * UTILITY OUTAGE. The grid is down, which is the one time this machine is the
+ * only thing between the house and darkness -- so the question is not "is there
+ * a fault" but "is it actually carrying the load".
+ */
+const OutageHero = ({ state }: { state: Record<string, any> }) => {
+    const carrying = state.active === true || state.engineRunning === true;
+    return (
+        <div className={`p-4 border-b ${carrying ? 'border-amber-500/40 bg-gradient-to-b from-amber-900/35' : 'border-red-500/40 bg-gradient-to-b from-red-900/45'} to-transparent`}>
+            <div className="flex items-center gap-3 mb-3">
+                <div className={`shrink-0 w-11 h-11 rounded-full flex items-center justify-center border-2 ${
+                    carrying ? 'bg-amber-500/20 border-amber-400' : 'bg-red-500/25 border-red-400'}`}>
+                    <IconPowerOff className={`w-6 h-6 ${carrying ? 'text-amber-300' : 'text-red-300'}`} />
+                </div>
+                <div className="min-w-0">
+                    <div className={`font-bold text-sm uppercase tracking-wider ${carrying ? 'text-amber-300' : 'text-red-300'}`}>
+                        Utility power lost
+                    </div>
+                    <div className="text-[11px] text-gray-300">
+                        {carrying ? 'Generator is running and carrying the house' : 'Generator is NOT running — it should be starting'}
+                    </div>
+                </div>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+                <HeroReading label="Output" value={heroNum(state.outputVoltage)} unit="V" />
+                <HeroReading label="Load" value={heroNum(state.loadPower) ?? heroNum(state.percentageLoad)}
+                             unit={heroNum(state.loadPower) !== undefined ? 'kW' : '%'} />
+                <HeroReading label="Battery" value={heroNum(state.batteryVoltage)} unit="V" />
+            </div>
+        </div>
+    );
+};
+
+/**
+ * SOURCE DEGRADED. The bridge, or the generator's own bus, has gone quiet and
+ * the integration has fallen back to the cloud.
+ *
+ * Worth its own panel because nothing else on screen looks wrong: every reading
+ * still has a plausible value, it is simply minutes old instead of seconds, and
+ * the local-only rows have quietly emptied. Saying which half failed is the
+ * difference between checking the board and checking the RS-485 pair.
+ */
+const DegradedHero = ({ state }: { state: Record<string, any> }) => {
+    const unreachable = state.bridgeReachable === false;
+    return (
+        <div className="p-4 border-b border-yellow-500/35 bg-gradient-to-b from-yellow-900/25 to-transparent">
+            <div className="flex items-center gap-3 mb-2">
+                <div className="shrink-0 w-11 h-11 rounded-full bg-yellow-500/15 border-2 border-yellow-500/60 flex items-center justify-center">
+                    <IconWifiOff className="w-6 h-6 text-yellow-300" />
+                </div>
+                <div className="min-w-0">
+                    <div className="text-yellow-300 font-bold text-sm uppercase tracking-wider">Running on cloud data</div>
+                    <div className="text-[11px] text-gray-300">
+                        {unreachable
+                            ? 'The bridge is not answering — check its power and Wi-Fi'
+                            : 'The generator has gone quiet on the bridge — check the RS-485 pair'}
+                    </div>
+                </div>
+            </div>
+            <div className="text-[11px] text-gray-400 leading-snug">
+                Readings below are still correct but minutes old rather than seconds,
+                and the local-only rows are unavailable until this clears.
+                {state.bridgeHost ? <> Bridge: <span className="text-gray-300">{state.bridgeHost}</span></> : null}
+            </div>
+        </div>
+    );
+};
+
+/**
+ * Picks the panel that matches what is actually happening, most urgent first.
+ *
+ * A faulted set outranks an outage: if it has tripped, the outage is academic.
+ * An outage outranks a normal run, because "running" during a grid failure is a
+ * different event from an exercise. Degradation comes last -- it is about how
+ * much to trust the numbers, not about the machine.
+ */
+const ModalHero = ({ state, alarms, hasError }: { state: Record<string, any>; alarms: string[]; hasError: boolean }) => {
+    if (hasError) return <FaultHero state={state} alarms={alarms} />;
+    if (state.utilityPowerFailure === true || state.gridPresent === false) return <OutageHero state={state} />;
+    if (state.active === true || state.engineRunning === true) return <RunningHero state={state} />;
+    if (state.bridgeReachable === false || state.busHealthy === false) return <DegradedHero state={state} />;
+    return null;
+};
+
 const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: Record<string, any>, onClose: () => void }) => {
     const reasons = deriveReasons(state);
     const hasErrors = reasons.some(r => r.severity === 'error');
@@ -493,10 +654,13 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-0">
-                    {/* Live panel first while the engine is turning: during a
-                        run the moving numbers ARE the story, and they belong
-                        above the static rows rather than buried under them. */}
-                    {(state.active === true || state.engineRunning === true) && <RunningHero state={state} />}
+                    {/* A panel matched to what is happening, above the static
+                        rows: during a run the moving numbers ARE the story, and
+                        during a fault or an outage the single actionable
+                        sentence is. Both are buried by a list of key/value
+                        pairs. Nothing is shown when the set is simply on
+                        standby, which is the state that needs no headline. */}
+                    <ModalHero state={state} alarms={Array.isArray(state.activeAlarms) ? state.activeAlarms : []} hasError={hasErrors} />
 
                     {/* Prominent reason banner — always visible when the tile is
                         showing anything other than "ok", so the user never has
