@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Device, TileConfig } from '../../types';
 import { useDashboardActions } from '../../hooks/useDashboard';
 import TileWrapper from './TileWrapper';
-import { IconZap, IconSettings, IconCheck, IconAlertTriangle, IconX } from '../icons';
+import { IconCheck, IconAlertTriangle, IconX } from '../icons';
 import { fluidTextSm, fluidTextXs, fluidTextLg, fluidGap } from './tileScale';
 import { apiFetchGenerator } from '../../services/api';
 import { useEnergyTrakGenerator } from '../../hooks/useEnergyTrakGenerator';
@@ -162,31 +162,6 @@ const StatusBadge = ({ label, status }: { label: string, status: 'ok' | 'warning
     );
 };
 
-const DetailRow = ({ icon: Icon, label, status, health }: any) => {
-    const getStatusColor = (h: string, s: string) => {
-        const lh = (h || '').toLowerCase();
-        const ls = (s || '').toLowerCase();
-        if ((lh === 'good' || lh === 'healthy' || lh === 'ok') && ls !== 'offline' && ls !== 'error') return 'text-green-400';
-        if (lh === 'warning' || ls === 'offline') return 'text-yellow-400';
-        if (lh === 'critical' || lh === 'error' || ls === 'error') return 'text-red-400';
-        return 'text-gray-400';
-    };
-
-    return (
-        <div className="flex items-center justify-between py-1 border-b border-white/10 last:border-0 w-full">
-            <div className="flex items-center gap-2">
-                <Icon className="w-3.5 h-3.5 text-gray-300" />
-                <span className="font-semibold text-gray-300 uppercase tracking-wide" style={{ fontSize: 'clamp(0.5rem, 4.5cqmin, 0.65rem)' }}>{label}</span>
-            </div>
-            <div className="flex items-center gap-2">
-                <span className={`font-bold ${getStatusColor(health, status)}`} style={{ fontSize: 'clamp(0.5rem, 4.5cqmin, 0.65rem)' }}>
-                    {status || 'Unknown'}
-                </span>
-            </div>
-        </div>
-    );
-};
-
 const MetricItem = ({ label, value, unit }: { label: string, value: string | number, unit?: string }) => (
     <div
         className="flex flex-col items-center justify-center rounded-control p-1.5 flex-1 border border-white/10"
@@ -220,110 +195,133 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
  * faulted set is not moving air. Both are suppressed under
  * prefers-reduced-motion, where the colour alone still carries it.
  */
-const GeneratorGraphic = ({ running, fault }: { running: boolean; fault: boolean }) => {
-    const glowColor = fault ? '#ef4444' : running ? '#fbbf24' : 'transparent';
-    // Louvre slats, generated rather than hand-placed so the spacing stays even.
-    const slats = Array.from({ length: 9 }, (_, i) => 50 + i * 7);
+/**
+ * THE TILE IS THE GENERATOR.
+ *
+ * This used to be a card containing a picture of a generator: header, caption,
+ * thumbnail, metric row, status list — five bands of chrome around a 60-pixel
+ * drawing. The drawing was the only part anyone actually looked at, and it was
+ * the smallest thing on the tile.
+ *
+ * Now the machine fills the frame and everything else sits on it: the name and
+ * badge over the lid, the readings on a data plate across its base, where a real
+ * unit carries its plate.
+ *
+ * IT STILL HAS TO BEHAVE LIKE A TILE. Tiles are resized freely and come in any
+ * aspect ratio, so this is absolutely positioned to its container and scales
+ * with `meet` — never `slice`, which would crop the lid or the pad off a machine
+ * whose whole job is to be recognisable by silhouette, and never `none`, which
+ * would stretch it.
+ *
+ * Anchored xMidYMax — bottom, not centre. On a tall tile, centring left the set
+ * hovering in the middle with a band of dead space beneath it, which reads as a
+ * layout bug. Pinned to the bottom it stands on the floor of the tile and the
+ * spare room ends up above it, where empty space is just headroom.
+ */
+const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean }) => {
+    // Generated rather than hand-placed so spacing stays even at any size.
+    const slats = Array.from({ length: 11 }, (_, i) => 40.5 + i * 5.5);
     return (
-        <div className="relative flex items-center justify-center" style={{ width: 'clamp(4rem, 46cqmin, 8rem)', aspectRatio: '200 / 140' }}>
-            {(running || fault) && (
-                <div
-                    className="absolute rounded-full blur-2xl pointer-events-none"
-                    style={{ width: '85%', height: '80%', background: glowColor, opacity: fault ? 0.4 : 0.3 }}
-                />
-            )}
-            <svg viewBox="0 0 200 140" className="relative w-full h-full" style={{ filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.45))' }}>
-                <style>{`@media (prefers-reduced-motion: reduce){
-                    .gen-anim{animation:none !important; display:none}
-                    .gen-anim-keep{animation:none !important}}`}</style>
-                <defs>
-                    <linearGradient id="genFace" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#e7ebf0" />
-                        <stop offset="55%" stopColor="#c3cad3" />
-                        <stop offset="100%" stopColor="#98a1ad" />
-                    </linearGradient>
-                    <linearGradient id="genSide" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#8b94a1" />
-                        <stop offset="100%" stopColor="#6b7480" />
-                    </linearGradient>
-                    <linearGradient id="genRoof" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f4f7fa" />
-                        <stop offset="100%" stopColor="#cbd3dc" />
-                    </linearGradient>
-                    <linearGradient id="genRecess" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2b3442" />
-                        <stop offset="100%" stopColor="#141a23" />
-                    </linearGradient>
-                    <linearGradient id="genPad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#4b5563" />
-                        <stop offset="100%" stopColor="#262c36" />
-                    </linearGradient>
-                </defs>
+        <svg
+            viewBox="0 0 200 128"
+            preserveAspectRatio="xMidYMax meet"
+            className="absolute inset-0 w-full h-full"
+            aria-hidden="true"
+        >
+            <style>{`@media (prefers-reduced-motion: reduce){
+                .gen-anim{animation:none !important; display:none}
+                .gen-anim-keep{animation:none !important}}`}</style>
+            <defs>
+                <linearGradient id="genFace" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#e9edf2" />
+                    <stop offset="55%" stopColor="#c2c9d3" />
+                    <stop offset="100%" stopColor="#939ca9" />
+                </linearGradient>
+                <linearGradient id="genSide" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#8a939f" />
+                    <stop offset="100%" stopColor="#666f7b" />
+                </linearGradient>
+                <linearGradient id="genRoof" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f6f8fb" />
+                    <stop offset="100%" stopColor="#c8d0da" />
+                </linearGradient>
+                <linearGradient id="genLouvre" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#dfe4ea" />
+                    <stop offset="45%" stopColor="#b7bfc9" />
+                    <stop offset="100%" stopColor="#7c8590" />
+                </linearGradient>
+                <radialGradient id="genHalo" cx="50%" cy="58%" r="62%">
+                    <stop offset="0%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity={fault ? 0.3 : 0.2} />
+                    <stop offset="100%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity="0" />
+                </radialGradient>
+            </defs>
 
-                {/* Pad, in the same shallow perspective as the body. */}
-                <path d="M14 118 L178 118 L192 128 L26 128 Z" fill="url(#genPad)" />
-                <path d="M14 118 L178 118 L178 121 L14 121 Z" fill="#6b7280" opacity="0.5" />
+            {/* Halo behind the machine rather than a glow around the tile: the
+                unit lights its own surroundings when it is doing something. */}
+            {(running || fault) && <rect x="0" y="0" width="200" height="128" fill="url(#genHalo)" />}
 
-                {/* Receding right-hand side. Drawn before the face so the face
-                    overlaps it cleanly at the corner. */}
-                <path d="M162 40 L178 32 L178 112 L162 118 Z" fill="url(#genSide)" stroke="#5b6472" strokeWidth="1.2" />
+            {/* Ground, so the set is standing on something. */}
+            <path d="M0 116 L200 116 L200 128 L0 128 Z" fill="#0b0f14" opacity="0.5" />
+            <path d="M12 106 L182 106 L196 118 L26 118 Z" fill="#454c58" />
+            <path d="M12 106 L182 106 L182 109 L12 109 Z" fill="#6b7280" opacity="0.5" />
 
-                {/* Body face */}
-                <path d="M22 40 L162 40 L162 118 L22 118 Z" fill="url(#genFace)" stroke="#5b6472" strokeWidth="1.6" />
+            {/* Receding side, drawn first so the face overlaps it at the corner. */}
+            <path d="M164 26 L182 16 L182 104 L164 106 Z" fill="url(#genSide)" stroke="#59616e" strokeWidth="1.1" />
+            {/* Body face */}
+            <path d="M20 26 L164 26 L164 106 L20 106 Z" fill="url(#genFace)" stroke="#59616e" strokeWidth="1.5" />
+            {/* Overhanging peaked lid */}
+            <path d="M13 26 L171 26 L189 15 L31 15 Z" fill="url(#genRoof)" stroke="#8a939f" strokeWidth="1.1" />
+            <path d="M13 26 L171 26 L171 30 L13 30 Z" fill="#a7b0bb" opacity="0.75" />
+            <path d="M31 15 L189 15 L187 12 L33 12 Z" fill="#e2e8f0" />
+            <line x1="96" y1="15" x2="96" y2="26" stroke="#98a1ac" strokeWidth="0.8" opacity="0.8" />
 
-                {/* Overhanging peaked lid -- the most recognisable feature. */}
-                <path d="M16 40 L168 40 L184 31 L30 31 Z" fill="url(#genRoof)" stroke="#8b94a1" strokeWidth="1.2" />
-                <path d="M16 40 L168 40 L168 44 L16 44 Z" fill="#aab3be" opacity="0.75" />
-                <path d="M30 31 L184 31 L182 28 L32 28 Z" fill="#dfe5ec" />
-                {/* Lid seam */}
-                <line x1="95" y1="31" x2="95" y2="40" stroke="#9aa3ae" strokeWidth="0.8" opacity="0.8" />
+            {/* Louvre bank.
+                Drawn as body-coloured slats with thin dark gaps between them,
+                NOT as a black panel with light stripes on it. That was the
+                single thing making this read as a window air-conditioner: on a
+                real set the louvres are pressed out of the same skin as the
+                enclosure and you see shadow between them, so the bank is mostly
+                light with dark lines, not mostly dark with light lines. */}
+            <rect x="30" y="38" width="116" height="62" rx="2" fill="#2b3340" />
+            {slats.map((y) => (
+                <g key={y}>
+                    <rect x="31" y={y} width="114" height="4.4" rx="1.1" fill="url(#genLouvre)" />
+                    <rect x="31" y={y + 3.6} width="114" height="1.4" fill="#0d1218" opacity="0.85" />
+                </g>
+            ))}
+            {/* Frame around the bank, so it sits IN the body rather than on it. */}
+            <rect x="30" y="38" width="116" height="62" rx="2" fill="none" stroke="#6c7480" strokeWidth="1.4" />
 
-                {/* Louvre bank: a recess with slats, which is what actually
-                    makes the silhouette read as a generator rather than a box. */}
-                <rect x="36" y="44" width="110" height="64" rx="3" fill="url(#genRecess)" stroke="#39414f" strokeWidth="1.2" />
-                {slats.map((y) => (
-                    <g key={y}>
-                        <line x1="41" y1={y} x2="141" y2={y} stroke="#8e97a4" strokeWidth="2.1" strokeLinecap="round" opacity="0.85" />
-                        <line x1="41" y1={y + 1.5} x2="141" y2={y + 1.5} stroke="#0f141b" strokeWidth="1.1" strokeLinecap="round" opacity="0.9" />
-                    </g>
-                ))}
-
-                {/* Control panel door, right of the louvres. */}
-                <rect x="149" y="52" width="9" height="30" rx="1.5" fill="#aeb6c1" stroke="#69727f" strokeWidth="1" />
-                <circle cx="153.5" cy="86" r="1.6" fill="#69727f" />
-
-                {/* Status lamp. Green steady while running, red on fault, dark
-                    when stopped -- never green-and-blinking for both. */}
-                <circle cx="153.5" cy="96" r="4.2"
-                    fill={fault ? '#ef4444' : running ? '#22c55e' : '#39414f'}
-                    stroke="#2b3442" strokeWidth="0.8"
-                    style={glowColor !== 'transparent'
-                        ? { filter: `drop-shadow(0 0 5px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
-                    {(running && !fault) && (
-                        <animate className="gen-anim-keep" attributeName="opacity"
-                            values="1;0.45;1" dur="1.6s" repeatCount="indefinite" />
-                    )}
-                </circle>
-
-                {/* Exhaust, low on the receding side, with haze only while the
-                    engine is actually turning and not faulted. */}
-                <rect x="166" y="98" width="12" height="7" rx="2" fill="#39414f" stroke="#2b3442" strokeWidth="0.8" />
-                {running && !fault && (
-                    <g className="gen-anim">
-                        <circle cx="182" cy="99" r="3.4" fill="#cbd5e1" opacity="0.32">
-                            <animate attributeName="cy" values="99;86;80" dur="2.4s" repeatCount="indefinite" />
-                            <animate attributeName="r" values="2.4;5.5;7.5" dur="2.4s" repeatCount="indefinite" />
-                            <animate attributeName="opacity" values="0.34;0.16;0" dur="2.4s" repeatCount="indefinite" />
-                        </circle>
-                        <circle cx="180" cy="99" r="2.6" fill="#cbd5e1" opacity="0.26">
-                            <animate attributeName="cy" values="99;88;82" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                            <animate attributeName="r" values="1.8;4.4;6.2" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                            <animate attributeName="opacity" values="0.28;0.13;0" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                        </circle>
-                    </g>
+            {/* Control panel door and status lamp. */}
+            <rect x="148" y="40" width="11" height="34" rx="1.5" fill="#aeb6c1" stroke="#69727f" strokeWidth="0.9" />
+            <circle cx="153.5" cy="78" r="1.5" fill="#69727f" />
+            <circle cx="153.5" cy="90" r="4"
+                fill={fault ? '#ef4444' : running ? '#22c55e' : '#39414f'}
+                stroke="#2b3442" strokeWidth="0.7"
+                style={(running || fault) ? { filter: `drop-shadow(0 0 5px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
+                {(running && !fault) && (
+                    <animate className="gen-anim-keep" attributeName="opacity" values="1;0.45;1" dur="1.6s" repeatCount="indefinite" />
                 )}
-            </svg>
-        </div>
+            </circle>
+
+            {/* Exhaust. Haze only while the engine is turning and not faulted —
+                a faulted set is not moving air. */}
+            <rect x="170" y="88" width="12" height="7" rx="2" fill="#39414f" stroke="#2b3442" strokeWidth="0.7" />
+            {running && !fault && (
+                <g className="gen-anim">
+                    <circle cx="186" cy="89" r="3.4" fill="#cbd5e1" opacity="0.3">
+                        <animate attributeName="cy" values="89;74;66" dur="2.4s" repeatCount="indefinite" />
+                        <animate attributeName="r" values="2.4;5.6;7.6" dur="2.4s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0.32;0.15;0" dur="2.4s" repeatCount="indefinite" />
+                    </circle>
+                    <circle cx="184" cy="89" r="2.6" fill="#cbd5e1" opacity="0.24">
+                        <animate attributeName="cy" values="89;76;69" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                        <animate attributeName="r" values="1.8;4.4;6.2" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0.26;0.12;0" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                    </circle>
+                </g>
+            )}
+        </svg>
     );
 };
 
@@ -687,68 +685,71 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                 label=""
                 isLocked={isLocked}
                 isEditor={isEditor}
-                className={`!p-3 !block ${cornerClassName || ''}`}
+                className={`!p-0 !block overflow-hidden ${cornerClassName || ''}`}
                 isActive={pulseAnimation}
                 accent="warn"
                 animation={animationConfig as any}
                 onClick={handleClick}
             >
-                <div className="flex flex-col h-full">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                        <h2 className="font-bold text-white leading-none mt-1" style={fluidTextLg}>{device.name || 'Generator'}</h2>
-                        <StatusBadge label={siteStatus} status={badgeType} />
-                    </div>
+                {/* The machine IS the tile: it is the backdrop, and the
+                    identity and state sit on it.
 
-                    {/* Primary reason caption — visible at a glance so the user
-                        doesn't have to tap into the modal to learn WHY the tile
-                        is in warning/error state. */}
-                    {captionReason && (
-                        <div className={`mt-1.5 flex items-center gap-1.5 leading-tight ${
-                            captionReason.severity === 'error' ? 'text-red-300' : captionReason.severity === 'warning' ? 'text-yellow-300' : 'text-sky-300'
-                        }`} style={fluidTextXs}>
-                            <IconAlertTriangle className="w-3 h-3 flex-shrink-0" />
-                            <span className="truncate">{captionReason.text}</span>
-                            {reasons.length > 1 && (
-                                <span className="text-gray-400 flex-shrink-0">+{reasons.length - 1}</span>
-                            )}
+                    The data plate is a real flex ROW rather than an overlay.
+                    Overlaying it looked right on a large tile and fell apart on
+                    a small or tall one, where the readings landed on top of the
+                    louvres and became unreadable. Giving it its own row means
+                    the machine is drawn into whatever is left, at any tile size,
+                    and the two can never collide. It still reads as part of the
+                    unit — a plinth under the set, which is where a real plate
+                    lives. */}
+                <div className="flex flex-col h-full w-full overflow-hidden rounded-[inherit]">
+                    {/* The machine is anchored to the bottom of this area, so
+                        on a tall tile the spare room lands above it. A soft
+                        vertical wash makes that headroom read as the space the
+                        set is standing in rather than as a gap the layout failed
+                        to fill. */}
+                    <div className="relative flex-1 min-h-0 bg-gradient-to-b from-black/35 via-transparent to-transparent">
+                        <GeneratorUnit running={isActive} fault={hasError} />
+
+                        {/* Identity and state, over the lid. A scrim rather than
+                            a solid bar, so the machine reads through it. */}
+                        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2
+                                        bg-gradient-to-b from-black/70 via-black/25 to-transparent">
+                            <h2 className="font-bold text-white leading-none truncate drop-shadow" style={fluidTextLg}>
+                                {device.name || 'Generator'}
+                            </h2>
+                            <StatusBadge label={siteStatus} status={badgeType} />
                         </div>
-                    )}
 
-                    {/* Graphic — focal element */}
-                    <div className="flex-1 flex items-center justify-center min-h-0 py-1">
-                        <GeneratorGraphic running={isActive} fault={hasError} />
+                        {/* Why it is not OK, on the tile face, so nobody has to
+                            open the modal to learn that something is wrong —
+                            only what to do about it. */}
+                        {captionReason && (
+                            <div className={`absolute inset-x-0 top-9 px-2 flex items-center gap-1.5 leading-tight ${
+                                captionReason.severity === 'error' ? 'text-red-300'
+                                : captionReason.severity === 'warning' ? 'text-yellow-300' : 'text-sky-300'
+                            }`} style={fluidTextXs}>
+                                <IconAlertTriangle className="w-3 h-3 flex-shrink-0 drop-shadow" />
+                                <span className="truncate drop-shadow">{captionReason.text}</span>
+                                {reasons.length > 1 && (
+                                    <span className="text-gray-300 flex-shrink-0">+{reasons.length - 1}</span>
+                                )}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Metrics Row */}
-                    <div className="flex mb-2 w-full" style={fluidGap(0.375)}>
+                    {/* Data plate. The fourth cell is local-only and appears
+                        exactly when a bridge is feeding the tile: coolant while
+                        the engine is turning (the reading that actually moves
+                        during a run), load the rest of the time. */}
+                    <div className="shrink-0 flex items-stretch px-2 py-1.5 bg-black/55 border-t border-white/10"
+                         style={fluidGap(0.375)}>
                         <MetricItem label="Batt" value={battVolts} unit="V" />
                         <MetricItem label="Grid" value={gridVolts} unit="V" />
                         <MetricItem label="Hrs" value={engineHours} />
-                        {/* Local-only fourth slot: it appears exactly when a
-                            bridge is feeding the tile, and is simply absent
-                            otherwise. Coolant while the engine is turning (the
-                            reading that actually moves during a run), load the
-                            rest of the time. */}
                         {onLocal && (isActive
                             ? <MetricItem label="Cool" value={coolant} />
                             : <MetricItem label="Load" value={loadPct} />)}
-                    </div>
-
-                    {/* Status List */}
-                    <div className="mt-auto rounded-control p-1.5 border border-white/10" style={{ background: 'rgb(0 0 0 / 0.22)', boxShadow: 'inset 0 1px 0 rgb(255 255 255 / 0.05), inset 0 -2px 5px rgb(0 0 0 / 0.3)' }}>
-                        <DetailRow
-                            icon={IconSettings}
-                            label="Gen Status"
-                            status={state.generatorStatus}
-                            health={state.generatorHealth}
-                        />
-                        <DetailRow
-                            icon={IconZap}
-                            label="Grid Status"
-                            status={state.gridStatus}
-                            health={state.gridHealth}
-                        />
                     </div>
                 </div>
             </TileWrapper>
