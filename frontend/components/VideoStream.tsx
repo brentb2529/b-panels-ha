@@ -35,7 +35,25 @@ const VideoStream = ({ streamUrl }: VideoStreamProps) => {
         hasStartedRef.current = false;
 
         let hls: any;
+        let destroyed = false;
         let timeoutId: ReturnType<typeof setTimeout>;
+        // Every listener added below, so teardown can remove ALL of them. The
+        // native-HLS branch used to attach `loadedmetadata`/`error` as anonymous
+        // functions that cleanup never removed, leaking one pair per effect run.
+        const listeners: Array<[string, EventListener]> = [];
+        const on = (type: string, fn: EventListener) => {
+            listeners.push([type, fn]);
+            video.addEventListener(type, fn);
+        };
+        // hls.destroy() is reachable from the error handler, the startup
+        // timeout AND cleanup; calling it twice can throw inside hls.js.
+        const destroyHls = () => {
+            if (hls && !destroyed) {
+                destroyed = true;
+                try { hls.destroy(); } catch { /* already torn down */ }
+                hls = undefined;
+            }
+        };
 
         // Declared up here so the native-HLS `loadedmetadata` path can reference it too.
         const markStarted = () => {
@@ -50,7 +68,7 @@ const VideoStream = ({ streamUrl }: VideoStreamProps) => {
         // case where the startup-timeout already fired but the stream recovered
         // immediately afterward (common on slower RTSP→HLS relays).
         const onPlaying = () => markStarted();
-        video.addEventListener('playing', onPlaying);
+        on('playing', onPlaying);
 
         const initPlayer = () => {
             if (Hls.isSupported()) {
@@ -74,16 +92,16 @@ const VideoStream = ({ streamUrl }: VideoStreamProps) => {
                     if (data.fatal) {
                         setError(data.details === 'manifestLoadError' ? 'Stream offline or invalid URL.' : `Error: ${data.details}`);
                         setIsLoading(false);
-                        hls.destroy();
+                        destroyHls();
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = streamUrl;
-                video.addEventListener('loadedmetadata', () => {
+                on('loadedmetadata', () => {
                     markStarted();
                     video.play().catch(() => {});
                 });
-                video.addEventListener('error', () => {
+                on('error', () => {
                     setError('Could not load video stream.');
                     setIsLoading(false);
                 });
@@ -101,14 +119,27 @@ const VideoStream = ({ streamUrl }: VideoStreamProps) => {
             if (!hasStartedRef.current) {
                 setError('Stream timed out.');
                 setIsLoading(false);
-                if (hls) hls.destroy();
+                destroyHls();
             }
         }, 20000);
 
         return () => {
-            if (hls) hls.destroy();
             clearTimeout(timeoutId);
-            video.removeEventListener('playing', onPlaying);
+            destroyHls();
+            for (const [type, fn] of listeners) video.removeEventListener(type, fn);
+            listeners.length = 0;
+            // Release the NATIVE decode buffers. Destroying the hls.js instance
+            // tears down the JS side only; the <video> element keeps its source
+            // and its decoder allocations until the src is cleared and the
+            // element reloaded. On a 24/7 kiosk those allocations are the
+            // expensive ones - they live in the WebView's native heap, not the
+            // JS heap, which is why a leak here is invisible to
+            // performance.memory and survives a page reload.
+            try {
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+            } catch { /* element may already be detached */ }
         };
     }, [streamUrl, reloadKey]);
 

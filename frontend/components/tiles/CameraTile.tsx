@@ -114,7 +114,24 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
         hasStartedRef.current = false;
 
         let hls: any;
+        let destroyed = false;
         let initialErrorTimeout: ReturnType<typeof setTimeout>;
+        // Track every listener so teardown removes ALL of them. The native-HLS
+        // `error` handler used to be anonymous and was never removed.
+        const listeners: Array<[string, EventListener]> = [];
+        const on = (type: string, fn: EventListener) => {
+            listeners.push([type, fn]);
+            video.addEventListener(type, fn);
+        };
+        // destroy() is reachable from the fatal-error handler, the startup
+        // timeout AND cleanup; calling it twice can throw inside hls.js.
+        const destroyHls = () => {
+            if (hls && !destroyed) {
+                destroyed = true;
+                try { hls.destroy(); } catch { /* already torn down */ }
+                hls = undefined;
+            }
+        };
 
         const markStarted = () => {
             hasStartedRef.current = true;
@@ -128,7 +145,7 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
         // stamped "Stream timed out" moments before the first frame rendered,
         // `playing` clears the error as soon as the video actually plays.
         const onPlaying = () => markStarted();
-        video.addEventListener('playing', onPlaying);
+        on('playing', onPlaying);
 
         const onCanPlay = () => {
             markStarted();
@@ -160,13 +177,13 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
                         console.warn(`HLS fatal error for ${device.name}:`, data.details);
                         setError(`Stream Error: ${data.details}`);
                         setIsLoading(false);
-                        hls.destroy();
+                        destroyHls();
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = hlsUrl;
-                video.addEventListener('canplay', onCanPlay);
-                video.addEventListener('error', () => {
+                on('canplay', onCanPlay);
+                on('error', () => {
                      setError('Native HLS playback failed.');
                      setIsLoading(false);
                 });
@@ -183,16 +200,30 @@ const CameraTile = ({ device, tile, onEnlarge, isEditor, cornerClassName }: Came
             if (!hasStartedRef.current) {
                 setError('Stream timed out.');
                 setIsLoading(false);
-                if (hls) hls.destroy();
+                destroyHls();
             }
         }, 15000);
 
 
         return () => {
-            if (hls) hls.destroy();
             clearTimeout(initialErrorTimeout);
-            video.removeEventListener('playing', onPlaying);
-            video.removeEventListener('canplay', onCanPlay);
+            destroyHls();
+            for (const [type, fn] of listeners) video.removeEventListener(type, fn);
+            listeners.length = 0;
+            // Release the NATIVE decode buffers. This matters far more here than
+            // it looks: HA hands out SHORT-LIVED stream tokens, so `hlsUrl`
+            // changes periodically and this effect re-runs for the life of the
+            // page. Destroying the hls.js instance frees only the JS side - the
+            // <video> element holds its source and decoder allocations until the
+            // src is cleared and the element reloaded. Without this, a 24/7
+            // kiosk accumulates one abandoned decoder per token refresh. Those
+            // allocations live in the WebView's native heap, which is why the
+            // growth is invisible to performance.memory and survives a reload.
+            try {
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+            } catch { /* element may already be detached */ }
         };
     }, [hlsUrl, isEditor, device.name, reloadKey]);
 
