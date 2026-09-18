@@ -1,0 +1,46 @@
+{
+    "id": "binfohub_generator_failed_to_start",
+    "alias": "B-Infohub: generator FAILED TO START",
+    "description": "The controller commanded a start and the engine did not come up. No standby power until fixed.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_start",
+            "from": "off",
+            "to": "on"
+        },
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_generator_failed_to_start",
+            "from": "off",
+            "to": "on"
+        }
+    ],
+    "actions": [
+        {
+            "action": "notify.mobile_app_iphone_16",
+            "data": {
+                "title": "GENERATOR FAILED TO START",
+                "message": "The engine did not come up when commanded. You have no standby power. Check the starting battery first.",
+                "data": {
+                    "push": {
+                        "interruption-level": "critical",
+                        "sound": {
+                            "name": "default",
+                            "critical": 1,
+                            "volume": 1.0
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "GENERATOR FAILED TO START",
+                "message": "The engine did not come up when commanded. You have no standby power. Check the starting battery first."
+            }
+        }
+    ],
+    "mode": "single"
+}

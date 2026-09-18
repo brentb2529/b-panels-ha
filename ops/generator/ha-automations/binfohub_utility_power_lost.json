@@ -1,0 +1,35 @@
+{
+    "id": "binfohub_utility_power_lost",
+    "alias": "B-Infohub: utility power LOST",
+    "description": "Fires the instant the generator controller reports the utility feed has failed. Read straight off the RS-485 bus, not the cloud.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_utility_power_failure",
+            "from": "off",
+            "to": "on"
+        }
+    ],
+    "actions": [
+        {
+            "action": "notify.mobile_app_iphone_16",
+            "data": {
+                "title": "Utility power lost",
+                "message": "Grid failed. The generator should be starting.",
+                "data": {
+                    "push": {
+                        "interruption-level": "time-sensitive"
+                    }
+                }
+            }
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "Utility power lost",
+                "message": "Grid failed. The generator should be starting."
+            }
+        }
+    ],
+    "mode": "single"
+}

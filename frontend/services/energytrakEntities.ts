@@ -52,6 +52,36 @@ const FIELD_TO_KEY: Record<string, string> = {
     monitor_state: 'monitorState',
     network_strength: 'networkStrength',
     firmware_update_status: 'firmwareUpdateStatus',
+
+    // ---- Local B-Infohub bridge ------------------------------------------
+    // Readings the EnergyTrak cloud has never carried. They exist only while a
+    // bridge is attached and its RS-485 bus is healthy, so every consumer must
+    // treat them as optional -- the tile renders undefined as an em dash
+    // rather than a confident zero.
+    //
+    // The SHARED readings above need no entry: the integration overlays the
+    // bridge onto the same energytrak_field, so battery, engine hours,
+    // voltages, frequency, speed and load are already local-backed whenever
+    // the bridge is live. Keeping field names stable across a source switch is
+    // exactly what lets this file stay ignorant of which source is talking.
+    telemetry_source: 'telemetrySource',
+    local_bus_age_seconds: 'localBusAgeSeconds',
+    coolant_temperature: 'coolantTemperature',
+    percentage_load: 'percentageLoad',
+    cumulative_energy: 'cumulativeEnergyKwh',
+    cumulative_apparent_energy: 'cumulativeApparentEnergyKvah',
+    cumulative_reactive_energy: 'cumulativeReactiveEnergyKvarh',
+    'generator_l1-l2_voltage': 'generatorL1L2Voltage',
+    generator_l2_frequency: 'generatorL2Frequency',
+    utility_l1_voltage: 'utilityL1Voltage',
+    utility_l2_voltage: 'utilityL2Voltage',
+    utility_l2_frequency: 'utilityL2Frequency',
+    // NOT utility_l1-l2_voltage: that reading BECAME the shared `grid_voltage`
+    // in energytrak 1.13.1, because the cloud's grid_voltage is the
+    // line-to-line figure. It no longer exists as a separate local field.
+    // NOT engine_run_time: that is the bridge's object id for the shared
+    // `engine_hours` above. This file keys on energytrak_field, never on the
+    // bridge's entity id.
 };
 
 // Binary sensors become booleans rather than their "on"/"off" string.
@@ -63,6 +93,18 @@ const BINARY_FIELD_TO_KEY: Record<string, string> = {
     malfunction: 'hasMalfunction',
     monitor_online: 'monitorOnline',
     smart_mode: 'smartModeEnabled',
+
+    // Local bridge. reachable and bus-healthy are kept apart deliberately:
+    // both look like "values stopped moving", but one is the ESP32 not
+    // answering and the other is the generator having gone quiet on it --
+    // different faults, at opposite ends of the install.
+    local_bridge_connected: 'bridgeReachable',
+    local_bus_healthy: 'busHealthy',
+    exercising: 'exercising',
+    scheduled_exercise_in_progress: 'scheduledExerciseInProgress',
+    engine_running: 'engineRunning',
+    engine_starting: 'engineStarting',
+    utility_power_failure: 'utilityPowerFailure',
 };
 
 const UNAVAILABLE = new Set(['unavailable', 'unknown', '']);
@@ -113,6 +155,26 @@ const applyEntity = (target: Record<string, any>, entity: HassEntity): void => {
 
     const key = FIELD_TO_KEY[field];
     if (key) target[key] = parseValue(entity);
+
+    // WHICH bridge, not merely "local". The integration stamps the address on
+    // the telemetry_source sensor so a reading can be traced back to hardware,
+    // and it stamps it even while the source is cloud -- "the bridge we are NOT
+    // using is at 192.168.1.62" is exactly what you need in order to go and
+    // look at it.
+    if (field === 'telemetry_source') {
+        const host = (entity.attributes as any)?.bridge_host;
+        const port = (entity.attributes as any)?.bridge_port;
+        if (host) target.bridgeHost = host;
+        if (port) target.bridgePort = port;
+    }
+
+    // The tile tests `faultCondition === true`, but this field arrives as text
+    // ("False" from the bridge, a fault string from the cloud), so that check
+    // could never match. Publish a real boolean alongside the text.
+    if (field === 'fault_condition') {
+        const t = String(parseValue(entity) ?? '').trim().toLowerCase();
+        target.faultCondition = t !== '' && t !== 'false' && t !== 'none' && t !== '0';
+    }
 
     if (field === 'active_alarm_count') {
         const alarms = (entity.attributes as any)?.active_alarms;

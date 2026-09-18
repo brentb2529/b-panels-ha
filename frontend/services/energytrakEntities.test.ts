@@ -120,4 +120,88 @@ describe('energytrakEntities', () => {
         expect(buildGeneratorState(SNAPSHOT, 'genmon-1234567890')?.siteId).toBe('genmon-1234567890');
         expect(buildGeneratorState(SNAPSHOT, 'genmon-other')).toBeNull();
     });
+
+    // ---- Local B-Infohub bridge ------------------------------------------
+
+    it('maps local-only bridge readings the cloud never carried', () => {
+        const withBridge: any = {
+            ...SNAPSHOT,
+            'sensor.gen_coolant': entity('sensor.gen_coolant', '100.4', 'coolant_temperature'),
+            'sensor.gen_pct': entity('sensor.gen_pct', '0.0', 'percentage_load'),
+            'sensor.gen_kwh': entity('sensor.gen_kwh', '131', 'cumulative_energy'),
+            'sensor.gen_ul1': entity('sensor.gen_ul1', '119', 'utility_l1_voltage'),
+            'sensor.gen_gl1l2': entity('sensor.gen_gl1l2', '0', 'generator_l1-l2_voltage'),
+        };
+        const s = buildGeneratorState(withBridge)!.state;
+        expect(s.coolantTemperature).toBe(100.4);
+        expect(s.percentageLoad).toBe(0);
+        expect(s.cumulativeEnergyKwh).toBe(131);
+        expect(s.utilityL1Voltage).toBe(119);
+        // The hyphen in the field name is real -- it comes from the bridge's
+        // object id and must be matched literally, not normalised.
+        expect(s.generatorL1L2Voltage).toBe(0);
+    });
+
+    it('records WHICH bridge, from the telemetry_source attributes', () => {
+        const withBridge: any = {
+            ...SNAPSHOT,
+            'sensor.gen_src': entity('sensor.gen_src', 'local', 'telemetry_source', {
+                bridge_host: '192.168.1.62', bridge_port: 6053,
+            }),
+        };
+        const s = buildGeneratorState(withBridge)!.state;
+        expect(s.telemetrySource).toBe('local');
+        expect(s.bridgeHost).toBe('192.168.1.62');
+    });
+
+    it('keeps the bridge address even while the source is the cloud', () => {
+        // The failure case is exactly when you need the address, so it must not
+        // disappear along with the local data.
+        const fellBack: any = {
+            ...SNAPSHOT,
+            'sensor.gen_src': entity('sensor.gen_src', 'cloud', 'telemetry_source', {
+                bridge_host: '192.168.1.62',
+            }),
+        };
+        const s = buildGeneratorState(fellBack)!.state;
+        expect(s.telemetrySource).toBe('cloud');
+        expect(s.bridgeHost).toBe('192.168.1.62');
+    });
+
+    it('keeps bridge-unreachable and bus-unhealthy as separate facts', () => {
+        const busDown: any = {
+            ...SNAPSHOT,
+            'binary_sensor.gen_reach': entity('binary_sensor.gen_reach', 'on', 'local_bridge_connected'),
+            'binary_sensor.gen_bus': entity('binary_sensor.gen_bus', 'off', 'local_bus_healthy'),
+        };
+        const s = buildGeneratorState(busDown)!.state;
+        // Bridge answering, generator silent on RS-485 -- the state a naive
+        // "is it online" check calls healthy.
+        expect(s.bridgeReachable).toBe(true);
+        expect(s.busHealthy).toBe(false);
+    });
+
+    it('publishes fault_condition as a real boolean, not just text', () => {
+        const clean: any = {
+            ...SNAPSHOT,
+            'sensor.gen_fc': entity('sensor.gen_fc', 'False', 'fault_condition'),
+        };
+        expect(buildGeneratorState(clean)!.state.faultCondition).toBe(false);
+
+        const faulted: any = {
+            ...SNAPSHOT,
+            'sensor.gen_fc': entity('sensor.gen_fc', 'Low Oil Pressure', 'fault_condition'),
+        };
+        const s = buildGeneratorState(faulted)!.state;
+        expect(s.faultCondition).toBe(true);
+        expect(s.faultConditionText).toBe('Low Oil Pressure');
+    });
+
+    it('leaves every local key undefined on a cloud-only install', () => {
+        const s = buildGeneratorState(SNAPSHOT)!.state;
+        for (const key of ['telemetrySource', 'bridgeHost', 'coolantTemperature',
+                           'busHealthy', 'bridgeReachable', 'percentageLoad']) {
+            expect(s[key]).toBeUndefined();
+        }
+    });
 });

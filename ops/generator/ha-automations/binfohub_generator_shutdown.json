@@ -1,0 +1,51 @@
+{
+    "id": "binfohub_generator_shutdown",
+    "alias": "B-Infohub: CRITICAL generator alarm",
+    "description": "Any shutdown-class or protection alarm, delivered the instant the bridge reports it. Grafana deliberately does NOT also watch these: duplicating an immediate push with a minutes-late Prometheus rule pages twice for one event, and the second page teaches you to ignore the channel. Grafana keeps only the sustained and trend conditions, plus BridgeMetricsAbsent, which is the backstop for Home Assistant itself being down.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "from": "off",
+            "to": "on",
+            "entity_id": [
+                "binary_sensor.william_bensten_s_generator_malfunction",
+                "binary_sensor.outdoor_william_bensten_s_generator_emergency_stop",
+                "binary_sensor.outdoor_william_bensten_s_generator_low_oil_pressure",
+                "binary_sensor.outdoor_william_bensten_s_generator_high_coolant_temperature",
+                "binary_sensor.outdoor_william_bensten_s_generator_engine_over_speed",
+                "binary_sensor.outdoor_william_bensten_s_generator_electrical_trip",
+                "binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_stop",
+                "binary_sensor.outdoor_william_bensten_s_generator_magnetic_pick_up_fault",
+                "binary_sensor.outdoor_william_bensten_s_generator_temperature_circuit_open"
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "action": "notify.mobile_app_iphone_16",
+            "data": {
+                "title": "CRITICAL: {{ trigger.to_state.attributes.friendly_name }}",
+                "message": "{{ trigger.to_state.attributes.friendly_name }} is active on the generator. Read the fault at the GC-1032 panel \u2014 the Modbus map carries the bit but not the message.",
+                "data": {
+                    "push": {
+                        "interruption-level": "critical",
+                        "sound": {
+                            "name": "default",
+                            "critical": 1,
+                            "volume": 1.0
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "CRITICAL: {{ trigger.to_state.attributes.friendly_name }}",
+                "message": "{{ trigger.to_state.attributes.friendly_name }} is active on the generator. Read the fault at the GC-1032 panel \u2014 the Modbus map carries the bit but not the message."
+            }
+        }
+    ],
+    "mode": "queued",
+    "max": 10
+}

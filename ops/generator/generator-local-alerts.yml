@@ -1,0 +1,206 @@
+# B-Infohub local bridge — Grafana alert rules
+#
+# WHAT THIS FILE DELIBERATELY DOES NOT ALERT ON.
+#
+# Every immediate, critical condition — utility power lost, an unscheduled
+# start, failed to start, any shutdown or engine-protection alarm, the bridge
+# or the RS-485 bus going dark — is handled by Home Assistant automations
+# instead, and is NOT duplicated here.
+#
+# That split is not arbitrary. Those automations fire within about 350ms of the
+# bridge reporting a change, because the ESPHome connection is push and
+# ha-energytrak publishes urgent readings the moment they arrive. This pipeline
+# cannot compete: metrics are pushed on a 30 second timer, Prometheus needs a
+# sample or two to evaluate, and every rule carries a `for:` on top. A rule here
+# duplicating one of those automations would page a second time, minutes later,
+# for an event already handled — and a channel that pages twice for one event is
+# a channel people learn to ignore.
+#
+# So Grafana keeps what it is genuinely better at, and what Home Assistant
+# cannot do for itself:
+#
+#   - SUSTAINED conditions, where the whole signal is "this has been true for
+#     15 minutes" rather than "this just changed"
+#   - TREND and history, the reason everything is pushed here at all
+#   - BridgeMetricsAbsent, the one real backstop: it fires when nothing is
+#     arriving, which is exactly the case where Home Assistant is down and its
+#     own automations cannot fire either
+#
+# Metrics come from packages/energytrak_local_metrics.yaml. Measurement ->
+# Prometheus name is <measurement>_<field>.
+#
+# Alarm rules stay gated on `unless generator_bridge_bus_healthy == 0`: a dead
+# bus FREEZES alarm bits rather than clearing them, so an ungated rule would
+# page forever on a fault that had already cleared.
+#
+# Upload: Alerting -> Alert rules -> Import, or POST to the Mimir ruler at
+# /api/v1/rules/bpanels with Content-Type: application/yaml
+
+# EXERCISE SUPPRESSION
+#
+# The weekly exercise is the generator working correctly, and it does not look
+# like it. Measured on this unit: a run sits at 46.7Hz and 90V through several
+# minutes of low-speed warm-up before stepping up. Voltage, frequency, load and
+# battery all move through ranges that are abnormal for a machine carrying load
+# and entirely normal for one warming up.
+#
+# So the four rules that read those conditions are suppressed while the
+# controller reports an exercise:
+#
+#   unless generator_local_exercising == 1
+#   unless generator_local_scheduled_exercise_in_progress == 1
+#
+# Both, not either: exercising covers a manually started test, and
+# scheduled_exercise_in_progress covers the timed weekly run.
+#
+# WHAT IS NOT SUPPRESSED, AND WHY.
+#
+# Nothing shutdown-class is gated on exercise, here or in Home Assistant. A
+# failure to start, or a fault that trips the machine DURING its weekly test,
+# is the single most valuable thing this whole system can tell you -- finding
+# it on a Tuesday is the entire point of exercising, and suppressing it would
+# mean the one hour a week the generator actually runs is the one hour nobody
+# is watching.
+
+groups:
+- name: binfohub-bridge
+  interval: 30s
+  rules:
+  - alert: BridgeMetricsAbsent
+    expr: absent_over_time(generator_bridge_source_is_local[10m])
+    for: 5m
+    labels:
+      severity: critical
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: No B-Infohub bridge telemetry reaching Grafana Cloud
+      description: "No bridge sample for 10+ minutes. Every rule in this file is\nsilent until it recovers,\
+        \ so treat this as \"local alerting is\ndown\", not \"a metric is missing\".\n\nCheck, in order:\n\
+        \  - Is Home Assistant reachable?\n  - Settings > Automations: is \"Grafana Cloud: push local\
+        \ bridge\n    metrics\" enabled, and is last_triggered recent?\n  - Settings > System > Logs,\
+        \ filter \"rest_command\" \u2014 an expired\n    Grafana Cloud key shows as repeated 401s.\n"
+      threshold: no samples for 10 minutes
+      action: Check HA is up, the local push automation is enabled, and the Grafana Cloud key is valid
+  - alert: BridgeFellBackToCloud
+    expr: generator_bridge_source_is_local == 0
+    for: 30m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: Generator {{ $labels.name }} running on cloud data, not the bridge
+      description: "Home Assistant has been serving EnergyTrak cloud telemetry for\n30+ minutes instead\
+        \ of the local bridge. Readings are still\ncorrect but minutes old, and the local-only fields\
+        \ \u2014 every\nindividual alarm bit included \u2014 are absent, so most of this\nalert file cannot\
+        \ evaluate.\n\nBridgeUnreachable or BridgeBusSilent should also be firing and\nwill say which\
+        \ half failed. If neither is, the integration itself\nhas not picked the bridge up: check Settings\
+        \ > Devices & Services\n> EnergyTrak.\n"
+      action: Resolve the underlying bridge fault; this clears on its own
+  - alert: BridgeDataAging
+    expr: generator_bridge_bus_age_seconds > 120
+    for: 10m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: infrastructure
+    annotations:
+      summary: Generator {{ $labels.name }} bridge data aging ({{ humanizeDuration $value }})
+      description: 'Registers are still arriving but the newest is over two minutes
+
+        old. Healthy is single-digit seconds. Usually a marginal RS-485
+
+        connection or bus contention rather than an outright failure.
+
+        '
+      current_value: '{{ humanizeDuration $value }}'
+      threshold: 120 seconds
+      action: Inspect the RS-485 wiring and termination before it fails outright
+- name: binfohub-warning
+  interval: 60s
+  rules:
+  - alert: BatteryChargingFault
+    expr: "(generator_alarm_battery_low_voltage == 1\n  or generator_alarm_battery_high_voltage == 1\n\
+      \  or generator_alarm_alternator_input_lost == 1)\nunless on (site_id) generator_bridge_bus_healthy\
+      \ == 0\nunless on (site_id) generator_local_exercising == 1\nunless on (site_id) generator_local_scheduled_exercise_in_progress\
+      \ == 1\n"
+    for: 15m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: generator
+    annotations:
+      summary: Generator {{ $labels.name }} battery or charging fault
+      description: "The controller is reporting a battery voltage outside its limits,\nor a lost alternator\
+        \ input. A standby generator that cannot hold\nits starting battery will fail on the next real\
+        \ outage, and this\nis the warning you get in advance of that.\n\nLow  \u2014 charger failing,\
+        \ or the battery is at end of life.\nHigh \u2014 over-charging; check the regulator.\nAlternator\
+        \ input lost \u2014 not charging WHILE RUNNING, so every\nexercise cycle now drains the battery\
+        \ instead of topping it up.\n\n15m `for:` because battery voltage legitimately sags during a\n\
+        crank and recovers within seconds once the alternator picks up.\n"
+      current_value: '{{ $value }}'
+      action: Check battery age and charger output before the next exercise
+  - alert: GeneratorOverloaded
+    expr: "(generator_alarm_generator_overload == 1\n  or generator_alarm_generator_high_current == 1\n\
+      \  or generator_alarm_unbalanced_load == 1)\nunless on (site_id) generator_bridge_bus_healthy ==\
+      \ 0\nunless on (site_id) generator_local_exercising == 1\nunless on (site_id) generator_local_scheduled_exercise_in_progress\
+      \ == 1\n"
+    for: 5m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: generator
+    annotations:
+      summary: Generator {{ $labels.name }} overloaded or unbalanced
+      description: 'Sustained overload, high current, or a badly unbalanced load
+
+        across L1/L2. Compare generator_local_percentage_load and the
+
+        per-leg currents. Unbalanced load on a split-phase unit usually
+
+        means a large single-leg load rather than a generator fault.
+
+        '
+      current_value: '{{ $value }}'
+      action: Shed load, or rebalance it across the two legs
+  - alert: GeneratorOutputOutOfSpec
+    expr: "(generator_alarm_generator_high_frequency == 1\n  or generator_alarm_generator_low_frequency\
+      \ == 1\n  or generator_alarm_gen_l1_phase_high_voltage == 1\n  or generator_alarm_gen_l1_phase_low_voltage\
+      \ == 1\n  or generator_alarm_gen_l2_phase_high_voltage == 1\n  or generator_alarm_gen_l2_phase_low_voltage\
+      \ == 1\n  or generator_alarm_high_voltage_warning__ph_ph_ == 1\n  or generator_alarm_low_voltage_failure_1__ph_ph_\
+      \ == 1)\nand on (site_id) min_over_time(generator_active[5m]) == 1\nunless on (site_id) generator_bridge_bus_healthy\
+      \ == 0\nunless on (site_id) generator_local_exercising == 1\nunless on (site_id) generator_local_scheduled_exercise_in_progress\
+      \ == 1\n"
+    for: 5m
+    labels:
+      severity: warning
+      source: binfohub
+      alertgroup: generator
+    annotations:
+      summary: Generator {{ $labels.name }} output out of specification
+      description: "Output voltage or frequency has been out of spec for 5+ minutes\nwhile the engine\
+        \ was continuously running \u2014 so this is not the\nnormal low-speed warm-up, which on this\
+        \ unit sits around 46.7Hz\nand 90V before stepping up.\n\nCompare generator_local_generator_l1_voltage,\n\
+        generator_local_generator_l2_voltage and\ngenerator_local_generator_l1_frequency against 120V\
+        \ / 60Hz.\nSustained low output under load points at the governor or AVR.\n"
+      action: If it persists under load, the governor or AVR needs attention
+  - alert: ControllerWarningActive
+    expr: "(generator_alarm_general_warning == 1\n  or generator_alarm_engine_under_speed == 1\n  or generator_alarm_high_oil_pressure_detected\
+      \ == 1)\nunless on (site_id) generator_bridge_bus_healthy == 0\nunless on (site_id) generator_local_exercising\
+      \ == 1\nunless on (site_id) generator_local_scheduled_exercise_in_progress == 1\n"
+    for: 30m
+    labels:
+      severity: info
+      source: binfohub
+      alertgroup: generator
+    annotations:
+      summary: Generator {{ $labels.name }} controller warning
+      description: 'A non-shutdown warning has been asserted for 30+ minutes. Often a
+
+        service interval rather than a fault. Read the panel for the
+
+        specific text; the Modbus map carries the bit but not the message.
+
+        '
+      action: Read the warning at the panel at your convenience

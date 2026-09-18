@@ -1,0 +1,35 @@
+{
+    "id": "binfohub_utility_power_restored",
+    "alias": "B-Infohub: utility power restored",
+    "description": "Closes the loop on the outage notification.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_utility_power_failure",
+            "from": "on",
+            "to": "off"
+        }
+    ],
+    "actions": [
+        {
+            "action": "notify.mobile_app_iphone_16",
+            "data": {
+                "title": "Utility power restored",
+                "message": "Grid is back. The generator should cool down and stop.",
+                "data": {
+                    "push": {
+                        "interruption-level": "active"
+                    }
+                }
+            }
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "Utility power restored",
+                "message": "Grid is back. The generator should cool down and stop."
+            }
+        }
+    ],
+    "mode": "single"
+}

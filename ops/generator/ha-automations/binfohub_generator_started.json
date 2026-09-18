@@ -1,0 +1,55 @@
+{
+    "id": "binfohub_generator_started",
+    "alias": "B-Infohub: generator started unexpectedly",
+    "description": "TWO RACES THIS CLOSES.\n\n1. The exercise flag vs the run flag. The condition is evaluated the instant the trigger fires, so if engine_running asserts even a second before the controller sets its exercise bit, an immediate rule sees exercising=off and pages for the weekly test. Requiring 90 seconds of continuous running lets both bits settle before anything is judged, and also filters a brief crank that never became a run.\n\n2. One outage, two notifications. During a real utility failure the generator starting is the CORRECT response and is already covered by 'utility power LOST', which fires immediately. Alerting again here would page twice for one event, so a start is only surprising while the grid is healthy.\n\nThe 90s delay costs nothing: this is informational. Every genuinely urgent condition -- the outage itself, a failed start, any shutdown alarm -- has its own automation and none of them wait.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_engine_running",
+            "from": "off",
+            "to": "on",
+            "for": {
+                "seconds": 90
+            }
+        }
+    ],
+    "conditions": [
+        {
+            "condition": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_exercising",
+            "state": "off"
+        },
+        {
+            "condition": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_scheduled_exercise_in_progress",
+            "state": "off"
+        },
+        {
+            "condition": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_utility_power_failure",
+            "state": "off"
+        }
+    ],
+    "actions": [
+        {
+            "action": "notify.mobile_app_iphone_16",
+            "data": {
+                "title": "Generator started unexpectedly",
+                "message": "The generator has been running for 90 seconds, the grid is healthy, and the controller is not reporting an exercise cycle. Worth a look.",
+                "data": {
+                    "push": {
+                        "interruption-level": "time-sensitive"
+                    }
+                }
+            }
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "Generator started unexpectedly",
+                "message": "The generator has been running for 90 seconds, the grid is healthy, and the controller is not reporting an exercise cycle. Worth a look."
+            }
+        }
+    ],
+    "mode": "single"
+}

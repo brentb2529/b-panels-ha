@@ -1,0 +1,231 @@
+# Push the FULL local B-Infohub dataset to Grafana Cloud.
+#
+# Goes in <config>/packages/ alongside grafana_push.yaml, which it deliberately
+# does not touch.
+#
+# WHY A SECOND FILE AND A SECOND MEASUREMENT
+#
+# grafana_push.yaml reproduces the old Pi exporter's line protocol byte for
+# byte so that 33 dashboard panels and every existing alert rule keep working
+# with no query changes. That constraint is worth keeping, and it means the
+# `generator` measurement is effectively frozen: adding 130 fields to it would
+# put the whole legacy surface at risk for no benefit.
+#
+# So the local dataset goes to its OWN measurements. Nothing here can break a
+# panel or an alert that exists today, and switching it off is deleting one
+# file.
+#
+#   generator_local   every numeric reading the bridge provides
+#   generator_alarm   every alarm bit, 1/0
+#   generator_bridge  bridge health and provenance
+#
+# WHY THESE FIELDS ARE DISCOVERED, NOT LISTED
+#
+# grafana_push.yaml hardcodes its field list because it HAD to match an
+# existing wire format. This file has no such constraint, so it walks every
+# entity carrying an `energytrak_field` attribute and emits whatever it finds.
+#
+# That matters because the bridge's field set is not static: it is generated
+# from contract/telemetry.py in the B-Infohub repo, and today's 100 local-only
+# keys will grow as more of the Modbus map is decoded. An enumerated list here
+# would mean every new register needs an edit in a second repo that nobody
+# will remember to make -- and the failure is silent, because a missing metric
+# looks exactly like a metric that is not being reported.
+#
+# Discovery makes new readings appear in Grafana the moment the bridge starts
+# publishing them, which is the whole point of "push everything so we can mine
+# it later".
+#
+# WHAT IS DELIBERATELY EXCLUDED
+#
+# The 27 shared keys already ride in the `generator` measurement. Pushing them
+# again under a second name would double-count them in any panel that summed
+# across measurements, and would give two series that disagree during a source
+# switch. LEGACY_FIELDS below is that exclusion list; it must stay in step with
+# the numeric and binary loops in grafana_push.yaml.
+
+rest_command:
+  grafana_cloud_push_local:
+    url: !secret grafana_cloud_write_url
+    method: POST
+    content_type: "text/plain; charset=utf-8"
+    username: !secret grafana_cloud_user
+    password: !secret grafana_cloud_api_key
+    timeout: 20
+    payload: >-
+      {%- set ets = states.sensor
+           | selectattr('attributes.energytrak_field', 'defined') | list -%}
+      {%- set etb = states.binary_sensor
+           | selectattr('attributes.energytrak_field', 'defined') | list -%}
+
+      {#- Fields already carried by the `generator` measurement. Keep in step
+          with grafana_push.yaml or a reading ends up in two series. -#}
+      {%- set LEGACY_FIELDS = [
+            'battery_voltage', 'grid_voltage', 'grid_frequency',
+            'output_voltage', 'generator_frequency', 'engine_speed',
+            'load_power', 'engine_hours', 'starts_count', 'trips_count',
+            'active_alarm_count', 'equipment_data_age',
+            'running', 'grid_present', 'fault', 'equipment_data_stale',
+            'smart_mode' ] -%}
+
+      {#- The alarm bits, from contract/telemetry.json `alarm_keys`. These are
+          split out from the other booleans so that alert rules can match on
+          `generator_alarm_*` alone, rather than having to know which of 56
+          binary fields happen to be faults. exercising and
+          scheduled_exercise_in_progress are NOT here: they are run states that
+          the controller reports through the same registers, and alerting on
+          "the generator is doing its scheduled job" is how an alert channel
+          gets muted. -#}
+      {#- `malfunction` rather than `common_shutdown`: the bridge's
+          common_shutdown register reaches Home Assistant through the
+          contract's derived `has_malfunction` copy, which lands on an entity
+          whose energytrak_field is `malfunction`. Matching on the register
+          name emits nothing at all, and an alarm series that never appears is
+          indistinguishable from an alarm that never fires. -#}
+      {%- set ALARM_FIELDS = [
+            'alternator_input_lost', 'battery_high_voltage',
+            'battery_low_voltage', 'malfunction', 'electrical_trip',
+            'emergency_stop', 'engine_failed_to_start',
+            'engine_failed_to_stop', 'engine_over_speed',
+            'engine_under_speed', 'gen_l1_phase_high_voltage',
+            'gen_l1_phase_low_voltage', 'gen_l2_phase_high_voltage',
+            'gen_l2_phase_low_voltage', 'general_notification',
+            'general_warning', 'generator_failed_to_start',
+            'generator_high_current', 'generator_high_frequency',
+            'generator_low_frequency', 'generator_overload',
+            'high_coolant_temperature', 'high_oil_pressure_detected',
+            'high_voltage_warning_1__ph-ph_', 'high_voltage_warning_2__ph-ph_',
+            'high_voltage_warning__ph-ph_', 'low_oil_pressure',
+            'low_voltage_failure_1__ph-ph_', 'low_voltage_failure_2__ph-ph_',
+            'magnetic_pick_up_fault', 'temperature_circuit_open',
+            'unbalanced_load' ] -%}
+
+      {%- set site = (ets | map(attribute='attributes.energytrak_site')
+                          | first | default('unknown')) -%}
+      {%- set gname = (etb | selectattr('attributes.energytrak_field', 'eq', 'running')
+                           | map(attribute='attributes.friendly_name')
+                           | first | default('Generator'))
+                      | replace(' Running', '') -%}
+      {%- set tags = 'site_id=' ~ site | replace(' ', '\\ ') | replace(',', '\\,')
+                   ~ ',name=' ~ gname | replace(' ', '\\ ') | replace(',', '\\,') -%}
+
+      {#- Only the bridge can produce these. When the source is cloud the
+          local-only entities are unavailable anyway, so emitting nothing is
+          both correct and cheap -- and it leaves a real gap in the series,
+          which is exactly what you want to see on a graph when the bridge
+          was down. Filling it with zeros would forge continuity. -#}
+      {%- set src = (ets | selectattr('attributes.energytrak_field', 'eq', 'telemetry_source')
+                         | map(attribute='state') | first | default('')) | trim -%}
+
+      {#- Field names are sanitised on the way out. Several alarm keys contain a
+          HYPHEN (high_voltage_warning_1__ph-ph_). That is legal in an Influx
+          field key, so it survives the write -- and then Grafana Cloud maps the
+          point onto a Prometheus metric name, where [a-zA-Z_:][a-zA-Z0-9_:]* is
+          the only legal shape. The series would be silently mangled or dropped,
+          which looks identical to an alarm that never fired. Match on the real
+          attribute value, emit a safe name. -#}
+      {%- macro fn(f) -%}{{- f | replace('-', '_') -}}{%- endmacro -%}
+
+      {%- set ns = namespace(num=[], alarm=[], bridge=[]) -%}
+
+      {%- if src == 'local' -%}
+
+        {#- Every numeric local reading. `| float(none)` is the filter, not an
+            `is number` test: states arrive as STRINGS, and unknown /
+            unavailable / '' must be skipped rather than coerced to 0.0. A
+            forged 0 on oil pressure is worse than no sample at all. -#}
+        {%- for e in ets -%}
+          {%- set f = e.attributes.energytrak_field -%}
+          {%- if f not in LEGACY_FIELDS -%}
+            {%- set v = e.state | trim -%}
+            {%- if v | float(none) is not none -%}
+              {%- set ns.num = ns.num + [fn(f) ~ '=' ~ (v | float)] -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+
+        {#- Booleans: alarms to their own measurement, everything else to
+            generator_local. `unknown` is omitted in both cases. -#}
+        {%- for e in etb -%}
+          {%- set f = e.attributes.energytrak_field -%}
+          {%- if f not in LEGACY_FIELDS -%}
+            {%- set v = e.state | trim -%}
+            {%- if v in ['on', 'off'] -%}
+              {%- if f in ALARM_FIELDS -%}
+                {%- set ns.alarm = ns.alarm + [fn(f) ~ '=' ~ (1 if v == 'on' else 0)] -%}
+              {%- else -%}
+                {%- set ns.num = ns.num + [fn(f) ~ '=' ~ (1 if v == 'on' else 0)] -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+
+      {%- endif -%}
+
+      {#- Bridge health rides on its own measurement and is emitted in EVERY
+          state, including while the source is cloud and while the bridge is
+          unreachable.
+          
+          This is the one series that must never go absent, because absence is
+          indistinguishable from "the pusher died" -- and these three fields
+          are precisely what the bridge-down alerts watch. A health metric that
+          disappears when things are unhealthy cannot alert on unhealthy. -#}
+      {%- set bhost = (ets | selectattr('attributes.energytrak_field', 'eq', 'telemetry_source')
+                           | map(attribute='attributes.bridge_host') | first | default('')) -%}
+      {%- set bconn = (ets | selectattr('attributes.energytrak_field', 'eq', 'telemetry_source')
+                           | map(attribute='attributes.bridge_connected') | first | default(none)) -%}
+      {%- set bbus  = (ets | selectattr('attributes.energytrak_field', 'eq', 'telemetry_source')
+                           | map(attribute='attributes.bus_healthy') | first | default(none)) -%}
+      {%- set bage = (ets | selectattr('attributes.energytrak_field', 'eq', 'local_bus_age_seconds')
+                          | map(attribute='state') | first | default('')) | trim -%}
+
+      {%- set ns.bridge = ns.bridge + ['source_is_local=' ~ (1 if src == 'local' else 0)] -%}
+      {%- if bconn is not none -%}
+        {%- set ns.bridge = ns.bridge + ['reachable=' ~ (1 if bconn else 0)] -%}
+      {%- endif -%}
+      {%- if bbus is not none -%}
+        {%- set ns.bridge = ns.bridge + ['bus_healthy=' ~ (1 if bbus else 0)] -%}
+      {%- endif -%}
+      {%- if bage | float(none) is not none -%}
+        {%- set ns.bridge = ns.bridge + ['bus_age_seconds=' ~ (bage | float)] -%}
+      {%- endif -%}
+
+      {#- bridge_host is a string, so it rides as a TAG on an info series whose
+          value is always 1 -- the standard info-metric pattern. This is what
+          answers "which box produced this" months later in a dashboard. -#}
+      {%- set bridge_info = 'generator_bridge_info,' ~ tags ~ ',bridge_host='
+            ~ ((bhost | trim or 'none') | replace(' ', '\\ ') | replace(',', '\\,')
+                                        | replace('=', '\\=')) ~ ' value=1' -%}
+
+      {#- Points are separated by newline ONLY. This is a folded scalar, so a
+          real line break would fold to a SPACE and the next point would be
+          parsed as the previous one's timestamp -- a 400 on the whole write.
+          Hence the explicit '\n'. Same trap as grafana_push.yaml. -#}
+      {%- set lines = [] -%}
+      {%- if ns.num | length > 0 -%}
+        {%- set lines = lines + ['generator_local,' ~ tags ~ ' ' ~ ns.num | join(',')] -%}
+      {%- endif -%}
+      {%- if ns.alarm | length > 0 -%}
+        {%- set lines = lines + ['generator_alarm,' ~ tags ~ ' ' ~ ns.alarm | join(',')] -%}
+      {%- endif -%}
+      {%- if ns.bridge | length > 0 -%}
+        {%- set lines = lines + ['generator_bridge,' ~ tags ~ ' ' ~ ns.bridge | join(',')] -%}
+      {%- endif -%}
+      {%- set lines = lines + [bridge_info] -%}
+      {{- lines | join('\n') -}}
+
+automation:
+  - id: grafana_cloud_push_generator_local
+    alias: "Grafana Cloud: push local bridge metrics"
+    description: >-
+      The full B-Infohub dataset, on the same 30s cadence as the legacy
+      generator push. Periodic by construction: duration-based alert rules
+      need a continuous series, and Prometheus drops a series 5 minutes
+      after its last sample.
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: time_pattern
+        seconds: "/30"
+    actions:
+      - action: rest_command.grafana_cloud_push_local

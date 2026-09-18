@@ -70,6 +70,27 @@ function deriveReasons(state: Record<string, any>): { severity: 'error' | 'warni
         reasons.push({ severity: 'error', text: `Alarm${state.activeAlarms.length > 1 ? 's' : ''}: ${names}${extra}` });
     }
 
+    // 2b. THE BRIDGE ITSELF.
+    //
+    // Without these the worst failure is invisible. When the bridge stops
+    // answering, or the generator stops answering the bridge, the readings do
+    // not blank — they FREEZE at their last values, and the tile would keep
+    // showing a healthy generator indefinitely from data that stopped being
+    // true hours ago. That is the one failure a status tile must never render
+    // as "fine".
+    //
+    // Only raised when the field exists, so a cloud-only install is untouched.
+    if (state.bridgeReachable === false) {
+        reasons.push({ severity: 'error', text: 'Local bridge unreachable — readings may be stale' });
+    } else if (state.busHealthy === false) {
+        reasons.push({ severity: 'error', text: 'Generator not answering the bridge — readings frozen' });
+    } else if (state.telemetrySource === 'cloud' && state.bridgeHost) {
+        // A bridge is configured but is not the source. Not an emergency, but
+        // the resolution and latency are gone, and silence about it is how a
+        // degraded install stays degraded.
+        reasons.push({ severity: 'warning', text: 'Falling back to cloud data — bridge not in use' });
+    }
+
     // 3. Site / generator / grid health — escalating by worst level
     for (const [label, h] of [['Site', siteHealth], ['Generator', generatorHealth], ['Grid', gridHealth]] as const) {
         if (h === 'critical' || h === 'error') {
@@ -181,52 +202,211 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
 // A dimensional generator illustration sitting on a soft accent-tinted halo.
 // Running units glow amber; idle/faulted read as a quiet metal box. This turns
 // the previously flat gray rectangle into the tile's clear focal point.
+/**
+ * The generator, drawn as a standby set rather than a box with three lines.
+ *
+ * The previous version was a white rounded rectangle with three stripes, which
+ * read as a kitchen appliance. A whole-home standby unit has a very specific
+ * silhouette and it is worth getting right, because this tile is glanced at far
+ * more often than it is read: a wide low enclosure, an overhanging peaked lid,
+ * and tall louvre banks that occupy most of the side. Those three things are
+ * what make it recognisable at 40 pixels.
+ *
+ * Drawn in a shallow three-quarter view so it has depth without needing to be
+ * large, and standing on its pad -- these things are never on grass.
+ *
+ * Motion is reserved for states that matter. Running adds exhaust haze and a
+ * steady green lamp; a fault turns the lamp red and stops the haze, because a
+ * faulted set is not moving air. Both are suppressed under
+ * prefers-reduced-motion, where the colour alone still carries it.
+ */
 const GeneratorGraphic = ({ running, fault }: { running: boolean; fault: boolean }) => {
     const glowColor = fault ? '#ef4444' : running ? '#fbbf24' : 'transparent';
+    // Louvre slats, generated rather than hand-placed so the spacing stays even.
+    const slats = Array.from({ length: 9 }, (_, i) => 50 + i * 7);
     return (
         <div className="relative flex items-center justify-center" style={{ width: 'clamp(4rem, 46cqmin, 8rem)', aspectRatio: '200 / 140' }}>
             {(running || fault) && (
                 <div
                     className="absolute rounded-full blur-2xl pointer-events-none"
-                    style={{ width: '85%', height: '80%', background: glowColor, opacity: fault ? 0.4 : 0.35 }}
+                    style={{ width: '85%', height: '80%', background: glowColor, opacity: fault ? 0.4 : 0.3 }}
                 />
             )}
-            <svg viewBox="0 0 200 140" className="relative w-full h-full" style={{ filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.4))' }}>
+            <svg viewBox="0 0 200 140" className="relative w-full h-full" style={{ filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.45))' }}>
+                <style>{`@media (prefers-reduced-motion: reduce){
+                    .gen-anim{animation:none !important; display:none}
+                    .gen-anim-keep{animation:none !important}}`}</style>
                 <defs>
-                    <linearGradient id="genBody" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f1f5f9" />
-                        <stop offset="50%" stopColor="#cbd5e1" />
-                        <stop offset="100%" stopColor="#94a3b8" />
+                    <linearGradient id="genFace" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#e7ebf0" />
+                        <stop offset="55%" stopColor="#c3cad3" />
+                        <stop offset="100%" stopColor="#98a1ad" />
                     </linearGradient>
-                    <linearGradient id="genLid" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#e2e8f0" />
-                        <stop offset="100%" stopColor="#cbd5e1" />
+                    <linearGradient id="genSide" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#8b94a1" />
+                        <stop offset="100%" stopColor="#6b7480" />
                     </linearGradient>
-                    <linearGradient id="genVent" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#475569" />
-                        <stop offset="100%" stopColor="#1e293b" />
+                    <linearGradient id="genRoof" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f4f7fa" />
+                        <stop offset="100%" stopColor="#cbd3dc" />
+                    </linearGradient>
+                    <linearGradient id="genRecess" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2b3442" />
+                        <stop offset="100%" stopColor="#141a23" />
+                    </linearGradient>
+                    <linearGradient id="genPad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#4b5563" />
+                        <stop offset="100%" stopColor="#262c36" />
                     </linearGradient>
                 </defs>
-                {/* Lid */}
-                <path d="M15 22 L185 22 L178 9 L22 9 Z" fill="url(#genLid)" stroke="#94a3b8" strokeWidth="1.5" />
-                {/* Body */}
-                <rect x="10" y="20" width="180" height="100" rx="10" fill="url(#genBody)" stroke="#64748b" strokeWidth="2" />
-                {/* Top gloss highlight */}
-                <rect x="22" y="26" width="100" height="6" rx="3" fill="#ffffff" opacity="0.55" />
-                {/* Recessed louvre panel */}
-                <rect x="30" y="38" width="140" height="56" rx="6" fill="url(#genVent)" stroke="#334155" strokeWidth="1.5" />
-                <line x1="42" y1="52" x2="158" y2="52" stroke="#64748b" strokeWidth="3" strokeLinecap="round" opacity="0.7" />
-                <line x1="42" y1="66" x2="158" y2="66" stroke="#64748b" strokeWidth="3" strokeLinecap="round" opacity="0.7" />
-                <line x1="42" y1="80" x2="158" y2="80" stroke="#64748b" strokeWidth="3" strokeLinecap="round" opacity="0.7" />
-                {/* Base / pad */}
-                <rect x="8" y="116" width="184" height="16" rx="3" fill="#1e293b" />
-                {/* Running / fault indicator light */}
-                <circle cx="170" cy="106" r="5"
-                    fill={fault ? '#ef4444' : running ? '#22c55e' : '#475569'}
-                    style={glowColor !== 'transparent' ? { filter: `drop-shadow(0 0 4px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
-                    {(running && !fault) && <animate attributeName="opacity" values="1;0.4;1" dur="1.4s" repeatCount="indefinite" />}
+
+                {/* Pad, in the same shallow perspective as the body. */}
+                <path d="M14 118 L178 118 L192 128 L26 128 Z" fill="url(#genPad)" />
+                <path d="M14 118 L178 118 L178 121 L14 121 Z" fill="#6b7280" opacity="0.5" />
+
+                {/* Receding right-hand side. Drawn before the face so the face
+                    overlaps it cleanly at the corner. */}
+                <path d="M162 40 L178 32 L178 112 L162 118 Z" fill="url(#genSide)" stroke="#5b6472" strokeWidth="1.2" />
+
+                {/* Body face */}
+                <path d="M22 40 L162 40 L162 118 L22 118 Z" fill="url(#genFace)" stroke="#5b6472" strokeWidth="1.6" />
+
+                {/* Overhanging peaked lid -- the most recognisable feature. */}
+                <path d="M16 40 L168 40 L184 31 L30 31 Z" fill="url(#genRoof)" stroke="#8b94a1" strokeWidth="1.2" />
+                <path d="M16 40 L168 40 L168 44 L16 44 Z" fill="#aab3be" opacity="0.75" />
+                <path d="M30 31 L184 31 L182 28 L32 28 Z" fill="#dfe5ec" />
+                {/* Lid seam */}
+                <line x1="95" y1="31" x2="95" y2="40" stroke="#9aa3ae" strokeWidth="0.8" opacity="0.8" />
+
+                {/* Louvre bank: a recess with slats, which is what actually
+                    makes the silhouette read as a generator rather than a box. */}
+                <rect x="36" y="44" width="110" height="64" rx="3" fill="url(#genRecess)" stroke="#39414f" strokeWidth="1.2" />
+                {slats.map((y) => (
+                    <g key={y}>
+                        <line x1="41" y1={y} x2="141" y2={y} stroke="#8e97a4" strokeWidth="2.1" strokeLinecap="round" opacity="0.85" />
+                        <line x1="41" y1={y + 1.5} x2="141" y2={y + 1.5} stroke="#0f141b" strokeWidth="1.1" strokeLinecap="round" opacity="0.9" />
+                    </g>
+                ))}
+
+                {/* Control panel door, right of the louvres. */}
+                <rect x="149" y="52" width="9" height="30" rx="1.5" fill="#aeb6c1" stroke="#69727f" strokeWidth="1" />
+                <circle cx="153.5" cy="86" r="1.6" fill="#69727f" />
+
+                {/* Status lamp. Green steady while running, red on fault, dark
+                    when stopped -- never green-and-blinking for both. */}
+                <circle cx="153.5" cy="96" r="4.2"
+                    fill={fault ? '#ef4444' : running ? '#22c55e' : '#39414f'}
+                    stroke="#2b3442" strokeWidth="0.8"
+                    style={glowColor !== 'transparent'
+                        ? { filter: `drop-shadow(0 0 5px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
+                    {(running && !fault) && (
+                        <animate className="gen-anim-keep" attributeName="opacity"
+                            values="1;0.45;1" dur="1.6s" repeatCount="indefinite" />
+                    )}
                 </circle>
+
+                {/* Exhaust, low on the receding side, with haze only while the
+                    engine is actually turning and not faulted. */}
+                <rect x="166" y="98" width="12" height="7" rx="2" fill="#39414f" stroke="#2b3442" strokeWidth="0.8" />
+                {running && !fault && (
+                    <g className="gen-anim">
+                        <circle cx="182" cy="99" r="3.4" fill="#cbd5e1" opacity="0.32">
+                            <animate attributeName="cy" values="99;86;80" dur="2.4s" repeatCount="indefinite" />
+                            <animate attributeName="r" values="2.4;5.5;7.5" dur="2.4s" repeatCount="indefinite" />
+                            <animate attributeName="opacity" values="0.34;0.16;0" dur="2.4s" repeatCount="indefinite" />
+                        </circle>
+                        <circle cx="180" cy="99" r="2.6" fill="#cbd5e1" opacity="0.26">
+                            <animate attributeName="cy" values="99;88;82" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                            <animate attributeName="r" values="1.8;4.4;6.2" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                            <animate attributeName="opacity" values="0.28;0.13;0" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
+                        </circle>
+                    </g>
+                )}
             </svg>
+        </div>
+    );
+};
+
+/**
+ * Live panel at the top of the modal WHILE THE ENGINE IS TURNING.
+ *
+ * A running generator is the one moment this tile has something that a list of
+ * static rows says badly. Speed, output, frequency, load and coolant all move,
+ * and they move together — watching them settle is how you tell a healthy start
+ * from a sick one.
+ *
+ * The rotor's spin period is driven by ACTUAL reported RPM rather than being a
+ * fixed decorative animation. That is the point: during the low-speed warm-up
+ * this unit does (~2800 RPM against 3600 at full song) the rotor visibly turns
+ * slower, so "it has not stepped up yet" becomes something you see rather than
+ * a number whose significance you have to already know.
+ *
+ * prefers-reduced-motion holds the rotor still; the numbers carry the whole
+ * message on their own, which they can.
+ */
+const RunningHero = ({ state }: { state: Record<string, any> }) => {
+    const num = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+    const rpm = num(state.engineSpeed);
+    const volts = num(state.outputVoltage);
+    const hz = num(state.generatorFrequency);
+    const kw = num(state.loadPower);
+    const pct = num(state.percentageLoad);
+    const cool = num(state.coolantTemperature);
+    const batt = num(state.batteryVoltage);
+
+    // 3600 RPM -> one turn per second, scaled from there and clamped so a stale
+    // or absurd reading cannot strobe or freeze the rotor.
+    const period = rpm && rpm > 50 ? Math.min(4, Math.max(0.25, 3600 / rpm)) : 0;
+    // Below ~3400 the machine is warming up rather than ready to carry load.
+    // Naming that beats showing a bare number.
+    const atSpeed = rpm !== undefined && rpm >= 3400;
+
+    const Reading = ({ label, value, unit }: { label: string; value?: number; unit?: string }) => (
+        <div className="flex flex-col items-center justify-center px-1">
+            <span className="text-[10px] uppercase tracking-wider text-gray-400">{label}</span>
+            <span className="font-bold text-white tabular-nums leading-tight" style={{ fontSize: 'clamp(0.95rem, 4.2vw, 1.4rem)' }}>
+                {value === undefined || Number.isNaN(value) ? EM_DASH : value.toFixed(unit === 'V' || unit === 'RPM' ? 0 : 1)}
+                {value !== undefined && !Number.isNaN(value) && unit
+                    ? <span className="text-[11px] font-medium text-gray-400 ml-0.5">{unit}</span> : null}
+            </span>
+        </div>
+    );
+
+    return (
+        <div className="p-4 border-b border-amber-500/30 bg-gradient-to-b from-amber-900/25 to-transparent">
+            <style>{`@keyframes binfohubSpin{to{transform:rotate(360deg)}}
+                @media (prefers-reduced-motion: reduce){.binfohub-rotor{animation:none !important}}`}</style>
+            <div className="flex items-center gap-3 mb-3">
+                <svg viewBox="0 0 48 48" className="w-11 h-11 shrink-0" aria-hidden="true">
+                    <circle cx="24" cy="24" r="21" fill="none" stroke="#f59e0b" strokeOpacity="0.35" strokeWidth="2" />
+                    <g className="binfohub-rotor"
+                       style={period ? { animation: `binfohubSpin ${period}s linear infinite`, transformOrigin: '24px 24px' } : undefined}>
+                        <path d="M24 5 L27.4 20 L24 24 L20.6 20 Z" fill="#fbbf24" />
+                        <path d="M40.5 33.5 L26.6 27.2 L24 24 L29 22.7 Z" fill="#fbbf24" fillOpacity="0.85" />
+                        <path d="M7.5 33.5 L19 22.7 L24 24 L21.4 27.2 Z" fill="#fbbf24" fillOpacity="0.7" />
+                    </g>
+                    <circle cx="24" cy="24" r="3.2" fill="#78350f" stroke="#fbbf24" strokeWidth="1.4" />
+                </svg>
+                <div className="min-w-0">
+                    <div className="text-amber-300 font-bold text-sm uppercase tracking-wider">
+                        {state.exercising || state.scheduledExerciseInProgress ? 'Exercise running' : 'Generator running'}
+                    </div>
+                    <div className="text-[11px] text-gray-400 truncate">
+                        {rpm === undefined ? 'Speed not reported'
+                            : atSpeed ? 'At rated speed' : 'Low-speed warm-up — not yet at rated speed'}
+                    </div>
+                </div>
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+                <Reading label="Speed" value={rpm} unit="RPM" />
+                <Reading label="Output" value={volts} unit="V" />
+                <Reading label="Freq" value={hz} unit="Hz" />
+                <Reading label="Load" value={kw !== undefined ? kw : pct} unit={kw !== undefined ? 'kW' : '%'} />
+            </div>
+            <div className="grid grid-cols-2 gap-1 mt-2 pt-2 border-t border-white/10">
+                <Reading label="Coolant" value={cool} unit="\u00B0" />
+                <Reading label="Battery" value={batt} unit="V" />
+            </div>
         </div>
     );
 };
@@ -268,6 +448,38 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
         { label: 'Equipment Telemetry', value: state.equipmentDataTimestamp ? `${new Date(state.equipmentDataTimestamp).toLocaleString()} ${state.equipmentDataStale ? '(stale)' : '(fresh)'}` : EM_DASH },
         { label: 'Last Updated', value: state.lastUpdated ? new Date(state.lastUpdated).toLocaleString() : EM_DASH },
         { label: 'Polled At', value: state.polledAt ? new Date(state.polledAt).toLocaleString() : EM_DASH },
+
+        // ---- Local B-Infohub bridge --------------------------------------
+        // Off the generator's own Modbus bus rather than the EnergyTrak cloud,
+        // and present only while a bridge is attached. The shared rows above
+        // are NOT repeated here: they are already local-backed when the bridge
+        // is live, and showing a reading twice implies two sources that could
+        // disagree. Each degrades to an em dash on a cloud-only install, which
+        // is the honest rendering of "this generator has no bridge".
+        { label: 'Telemetry Source', value: state.telemetrySource
+            ? (state.telemetrySource === 'local' ? 'Local bridge' : 'EnergyTrak cloud')
+            : EM_DASH, isHeader: true },
+        { label: 'Bridge Address', value: txt(state.bridgeHost) },
+        { label: 'Bridge Reachable', value: state.bridgeReachable === undefined
+            ? EM_DASH : (state.bridgeReachable ? 'Yes' : 'NO') },
+        // Separate from the row above on purpose: both look like "values
+        // stopped moving", but one is the bridge not answering and the other is
+        // the generator having gone quiet on the bridge.
+        { label: 'Generator Answering Bus', value: state.busHealthy === undefined
+            ? EM_DASH : (state.busHealthy ? 'Yes' : 'NO') },
+        { label: 'Bus Data Age', value: state.localBusAgeSeconds === undefined
+            ? EM_DASH : `${Number(state.localBusAgeSeconds).toFixed(0)} s` },
+        { label: 'Coolant Temp', value: fmt(state.coolantTemperature, '\u00B0') },
+        { label: 'Load', value: state.percentageLoad === undefined
+            ? EM_DASH : `${Number(state.percentageLoad).toFixed(0)} %` },
+        { label: 'Gen L1-L2', value: fmt(state.generatorL1L2Voltage, ' V') },
+        { label: 'Utility L1 / L2', value:
+            (state.utilityL1Voltage === undefined && state.utilityL2Voltage === undefined)
+                ? EM_DASH
+                : `${state.utilityL1Voltage ?? EM_DASH} / ${state.utilityL2Voltage ?? EM_DASH} V` },
+        { label: 'Lifetime Energy', value: fmt(state.cumulativeEnergyKwh, ' kWh') },
+        { label: 'Exercising', value: (state.exercising || state.scheduledExerciseInProgress)
+            ? 'Yes' : (state.exercising === undefined ? EM_DASH : 'No') },
     ];
 
     return ReactDOM.createPortal(
@@ -283,6 +495,11 @@ const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: R
                     </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-0">
+                    {/* Live panel first while the engine is turning: during a
+                        run the moving numbers ARE the story, and they belong
+                        above the static rows rather than buried under them. */}
+                    {(state.active === true || state.engineRunning === true) && <RunningHero state={state} />}
+
                     {/* Prominent reason banner — always visible when the tile is
                         showing anything other than "ok", so the user never has
                         to hunt for why a warning exists. Touch-friendly (no hover). */}
@@ -448,6 +665,12 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
 
     // Explicit null/undefined checks to display correct placeholder or 0
     const engineHours = (state.engineHours !== undefined && state.engineHours !== null) ? Number(state.engineHours).toFixed(1) : EM_DASH;
+    // Local-only, so an em dash here means "no bridge", not "no reading".
+    const coolant = (state.coolantTemperature !== undefined && state.coolantTemperature !== null)
+        ? `${Number(state.coolantTemperature).toFixed(0)}\u00B0` : EM_DASH;
+    const loadPct = (state.percentageLoad !== undefined && state.percentageLoad !== null)
+        ? `${Number(state.percentageLoad).toFixed(0)}%` : EM_DASH;
+    const onLocal = state.telemetrySource === 'local';
     const battVolts = (state.batteryVoltage !== undefined && state.batteryVoltage !== null) ? Number(state.batteryVoltage).toFixed(1) : EM_DASH;
     const gridVolts = (state.gridVoltage !== undefined && state.gridVoltage !== null) ? Number(state.gridVoltage).toFixed(0) : EM_DASH;
 
@@ -502,6 +725,14 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         <MetricItem label="Batt" value={battVolts} unit="V" />
                         <MetricItem label="Grid" value={gridVolts} unit="V" />
                         <MetricItem label="Hrs" value={engineHours} />
+                        {/* Local-only fourth slot: it appears exactly when a
+                            bridge is feeding the tile, and is simply absent
+                            otherwise. Coolant while the engine is turning (the
+                            reading that actually moves during a run), load the
+                            rest of the time. */}
+                        {onLocal && (isActive
+                            ? <MetricItem label="Cool" value={coolant} />
+                            : <MetricItem label="Load" value={loadPct} />)}
                     </div>
 
                     {/* Status List */}

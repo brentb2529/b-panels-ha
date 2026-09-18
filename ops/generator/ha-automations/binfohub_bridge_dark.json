@@ -1,0 +1,92 @@
+{
+    "id": "binfohub_bridge_dark",
+    "alias": "B-Infohub: bridge or generator bus went dark",
+    "description": "Five minutes of silence from the bridge, or from the generator on the RS-485 bus. Separate messages: different faults, different fixes.",
+    "triggers": [
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_bridge_reachable",
+            "from": "on",
+            "to": "off",
+            "for": {
+                "minutes": 5
+            },
+            "id": "bridge"
+        },
+        {
+            "trigger": "state",
+            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_generator_bus_healthy",
+            "from": "on",
+            "to": "off",
+            "for": {
+                "minutes": 5
+            },
+            "id": "bus"
+        }
+    ],
+    "actions": [
+        {
+            "choose": [
+                {
+                    "conditions": [
+                        {
+                            "condition": "trigger",
+                            "id": "bridge"
+                        }
+                    ],
+                    "sequence": [
+                        {
+                            "action": "notify.mobile_app_iphone_16",
+                            "data": {
+                                "title": "B-Infohub bridge unreachable",
+                                "message": "The bridge has not answered for 5 minutes. Check its power and Wi-Fi \u2014 this is the board, not the generator. Falling back to cloud data.",
+                                "data": {
+                                    "push": {
+                                        "interruption-level": "time-sensitive"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "action": "persistent_notification.create",
+                            "data": {
+                                "title": "B-Infohub bridge unreachable",
+                                "message": "The bridge has not answered for 5 minutes. Check its power and Wi-Fi \u2014 this is the board, not the generator. Falling back to cloud data."
+                            }
+                        }
+                    ]
+                },
+                {
+                    "conditions": [
+                        {
+                            "condition": "trigger",
+                            "id": "bus"
+                        }
+                    ],
+                    "sequence": [
+                        {
+                            "action": "notify.mobile_app_iphone_16",
+                            "data": {
+                                "title": "Generator not answering the bridge",
+                                "message": "The bridge is online but the GC-1032 has gone quiet on RS-485 for 5 minutes. Local readings are frozen and alarm detection is suppressed. Check the J3 pair and termination.",
+                                "data": {
+                                    "push": {
+                                        "interruption-level": "time-sensitive"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "action": "persistent_notification.create",
+                            "data": {
+                                "title": "Generator not answering the bridge",
+                                "message": "The bridge is online but the GC-1032 has gone quiet on RS-485 for 5 minutes. Local readings are frozen and alarm detection is suppressed. Check the J3 pair and termination."
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "mode": "single"
+}

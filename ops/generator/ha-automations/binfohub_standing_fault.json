@@ -1,0 +1,91 @@
+{
+    "id": "binfohub_standing_fault",
+    "alias": "B-Infohub: generator STILL faulted (standing reminder)",
+    "description": "CLOSES THREE HOLES IN AN EDGE-TRIGGERED ALERT.\n\n1. The other alarm automations fire once, on off->on, and never again. A shutdown at 2am sends exactly one push; miss it and nothing ever mentions it again, while the generator sits unable to carry an outage. 'No standby power' is a STATE, not an event, and a state deserves a nag.\n\n2. Those triggers require from:'off'. After a Home Assistant restart an already-active alarm goes unavailable->on, which is not off->on, so it is never announced. The homeassistant.start trigger here reconciles that.\n\n3. An alarm that occurs while Home Assistant is down is written to the bridge's flash log and replayed into the recorder, but statistics are not notifications. On restart this sees the alarm is still asserted and says so.\n\nEscalates rather than nags uniformly: critical only when the utility is ALSO down, because a faulted generator during an outage is an emergency and a faulted generator on a sunny afternoon is an errand.",
+    "triggers": [
+        {
+            "trigger": "time_pattern",
+            "hours": "/2"
+        },
+        {
+            "trigger": "homeassistant",
+            "event": "start"
+        }
+    ],
+    "conditions": [
+        {
+            "condition": "state",
+            "entity_id": [
+                "binary_sensor.william_bensten_s_generator_malfunction",
+                "binary_sensor.outdoor_william_bensten_s_generator_emergency_stop",
+                "binary_sensor.outdoor_william_bensten_s_generator_low_oil_pressure",
+                "binary_sensor.outdoor_william_bensten_s_generator_high_coolant_temperature",
+                "binary_sensor.outdoor_william_bensten_s_generator_engine_over_speed",
+                "binary_sensor.outdoor_william_bensten_s_generator_electrical_trip",
+                "binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_start",
+                "binary_sensor.outdoor_william_bensten_s_generator_generator_failed_to_start",
+                "binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_stop",
+                "binary_sensor.outdoor_william_bensten_s_generator_magnetic_pick_up_fault"
+            ],
+            "state": "on",
+            "match": "any"
+        }
+    ],
+    "actions": [
+        {
+            "choose": [
+                {
+                    "conditions": [
+                        {
+                            "condition": "state",
+                            "entity_id": "binary_sensor.outdoor_william_bensten_s_generator_utility_power_failure",
+                            "state": "on"
+                        }
+                    ],
+                    "sequence": [
+                        {
+                            "action": "notify.mobile_app_iphone_16",
+                            "data": {
+                                "title": "EMERGENCY: outage AND generator faulted",
+                                "message": "{{ expand([\"binary_sensor.william_bensten_s_generator_malfunction\", \"binary_sensor.outdoor_william_bensten_s_generator_emergency_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_low_oil_pressure\", \"binary_sensor.outdoor_william_bensten_s_generator_high_coolant_temperature\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_over_speed\", \"binary_sensor.outdoor_william_bensten_s_generator_electrical_trip\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_generator_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_magnetic_pick_up_fault\"])\n     | selectattr('state','eq','on')\n     | map(attribute='name') | join(', ') }}\n\nStill active. The generator will not carry the house until this is cleared at the GC-1032 panel.",
+                                "data": {
+                                    "push": {
+                                        "interruption-level": "critical",
+                                        "sound": {
+                                            "name": "default",
+                                            "critical": 1,
+                                            "volume": 1.0
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "default": [
+                {
+                    "action": "notify.mobile_app_iphone_16",
+                    "data": {
+                        "title": "Generator still faulted \u2014 no standby power",
+                        "message": "{{ expand([\"binary_sensor.william_bensten_s_generator_malfunction\", \"binary_sensor.outdoor_william_bensten_s_generator_emergency_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_low_oil_pressure\", \"binary_sensor.outdoor_william_bensten_s_generator_high_coolant_temperature\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_over_speed\", \"binary_sensor.outdoor_william_bensten_s_generator_electrical_trip\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_generator_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_magnetic_pick_up_fault\"])\n     | selectattr('state','eq','on')\n     | map(attribute='name') | join(', ') }}\n\nStill active. The generator will not carry the house until this is cleared at the GC-1032 panel.",
+                        "data": {
+                            "push": {
+                                "interruption-level": "time-sensitive"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "action": "persistent_notification.create",
+            "data": {
+                "title": "Generator still faulted",
+                "message": "{{ expand([\"binary_sensor.william_bensten_s_generator_malfunction\", \"binary_sensor.outdoor_william_bensten_s_generator_emergency_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_low_oil_pressure\", \"binary_sensor.outdoor_william_bensten_s_generator_high_coolant_temperature\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_over_speed\", \"binary_sensor.outdoor_william_bensten_s_generator_electrical_trip\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_generator_failed_to_start\", \"binary_sensor.outdoor_william_bensten_s_generator_engine_failed_to_stop\", \"binary_sensor.outdoor_william_bensten_s_generator_magnetic_pick_up_fault\"])\n     | selectattr('state','eq','on')\n     | map(attribute='name') | join(', ') }}\n\nStill active. The generator will not carry the house until this is cleared at the GC-1032 panel.",
+                "notification_id": "binfohub_standing_fault"
+            }
+        }
+    ],
+    "mode": "single"
+}
