@@ -866,13 +866,30 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                     and the two can never collide. It still reads as part of the
                     unit — a plinth under the set, which is where a real plate
                     lives. */}
-                <div className="flex flex-col h-full w-full overflow-hidden rounded-[inherit]">
-                    {/* The machine is anchored to the bottom of this area, so
-                        on a tall tile the spare room lands above it. A soft
-                        vertical wash makes that headroom read as the space the
-                        set is standing in rather than as a gap the layout failed
-                        to fill. */}
-                    <div className="relative flex-1 min-h-0 bg-gradient-to-b from-black/35 via-transparent to-transparent">
+                <div className="flex flex-col w-full overflow-hidden rounded-[inherit]">
+                    {/* THE MACHINE AREA NEEDS INTRINSIC HEIGHT, NOT JUST flex-1.
+                        TileWrapper's content slot is sized BY its content rather
+                        than stretched to the tile: measured on the wall panel it
+                        was 59px inside a 226px tile. With `flex-1 min-h-0` and a
+                        `basis: 0%`, an area whose only child is absolutely
+                        positioned has no natural height at all, so it collapsed
+                        to zero, the data plate took the whole 59px as a strip
+                        across the top, and the generator rendered at height 0.
+                        The old layout never hit this because its graphic carried
+                        its own aspect-ratio and pushed the slot taller.
+
+                        `flex: 1 1 auto` with an aspect-ratio gives both: the
+                        aspect supplies the natural height when the slot is
+                        content-sized, and the grow still fills the space when a
+                        parent does stretch. maxHeight keeps a very wide tile
+                        from turning the machine into a mural.
+
+                        The machine is anchored to the bottom of this area, so on
+                        a tall tile the spare room lands above it, with a soft
+                        wash so that headroom reads as space the set is standing
+                        in rather than a gap the layout failed to fill. */}
+                    <div className="relative w-full bg-gradient-to-b from-black/35 via-transparent to-transparent"
+                         style={{ flex: '1 1 auto', minHeight: 0, aspectRatio: '200 / 112', maxHeight: '11rem' }}>
                         <GeneratorUnit running={isActive} fault={hasError} />
 
                         {/* Identity and state, over the lid. A scrim rather than
@@ -888,16 +905,23 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         {/* Why it is not OK, on the tile face, so nobody has to
                             open the modal to learn that something is wrong —
                             only what to do about it. */}
+                        {/* Its own dark chip rather than bare text on the tile.
+                            On the light-themed wall panel this was red text on a
+                            red-tinted error background and was effectively
+                            unreadable — the one line that most needed to be
+                            legible. A chip makes it theme-independent. */}
                         {captionReason && (
-                            <div className={`absolute inset-x-0 top-9 px-2 flex items-center gap-1.5 leading-tight ${
-                                captionReason.severity === 'error' ? 'text-red-300'
-                                : captionReason.severity === 'warning' ? 'text-yellow-300' : 'text-sky-300'
-                            }`} style={fluidTextXs}>
-                                <IconAlertTriangle className="w-3 h-3 flex-shrink-0 drop-shadow" />
-                                <span className="truncate drop-shadow">{captionReason.text}</span>
-                                {reasons.length > 1 && (
-                                    <span className="text-gray-300 flex-shrink-0">+{reasons.length - 1}</span>
-                                )}
+                            <div className="absolute inset-x-0 top-8 px-2">
+                                <div className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 leading-tight bg-black/70 ${
+                                    captionReason.severity === 'error' ? 'text-red-300'
+                                    : captionReason.severity === 'warning' ? 'text-yellow-300' : 'text-sky-300'
+                                }`} style={fluidTextXs}>
+                                    <IconAlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{captionReason.text}</span>
+                                    {reasons.length > 1 && (
+                                        <span className="text-gray-300 flex-shrink-0">+{reasons.length - 1}</span>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
