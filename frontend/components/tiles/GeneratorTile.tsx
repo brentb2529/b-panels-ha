@@ -713,7 +713,7 @@ const elapsedSince = (iso?: string, now: number = Date.now()): string | null => 
  * So while the engine runs, or while there is a fault, the illustration gives
  * way to the numbers. It comes back when there is nothing to say.
  */
-const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'outage' | 'exercise' | 'running' | 'fault' }) => {
+const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'outage' | 'exercise' | 'running' | 'fault' | 'standby' }) => {
     // Elapsed has to advance on its own; the underlying entity only changes
     // when the engine starts or stops.
     const [now, setNow] = useState(() => Date.now());
@@ -741,11 +741,6 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
         : kind === 'outage' ? 'gen-t-outage'
         : kind === 'exercise' ? 'gen-t-exercise' : 'gen-t-run';
 
-    // SHORT ENOUGH TO SURVIVE THE TILE. "CARRYING THE HOUSE" was the honest
-    // phrase and it truncated to "CARRYING THE HOU..." at tile width, next to
-    // an elapsed time it was competing with for the same line. The word that
-    // cannot be lost is OUTAGE; the reassurance goes on the line below, where
-    // there is room for it.
     const headline = kind === 'fault' ? 'FAULT'
         : kind === 'outage' ? 'OUTAGE'
         : kind === 'exercise' ? 'EXERCISE' : 'RUNNING';
@@ -767,6 +762,68 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
         </div>
     );
 
+    // STANDBY IS NOT A BLANK STATE.
+    //
+    // The readout only rendered while something was happening, so the tile
+    // spent the ~99% of its life when nothing is wrong showing a picture of a
+    // generator and no numbers at all -- on a 2x2, the largest thing on the
+    // dashboard saying the least. The questions standing in front of it are
+    // still real ones: is the battery healthy (the single most common reason a
+    // standby set fails to start), has it proved itself recently, and when
+    // does it next run. All of that is already on the bridge.
+    if (kind === 'standby') {
+        const batt = num(state.batteryVoltage);
+        const grid = num(state.gridVoltage);
+        const hrs = num(state.engineHours);
+        const nextAt = Date.parse(state.nextExerciseDue ?? '');
+        const lastAt = Date.parse(state.lastExerciseAt ?? '');
+        const mins = num(state.lastExerciseDurationMinutes);
+        const dayMs = 86400000;
+        const inDays = Number.isNaN(nextAt) ? null : Math.round((nextAt - now) / dayMs);
+        const agoDays = Number.isNaN(lastAt) ? null : Math.round((now - lastAt) / dayMs);
+        const when = (d: number | null) =>
+            d === null ? null : d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d}d`;
+        const ago = (d: number | null) =>
+            d === null ? null : d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d}d ago`;
+        // A battery under ~12.3V on a resting set is the usual reason a
+        // standby generator does not start, so it is called out rather than
+        // just printed.
+        const battLow = batt !== undefined && batt < 12.3;
+
+        return (
+            <div className="flex flex-col px-2 pb-1 gap-0.5">
+                <div className="flex items-baseline justify-between gap-1.5 min-w-0">
+                    <span className={`font-bold uppercase tracking-wider truncate ${battLow ? 'gen-t-outage' : tone}`}
+                          style={{ fontSize: 'clamp(0.5rem, 5cqmin, 0.72rem)' }}>
+                        {battLow ? 'CHECK BATTERY' : 'READY'}
+                    </span>
+                    {when(inDays) && (
+                        <span className="text-gray-400 shrink-0 truncate"
+                              style={{ fontSize: 'clamp(0.4rem, 3.8cqmin, 0.56rem)' }}>
+                            next test {when(inDays)}
+                        </span>
+                    )}
+                </div>
+                <div className="grid grid-cols-3 gap-0.5">
+                    <Cell label="Battery" value={fmt(batt, 1)} unit="V" />
+                    <Cell label="Grid" value={fmt(grid)} unit="V" />
+                    <Cell label="Hours" value={fmt(hrs, 1)} />
+                </div>
+                <div className="text-gray-300 truncate"
+                     style={{ fontSize: 'clamp(0.4rem, 3.8cqmin, 0.56rem)' }}>
+                    {ago(agoDays)
+                        ? `last test ${ago(agoDays)}${mins !== undefined ? ` · ${Math.round(mins)} min` : ''}`
+                        : 'no test on record'}
+                </div>
+            </div>
+        );
+    }
+
+    // SHORT ENOUGH TO SURVIVE THE TILE. "CARRYING THE HOUSE" was the honest
+    // phrase and it truncated to "CARRYING THE HOU..." at tile width, next to
+    // an elapsed time it was competing with for the same line. The word that
+    // cannot be lost is OUTAGE; the reassurance goes on the line below, where
+    // there is room for it.
     return (
         <div className="flex flex-col px-2 pb-1 gap-0.5">
             <div className="flex items-baseline justify-between gap-1.5 min-w-0">
@@ -1101,12 +1158,15 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
 
     // Which live panel, if any. Standby shows the machine and nothing else --
     // that is the state with no news, and the one the drawing suits.
-    const liveKind: 'outage' | 'exercise' | 'running' | 'fault' | null =
-        hasError ? 'fault'
+    const liveKind: 'outage' | 'exercise' | 'running' | 'fault' | 'standby' | null =
+        !hasTelemetry ? null
+        : hasError ? 'fault'
         : (isActive && state.utilityPowerFailure === true) ? 'outage'
         : (isActive && isExercising) ? 'exercise'
         : isActive ? 'running'
-        : null;
+        // Standby reads out too -- see LiveStatePanel. `null` now means only
+        // "no telemetry at all", which is the one case with nothing to say.
+        : 'standby';
 
     const handleClick = () => {
         if (!isEditor && !isLocked && hasTelemetry) {
