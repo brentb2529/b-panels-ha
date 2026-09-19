@@ -272,12 +272,17 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout, loadPct }: {
         // two things on the right that carry meaning. The scene is composed to
         // the frame instead, with the machine in the upper two thirds so the
         // readout below never lands on it.
-        // THE FRAME TIGHTENS WHEN THERE IS NOTHING TO READ.
-        // With a readout below, the scene needs the full 190 of headroom so the
-        // machine clears the numbers. In standby there are no numbers, and the
-        // same framing left the bottom half of the tile as empty pad. Cropping
-        // to 140 pulls the set up to fill its own tile.
-        <svg viewBox={readout ? '0 0 226 190' : '0 0 226 158'} preserveAspectRatio="xMidYMid slice"
+        // `meet`, and a viewBox drawn tight to the machine.
+        //
+        // `slice` crops to fill, which is right for a photo and wrong for a
+        // diagram: on the panel's 1.55:1 tile it cut the set's feet off and
+        // left a grey band of empty pad. The machine is the subject, so it is
+        // never cropped -- it scales to fit whatever box the row gives it and
+        // centres, and any space left over is just tile surface.
+        // Tight to the subject, and only as wide as the state needs. Framing
+        // the full 226 left the machine swimming in empty tile; the house only
+        // exists during an outage, so only an outage pays for the room.
+        <svg viewBox={outage ? '16 10 200 104' : '16 10 156 104'} preserveAspectRatio="xMidYMid meet"
              className="absolute inset-0 w-full h-full" aria-hidden="true">
             <style>{`@keyframes bhFan{to{transform:rotate(360deg)}}
                 @keyframes bhShake{0%,100%{transform:translate(0,0)}25%{transform:translate(.3px,-.25px)}50%{transform:translate(-.25px,.3px)}75%{transform:translate(.28px,.2px)}}
@@ -310,11 +315,14 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout, loadPct }: {
 
             <rect width="226" height="190" fill="url(#bhGlow)" />
 
-            {/* Pad. Gives the set something to stand on, and a horizon to sit
-                against -- without it the cabinet floats and reads as an icon. */}
-            <path d="M0 104 L226 99 L226 190 L0 190 Z" fill="#0b1220" opacity="0.30" />
-            <path d="M0 104 L226 99 L226 103 L0 108 Z" fill="#94a3b8" opacity="0.18" />
-            <ellipse cx="92" cy="104" rx="70" ry="6" fill="#000" opacity="0.28" />
+            {/* A CONTACT SHADOW, NOT A GROUND PLANE.
+                There used to be a pad and a horizon here, on the theory that
+                the cabinet needs something to stand on. Against a painted sky
+                that was true. Against the tile's own surface it reads as a grey
+                slab stretched across the bottom of the tile with nothing in it
+                -- which is exactly what the wall panel was showing. A shadow
+                under the machine does the whole job and costs no space. */}
+            <ellipse cx="92" cy="105" rx="66" ry="4.5" fill="#000" opacity="0.22" />
 
             <g className="bh-shake" style={alive ? { animation: 'bhShake .13s steps(2,end) infinite' } : undefined}>
                 {/* Cabinet: straight sides, radiused top corners, shallow crown.
@@ -760,7 +768,7 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
     );
 
     return (
-        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-2 pb-1 gap-0.5">
+        <div className="flex flex-col px-2 pb-1 gap-0.5">
             <div className="flex items-baseline justify-between gap-1.5 min-w-0">
                 <span className={`font-bold uppercase tracking-wider truncate ${tone}`}
                       style={{ fontSize: 'clamp(0.5rem, 5cqmin, 0.72rem)' }}>{headline}</span>
@@ -1250,58 +1258,43 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         a tall tile the spare room lands above it, with a soft
                         wash so that headroom reads as space the set is standing
                         in rather than a gap the layout failed to fill. */}
+                    <div className="shrink-0 w-full flex items-start justify-between gap-2 px-2 pt-1.5 pb-0.5">
+                        <h2 className="font-bold text-white leading-none truncate" style={fluidTextLg}>
+                            {device.name || 'Generator'}
+                        </h2>
+                        <StatusBadge label={siteStatus} status={badgeType} />
+                    </div>
+
                     <div className="relative w-full"
                          // THE SCENE TAKES THE WHOLE FACE NOW.
                          // It used to be pinned to a 200:112 box capped at 11rem
                          // so it could share the tile with the data plate. With
                          // the plate gone there is nothing to share with, and an
-                         // aspect ratio would just reintroduce the letterboxing
-                         // it was there to manage.
+                         // A ROW, NOT A CANVAS WITH THINGS ON TOP OF IT.
                          //
-                         // minHeight stays, and matters: TileWrapper's content
-                         // slot is sized BY its content, so an area whose only
-                         // children are absolutely positioned has no natural
-                         // height at all and collapses to nothing. The scene is
-                         // exactly that shape, so it carries its own floor.
-                         // NO BACKGROUND OF ITS OWN.
-                         // This used to paint a hard near-black gradient, which
-                         // made the generator a black box sitting among frosted
-                         // tiles -- obvious in day mode, where every other tile
-                         // is light and this one was not. The wash existed only
-                         // to guarantee contrast for white readout text, and
-                         // that is now handled where it belongs: a small scrim
-                         // under the text, and text that follows the theme.
-                         style={{ flex: '1 1 auto', minHeight: '9.5rem' }}>
+                         // The title and the readout used to be absolutely
+                         // positioned over this box. On the 226x226 square this
+                         // was designed against that looked fine. On the actual
+                         // wall panel it is not square: Main Dashboard is seven
+                         // columns with minmax(0,1fr) rows, and the generator is
+                         // a 2x2, which lands near 1.55:1 -- wider than tall and
+                         // only ~220px high. At that shape the title sat on the
+                         // machine's roof, the readout ate the machine's feet,
+                         // and standby showed a dead grey band where the ground
+                         // had nothing to do.
+                         //
+                         // Title, scene and readout are now siblings in a
+                         // column. The scene gets whatever is left after the
+                         // other two, which is what lets the machine be drawn
+                         // whole at any tile shape instead of cropped to fit
+                         // around overlays. It also retires the scrim: text on
+                         // the tile surface needs no wash to be legible.
+                         style={{ flex: '1 1 auto', minHeight: 0 }}>
                         <GeneratorScene running={isActive} fault={hasError}
                                         outage={liveKind === 'outage'}
                                         rpm={Number(state.engineSpeed) || undefined}
                                         readout={!!liveKind}
                                         loadPct={state.percentageLoad} />
-                        {/* A GRADIENT, NOT A BLACK SHEET.
-                            The first version laid a flat 70% black over the
-                            whole tile to make the numbers legible, which worked
-                            and cost the machine entirely -- it went grey and
-                            dead behind a wash, and the animation it had just
-                            been given was invisible. The scrim now only exists
-                            where the text is, fading out by mid-height, so the
-                            top of the cabinet, the fan turning behind the
-                            intake and the status lamp all stay in the clear. */}
-                        {liveKind && (
-                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${
-                                liveKind === 'fault' ? 'h-full gen-scrim-fault' : 'h-[46%] gen-scrim'}`} />
-                        )}
-                        {liveKind && <LiveStatePanel state={state} kind={liveKind} />}
-
-                        {/* Identity and state, over the lid. A scrim rather than
-                            a solid bar, so the machine reads through it. */}
-                        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2
-                                        bg-gradient-to-b from-black/80 via-black/40 to-transparent">
-                            <h2 className="font-bold text-white leading-none truncate drop-shadow" style={fluidTextLg}>
-                                {device.name || 'Generator'}
-                            </h2>
-                            <StatusBadge label={siteStatus} status={badgeType} />
-                        </div>
-
                         {/* Why it is not OK, on the tile face, so nobody has to
                             open the modal to learn that something is wrong —
                             only what to do about it. */}
@@ -1311,7 +1304,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                             unreadable — the one line that most needed to be
                             legible. A chip makes it theme-independent. */}
                         {captionReason && (
-                            <div className="absolute inset-x-0 top-8 px-2">
+                            <div className="absolute inset-x-0 top-1 px-2">
                                 {/* The pill was a fixed bg-black/70. In day mode
                                     the app remaps text-red-300 to a dark red,
                                     so the caption became dark red on black --
@@ -1331,6 +1324,18 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                             </div>
                         )}
                     </div>
+
+                    {/* The readout, BELOW the scene rather than floating on it.
+                        As an overlay it had to carry a scrim to stay legible
+                        and it covered the bottom of the machine to do it. As a
+                        row it simply sits on the tile surface, inherits the
+                        theme, and gives the scene a smaller but uncluttered box
+                        to draw a whole generator in. */}
+                    {liveKind && (
+                        <div className="shrink-0 w-full">
+                            <LiveStatePanel state={state} kind={liveKind} />
+                        </div>
+                    )}
 
                     {/* THE DATA PLATE IS GONE, and it is why this tile was
                         cramped for so long. Four static cells took 59px of the
