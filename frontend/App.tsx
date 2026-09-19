@@ -269,6 +269,49 @@ const ThemeManager = ({ activePanelId }: { activePanelId: string | null }) => {
             /* Red: Intrusion (already good, but let's be explicit) */
             .light-mode .bg-red-600 { background-color: #dc2626 !important; color: #ffffff !important; }
 
+            /* --- STATUS PILLS: THE -400 SHADES HAD NO LIGHT MODE ---
+               The block above pairs the -300 text shades, but every status
+               pill in the app is built from the -400 shades on a /20 wash of
+               the same hue: bg-blue-500/20 with text-blue-400 and a
+               border-blue-500/30, and siblings for the other colours. In day
+               mode that is a pale colour on a pale wash -- the blue pill
+               measures under 2:1 -- so the word naming the state was the least
+               legible thing on the tile. It showed up on the generator
+               (ON GEN / EXERCISE / RUNNING), and the same pills are used by
+               FolderTile, SwitchTile, Admin and NotificationHost.
+
+               THE TEXT RULES ARE COMPOUND ON PURPOSE. text-red-400 alone has
+               21 uses across the app and not all of them sit on light
+               surfaces -- some are on deliberately dark regions such as
+               CameraTile's forced black. Matching the background and text
+               classes together targets only the element that really is a
+               pill, so nothing else moves.
+
+               Note the doubled backslashes: inside this template literal a
+               single one is consumed as an escape and the selector silently
+               becomes invalid CSS. */
+            .light-mode .bg-blue-500\\/20 { background-color: #dbeafe !important; }
+            .light-mode .border-blue-500\\/30 { border-color: #93c5fd !important; }
+            .light-mode .bg-blue-500\\/20.text-blue-400 { color: #1d4ed8 !important; }
+
+            .light-mode .bg-yellow-500\\/20 { background-color: #fef9c3 !important; }
+            .light-mode .border-yellow-500\\/30 { border-color: #fde047 !important; }
+            .light-mode .bg-yellow-500\\/20.text-yellow-400 { color: #854d0e !important; }
+
+            .light-mode .bg-amber-500\\/20 { background-color: #fef3c7 !important; }
+            .light-mode .bg-amber-500\\/20.text-amber-400 { color: #92400e !important; }
+
+            .light-mode .bg-emerald-500\\/20 { background-color: #d1fae5 !important; }
+            .light-mode .bg-emerald-500\\/20.text-emerald-400 { color: #065f46 !important; }
+
+            .light-mode .border-green-500\\/30 { border-color: #86efac !important; }
+            .light-mode .bg-green-500\\/20.text-green-400 { color: #15803d !important; }
+
+            .light-mode .border-red-500\\/30 { border-color: #fca5a5 !important; }
+            .light-mode .bg-red-500\\/20.text-red-400 { color: #b91c1c !important; }
+
+            .light-mode .bg-orange-500\\/20.text-orange-400 { color: #9a3412 !important; }
+
             /* --- TILE BORDERS --- */
             /* Dark mode: white/light border for contrast */
             .tile-borders .bg-gray-700 {

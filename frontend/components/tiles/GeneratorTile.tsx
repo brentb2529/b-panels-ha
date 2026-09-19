@@ -1221,29 +1221,10 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         .light-mode .gen-t-run      { color: #047857; }
                         .light-mode .gen-t-alarm    { color: #991b1b; }
 
-                        /* THE STATUS BADGE HAD NO DAY MODE.
-                           App.tsx pairs the green, orange and red badge styles
-                           for light mode but never the blue one, so the 'active'
-                           badge -- ON GEN, EXERCISE, RUNNING, every state this
-                           tile spends its time in -- rendered blue-400 on a 20%
-                           blue wash over a light tile. That is under 2:1; the
-                           word naming the state was the least legible thing on
-                           the face of it.
-
-                           Scoped to this tile rather than patched globally: the
-                           same gap exists app-wide for any blue badge, and that
-                           is a design-system change to make deliberately, not a
-                           side effect of fixing the generator. */
-                        .light-mode .gen-on-dark .bg-blue-500\\/20 { background-color: #dbeafe !important; }
-                        .light-mode .gen-on-dark .text-blue-400 { color: #1d4ed8 !important; }
-                        .light-mode .gen-on-dark .border-blue-500\\/30 { border-color: #93c5fd !important; }
-                        .light-mode .gen-on-dark .bg-red-500\\/20 { background-color: #fee2e2 !important; }
-                        .light-mode .gen-on-dark .text-red-400 { color: #b91c1c !important; }
-                        .light-mode .gen-on-dark .border-red-500\\/30 { border-color: #fca5a5 !important; }
-                        .light-mode .gen-on-dark .bg-green-500\\/20 { background-color: #dcfce7 !important; }
-                        .light-mode .gen-on-dark .text-green-400 { color: #15803d !important; }
-                        .light-mode .gen-on-dark .border-green-500\\/30 { border-color: #86efac !important; }
-
+                        /* The status pill's light-mode pairing lives in
+                           App.tsx beside the other status-indicator rules --
+                           it was scoped here first, but the same gap affects
+                           every pill in the app, so it belongs with them. */
                         .gen-caption { background: rgba(3,7,18,0.72); }
                         .light-mode .gen-caption { background: rgba(255,255,255,0.88);
                             box-shadow: 0 0 0 1px rgba(15,23,42,0.08); }
