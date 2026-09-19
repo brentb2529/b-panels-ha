@@ -753,7 +753,9 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     // from entities, which silently disabled the detail modal and its tap
     // target when the tile was first switched over to Home Assistant.
     const hasTelemetry = useHaEntities || details !== null;
-    const isActive = state.active || false;
+    // `active` is the cloud's run flag; engineRunning is the bridge's. Either
+    // one being true means the engine is turning.
+    const isActive = state.active === true || state.engineRunning === true;
 
     // Derive warning reasons once per render — feeds both the inline caption
     // and the change-notification tracker below.
@@ -793,24 +795,49 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
         prevRunning.current = state.active;
     }, [reasons, state.generatorStatus, state.active, details, addNotification]);
 
-    // Status determination — drive badge color/animation from the SAME derived
-    // reasons that feed the inline caption and modal banner. Active running
-    // overrides to "active" blue with a pulse, unless something is error-level.
-    const siteStatus = state.status || (hasTelemetry ? 'Unknown' : (endpointUrl ? 'Loading' : 'Setup'));
+    // Status determination.
+    //
+    // THE LABEL AND THE COLOUR MUST COME FROM THE SAME PLACE.
+    //
+    // They did not. The colour was derived from `reasons`, and the text was
+    // `state.status` -- the health grade, a different field entirely. Nothing
+    // kept them in step, so during a weekly exercise the tile rendered the word
+    // "HEALTHY" in red: the grade still said healthy while the fault flag had
+    // gone true. A badge that contradicts itself is worse than either half
+    // alone, because there is no way to tell which one to believe.
+    //
+    // The label is now derived from the same state as the colour, in the same
+    // order, so the two cannot disagree by construction.
     const hasError = reasons.some(r => r.severity === 'error');
     const hasWarning = reasons.some(r => r.severity === 'warning');
 
+    // A scheduled exercise is the machine working, not an incident, and it
+    // deserves to be said on the tile face -- otherwise a running generator on
+    // a Tuesday morning is indistinguishable from one responding to an outage.
+    const isExercising = state.exercising === true || state.scheduledExerciseInProgress === true;
+    const rawStatus = state.status || (hasTelemetry ? 'Unknown' : (endpointUrl ? 'Loading' : 'Setup'));
+
     let badgeType: 'ok' | 'warning' | 'error' | 'active' = 'ok';
     let pulseAnimation = false;
+    let siteStatus = rawStatus;
 
     if (hasError) {
         badgeType = 'error';
         pulseAnimation = true;
+        siteStatus = 'FAULT';
+    } else if (isExercising) {
+        badgeType = 'active';
+        pulseAnimation = true;
+        siteStatus = 'EXERCISE';
     } else if (isActive) {
         badgeType = 'active';
         pulseAnimation = true;
+        // Running while the grid is down is the real event; running otherwise
+        // is unscheduled and worth naming differently.
+        siteStatus = state.utilityPowerFailure === true ? 'ON GENERATOR' : 'RUNNING';
     } else if (hasWarning) {
         badgeType = 'warning';
+        siteStatus = 'CHECK';
     }
 
     const handleClick = () => {
