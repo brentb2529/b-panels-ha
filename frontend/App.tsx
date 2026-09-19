@@ -17,6 +17,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { apiValidateDeviceToken, bootstrapDeviceToken } from './services/api';
 import { IconRefreshCw } from './components/icons';
 import { playTextToSpeech, playAudioUrl } from './services/audioPlayer';
+import { usePanelTelemetry } from './hooks/usePanelTelemetry';
 
 const DEVICE_AUTH_TOKEN_KEY = 'homeTileDeviceAuthToken';
 
@@ -108,6 +109,12 @@ const PlaySoundAndRedirect = () => {
 
 const AppRoutes = () => {
   const { panels, loading } = useDashboard();
+
+  // Report JS-heap/DOM size to HA every 5 min. Diagnostic only: it exists to
+  // tell us whether the kiosk memory decay that kills these panels overnight is
+  // our JS or the WebView's native side. Chromium-only and best-effort; it is a
+  // no-op everywhere else. See hooks/usePanelTelemetry.ts.
+  usePanelTelemetry();
   
   if (loading) {
       // Render a visible loading state instead of null to prevent black screens
