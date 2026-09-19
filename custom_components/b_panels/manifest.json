@@ -1,9 +1,9 @@
 {
   "domain": "b_panels",
   "name": "B-Panels",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@brentb2529"],
   "config_flow": true,
-  "after_dependencies": ["recorder"],
   "dependencies": ["http", "frontend", "websocket_api"],
   "documentation": "https://github.com/brentb2529/b-panels-ha",
   "integration_type": "service",
