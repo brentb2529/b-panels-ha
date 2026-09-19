@@ -247,8 +247,8 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
  *
  * Everything stops under prefers-reduced-motion; the numbers carry it alone.
  */
-const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
-    running: boolean; fault: boolean; outage: boolean; rpm?: number; readout: boolean;
+const GeneratorScene = ({ running, fault, outage, rpm, readout, loadPct }: {
+    running: boolean; fault: boolean; outage: boolean; rpm?: number; readout: boolean; loadPct?: number;
 }) => {
     // Real speed, clamped so a stale or absurd reading cannot strobe the fan or
     // freeze it into looking stopped on a machine that is turning.
@@ -256,6 +256,10 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
         ? Math.min(2.2, Math.max(0.16, (3600 / rpm) * 0.38))
         : 0;
     const alive = running && !fault;
+    // Only claim capacity when the bridge actually reported it -- a blank gauge
+    // reading 0% on a set carrying the house would be worse than no gauge.
+    const pct = Number(loadPct);
+    const showGauge = alive && Number.isFinite(pct);
 
     const mesh: { x: number; y: number }[] = [];
     for (let r = 0; r < 11; r++) {
@@ -282,11 +286,6 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
                   .bh-anim{display:none}
                   .bh-fan,.bh-shake,.bh-flow{animation:none !important}}`}</style>
             <defs>
-                <linearGradient id="bhSky" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0a1322" />
-                    <stop offset="62%" stopColor="#141f30" />
-                    <stop offset="100%" stopColor="#1b2737" />
-                </linearGradient>
                 <linearGradient id="bhSkin" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#eef1f5" />
                     <stop offset="26%" stopColor="#d7dce3" />
@@ -309,14 +308,13 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
                 <clipPath id="bhIntake"><rect x="34" y="40" width="22" height="50" rx="2.5" /></clipPath>
             </defs>
 
-            <rect width="226" height="190" fill="url(#bhSky)" />
             <rect width="226" height="190" fill="url(#bhGlow)" />
 
             {/* Pad. Gives the set something to stand on, and a horizon to sit
                 against -- without it the cabinet floats and reads as an icon. */}
-            <path d="M0 104 L226 99 L226 190 L0 190 Z" fill="#0d1520" />
-            <path d="M0 104 L226 99 L226 103 L0 108 Z" fill="#2a3543" opacity="0.7" />
-            <ellipse cx="92" cy="104" rx="70" ry="6" fill="#000" opacity="0.45" />
+            <path d="M0 104 L226 99 L226 190 L0 190 Z" fill="#0b1220" opacity="0.30" />
+            <path d="M0 104 L226 99 L226 103 L0 108 Z" fill="#94a3b8" opacity="0.18" />
+            <ellipse cx="92" cy="104" rx="70" ry="6" fill="#000" opacity="0.28" />
 
             <g className="bh-shake" style={alive ? { animation: 'bhShake .13s steps(2,end) infinite' } : undefined}>
                 {/* Cabinet: straight sides, radiused top corners, shallow crown.
@@ -337,21 +335,60 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
                 <rect x="34" y="40" width="22" height="50" rx="2.5" fill="#1a2028" stroke="#6f7680" strokeWidth="1" />
                 {fanPeriod > 0 && (
                     <g clipPath="url(#bhIntake)">
-                        <g className="bh-fan" style={{ animation: `bhFan ${fanPeriod}s linear infinite`, transformOrigin: '45px 65px' }}>
+                        <g className="bh-fan"
+                           style={{ animation: `bhFan ${fanPeriod}s linear infinite`, transformOrigin: '45px 65px',
+                                    filter: 'drop-shadow(0 0 3px rgba(52,211,153,0.55))' }}>
+                            {/* GREEN WHILE IT TURNS. The fan is the only part of
+                                the machine whose motion carries information, and
+                                in grey it had to compete with a grey cabinet to
+                                be noticed at all. Green is already this tile's
+                                word for "running" -- the status lamp uses it --
+                                so the one moving part now says the same thing
+                                the lamp does, in the place the eye lands. */}
                             {[0, 51, 102, 153, 204, 255, 306].map(a => (
-                                <path key={a} d="M45 65 L49 45 Q45 41 41 45 Z" fill="#c2cad4" opacity="0.55"
+                                <path key={a} d="M45 65 L49 45 Q45 41 41 45 Z" fill="#34d399" opacity="0.72"
                                       transform={`rotate(${a} 45 65)`} />
                             ))}
-                            <circle cx="45" cy="65" r="3.8" fill="#9aa2ad" opacity="0.8" />
+                            <circle cx="45" cy="65" r="3.8" fill="#6ee7b7" opacity="0.85" />
                         </g>
                     </g>
                 )}
                 {mesh.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1" fill="#79818c" opacity="0.62" />)}
 
-                {/* Access door and its embossed emblem. */}
-                <ellipse cx="95" cy="66" rx="23" ry="11" fill="none" stroke="#a9b1bb" strokeWidth="1.5" opacity="0.62" />
-                <ellipse cx="95" cy="64.8" rx="23" ry="11" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.4" />
-                <rect x="81" y="64" width="28" height="4.2" rx="2.1" fill="#b4bbc5" opacity="0.5" />
+                {/* THE DOOR CARRIES THE LOAD GAUGE.
+                    It is the largest flat surface on the tile and it was
+                    spending all of it on an embossed emblem -- decoration, on
+                    the one panel big enough to hold something worth reading.
+
+                    Load as a PERCENTAGE OF CAPACITY is the number that was
+                    missing everywhere else: the readout gives kW, which tells
+                    you what the house is drawing but not how close the set is
+                    to its limit. During an outage that is the question, and it
+                    is the one a homeowner can act on -- shed a load or don't.
+
+                    Printed on the cabinet rather than floated over it, so it
+                    inherits the machine's own light panel and stays legible in
+                    both themes without a single theme-conditional colour. */}
+                {showGauge ? (
+                    <>
+                        <rect x="68" y="50" width="54" height="32" rx="3.5" fill="#e8ebef" opacity="0.55" />
+                        <text x="95" y="65" textAnchor="middle" fontSize="17" fontWeight="700"
+                              fill="#1f2937" fontFamily="system-ui, sans-serif"
+                              style={{ letterSpacing: '-0.5px' }}>{Math.round(pct)}%</text>
+                        <text x="95" y="71.5" textAnchor="middle" fontSize="5.2" fontWeight="700"
+                              fill="#4b5563" fontFamily="system-ui, sans-serif"
+                              style={{ letterSpacing: '0.7px' }}>OF CAPACITY</text>
+                        <rect x="72" y="75" width="46" height="3.6" rx="1.8" fill="#9aa2ad" opacity="0.6" />
+                        <rect x="72" y="75" width={Math.max(1.6, 46 * Math.min(1, pct / 100))} height="3.6" rx="1.8"
+                              fill={pct >= 90 ? '#dc2626' : pct >= 70 ? '#d97706' : '#16a34a'} />
+                    </>
+                ) : (
+                    <>
+                        <ellipse cx="95" cy="66" rx="23" ry="11" fill="none" stroke="#a9b1bb" strokeWidth="1.5" opacity="0.62" />
+                        <ellipse cx="95" cy="64.8" rx="23" ry="11" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.4" />
+                        <rect x="81" y="64" width="28" height="4.2" rx="2.1" fill="#b4bbc5" opacity="0.5" />
+                    </>
+                )}
                 <circle cx="95" cy="40" r="2.6" fill="#858c96" stroke="#697079" strokeWidth="0.8" />
 
                 {/* Control end. */}
@@ -692,9 +729,9 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
 
     const alarms: string[] = Array.isArray(state.activeAlarms) ? state.activeAlarms : [];
 
-    const tone = kind === 'fault' ? 'text-red-300'
-        : kind === 'outage' ? 'text-amber-300'
-        : kind === 'exercise' ? 'text-sky-300' : 'text-emerald-300';
+    const tone = kind === 'fault' ? 'gen-t-fault'
+        : kind === 'outage' ? 'gen-t-outage'
+        : kind === 'exercise' ? 'gen-t-exercise' : 'gen-t-run';
 
     // SHORT ENOUGH TO SURVIVE THE TILE. "CARRYING THE HOUSE" was the honest
     // phrase and it truncated to "CARRYING THE HOU..." at tile width, next to
@@ -735,7 +772,7 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
             </div>
 
             {kind === 'fault' ? (
-                <div className="text-red-200 leading-snug overflow-hidden"
+                <div className="gen-t-alarm leading-snug overflow-hidden"
                      style={{ fontSize: 'clamp(0.5rem, 5cqmin, 0.75rem)' }}>
                     {alarms.length > 0
                         ? alarms.slice(0, 3).join(' · ') + (alarms.length > 3 ? ` +${alarms.length - 3}` : '')
@@ -763,7 +800,7 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
                             )}
                         </span>
                         {kind === 'outage' && outFor && (
-                            <span className="shrink-0 tabular-nums text-amber-300">grid out {outFor}</span>
+                            <span className="shrink-0 tabular-nums gen-t-outage">grid out {outFor}</span>
                         )}
                     </div>
                 </>
@@ -1137,10 +1174,79 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         site, the dark region is named and the remap is undone
                         inside it. */}
                     <style>{`
-                        .light-mode .gen-on-dark .text-white { color: #ffffff; }
-                        .light-mode .gen-on-dark .text-gray-200 { color: #e5e7eb; }
-                        .light-mode .gen-on-dark .text-gray-300 { color: #d1d5db; }
-                        .light-mode .gen-on-dark .text-gray-400 { color: #9ca3af; }
+                        /* THE TILE IS NO LONGER A DARK REGION, so it no longer
+                           undoes the theme inside itself.
+
+                           This block used to force .text-white back to white in
+                           day mode, because the scene sat on a near-black wash
+                           and the app's global remap (.light-mode .text-white ->
+                           #111827) would otherwise have painted every label
+                           near-black on near-black. With the wash gone that
+                           remap is simply correct, and fighting it would now be
+                           the bug: dark text on a light tile in day mode, light
+                           text on a dark tile at night.
+
+                           What still needs protecting is the readout, which sits
+                           over the machine rather than over the tile surface. It
+                           gets a scrim that follows the theme instead of a fixed
+                           dark one. */
+                        .gen-scrim { background: linear-gradient(to top,
+                            rgba(3,7,18,0.92) 0%, rgba(3,7,18,0.74) 45%, rgba(3,7,18,0) 100%); }
+                        .gen-scrim-fault { background: linear-gradient(to top,
+                            rgba(3,7,18,0.93) 0%, rgba(3,7,18,0.84) 62%, rgba(3,7,18,0.55) 100%); }
+                        .light-mode .gen-scrim { background: linear-gradient(to top,
+                            rgba(248,250,252,0.95) 0%, rgba(248,250,252,0.82) 45%, rgba(248,250,252,0) 100%); }
+                        .light-mode .gen-scrim-fault { background: linear-gradient(to top,
+                            rgba(248,250,252,0.94) 0%, rgba(248,250,252,0.78) 62%, rgba(248,250,252,0.35) 100%); }
+                        /* Muted label greys need to go the other way in day mode
+                           or they vanish into a light scrim. */
+                        .light-mode .gen-on-dark .text-gray-400 { color: #4b5563; }
+                        .light-mode .gen-on-dark .text-gray-300 { color: #374151; }
+
+                        /* STATE TONES NEED A DAY VALUE, and Tailwind's -300
+                           shades do not have one here: amber-300 on a white
+                           scrim is a pale smear, and the headline naming the
+                           state is the last thing that should be hard to read.
+                           The app's global remap only covers orange/green/red
+                           -300, not the amber, sky and emerald used here, so
+                           these carry their own pairs. */
+                        .gen-t-fault    { color: #fca5a5; }
+                        .gen-t-outage   { color: #fcd34d; }
+                        .gen-t-exercise { color: #7dd3fc; }
+                        .gen-t-run      { color: #6ee7b7; }
+                        .gen-t-alarm    { color: #fecaca; }
+                        .light-mode .gen-t-fault    { color: #b91c1c; }
+                        .light-mode .gen-t-outage   { color: #a16207; }
+                        .light-mode .gen-t-exercise { color: #0369a1; }
+                        .light-mode .gen-t-run      { color: #047857; }
+                        .light-mode .gen-t-alarm    { color: #991b1b; }
+
+                        /* THE STATUS BADGE HAD NO DAY MODE.
+                           App.tsx pairs the green, orange and red badge styles
+                           for light mode but never the blue one, so the 'active'
+                           badge -- ON GEN, EXERCISE, RUNNING, every state this
+                           tile spends its time in -- rendered blue-400 on a 20%
+                           blue wash over a light tile. That is under 2:1; the
+                           word naming the state was the least legible thing on
+                           the face of it.
+
+                           Scoped to this tile rather than patched globally: the
+                           same gap exists app-wide for any blue badge, and that
+                           is a design-system change to make deliberately, not a
+                           side effect of fixing the generator. */
+                        .light-mode .gen-on-dark .bg-blue-500\\/20 { background-color: #dbeafe !important; }
+                        .light-mode .gen-on-dark .text-blue-400 { color: #1d4ed8 !important; }
+                        .light-mode .gen-on-dark .border-blue-500\\/30 { border-color: #93c5fd !important; }
+                        .light-mode .gen-on-dark .bg-red-500\\/20 { background-color: #fee2e2 !important; }
+                        .light-mode .gen-on-dark .text-red-400 { color: #b91c1c !important; }
+                        .light-mode .gen-on-dark .border-red-500\\/30 { border-color: #fca5a5 !important; }
+                        .light-mode .gen-on-dark .bg-green-500\\/20 { background-color: #dcfce7 !important; }
+                        .light-mode .gen-on-dark .text-green-400 { color: #15803d !important; }
+                        .light-mode .gen-on-dark .border-green-500\\/30 { border-color: #86efac !important; }
+
+                        .gen-caption { background: rgba(3,7,18,0.72); }
+                        .light-mode .gen-caption { background: rgba(255,255,255,0.88);
+                            box-shadow: 0 0 0 1px rgba(15,23,42,0.08); }
                     `}</style>
                     {/* THE MACHINE AREA NEEDS INTRINSIC HEIGHT, NOT JUST flex-1.
                         TileWrapper's content slot is sized BY its content rather
@@ -1176,12 +1282,20 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                          // children are absolutely positioned has no natural
                          // height at all and collapses to nothing. The scene is
                          // exactly that shape, so it carries its own floor.
-                         style={{ flex: '1 1 auto', minHeight: '9.5rem',
-                                  background: 'linear-gradient(to bottom, #0b1220 0%, #16202e 55%, #1c2733 100%)' }}>
+                         // NO BACKGROUND OF ITS OWN.
+                         // This used to paint a hard near-black gradient, which
+                         // made the generator a black box sitting among frosted
+                         // tiles -- obvious in day mode, where every other tile
+                         // is light and this one was not. The wash existed only
+                         // to guarantee contrast for white readout text, and
+                         // that is now handled where it belongs: a small scrim
+                         // under the text, and text that follows the theme.
+                         style={{ flex: '1 1 auto', minHeight: '9.5rem' }}>
                         <GeneratorScene running={isActive} fault={hasError}
                                         outage={liveKind === 'outage'}
                                         rpm={Number(state.engineSpeed) || undefined}
-                                        readout={!!liveKind} />
+                                        readout={!!liveKind}
+                                        loadPct={state.percentageLoad} />
                         {/* A GRADIENT, NOT A BLACK SHEET.
                             The first version laid a flat 70% black over the
                             whole tile to make the numbers legible, which worked
@@ -1192,15 +1306,8 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                             top of the cabinet, the fan turning behind the
                             intake and the status lamp all stay in the clear. */}
                         {liveKind && (
-                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${liveKind === 'fault' ? 'h-full' : 'h-[46%]'}`}
-                                 style={{ background: liveKind === 'fault'
-                                     // A FAULTED SET IS NOT A SPECTACLE. The drawing
-                                     // is there to say "this is the generator", which
-                                     // a tile screaming FAULT has already established,
-                                     // and the alarm names need every pixel of the
-                                     // room it was occupying.
-                                     ? 'linear-gradient(to top, rgba(3,7,18,0.93) 0%, rgba(3,7,18,0.84) 62%, rgba(3,7,18,0.55) 100%)'
-                                     : 'linear-gradient(to top, rgba(3,7,18,0.92) 0%, rgba(3,7,18,0.74) 45%, rgba(3,7,18,0) 100%)' }} />
+                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${
+                                liveKind === 'fault' ? 'h-full gen-scrim-fault' : 'h-[46%] gen-scrim'}`} />
                         )}
                         {liveKind && <LiveStatePanel state={state} kind={liveKind} />}
 
@@ -1224,9 +1331,15 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                             legible. A chip makes it theme-independent. */}
                         {captionReason && (
                             <div className="absolute inset-x-0 top-8 px-2">
-                                <div className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 leading-tight bg-black/70 ${
-                                    captionReason.severity === 'error' ? 'text-red-300'
-                                    : captionReason.severity === 'warning' ? 'text-yellow-300' : 'text-sky-300'
+                                {/* The pill was a fixed bg-black/70. In day mode
+                                    the app remaps text-red-300 to a dark red,
+                                    so the caption became dark red on black --
+                                    the alarm name, the one line that must be
+                                    readable, was the least readable thing on
+                                    the tile. Pill and text now pair per theme. */}
+                                <div className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 leading-tight gen-caption ${
+                                    captionReason.severity === 'error' ? 'gen-t-fault'
+                                    : captionReason.severity === 'warning' ? 'gen-t-outage' : 'gen-t-exercise'
                                 }`} style={fluidTextXs}>
                                     <IconAlertTriangle className="w-3 h-3 flex-shrink-0" />
                                     <span className="truncate">{captionReason.text}</span>
