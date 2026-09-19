@@ -74,7 +74,17 @@ const VideoStream = ({ streamUrl }: VideoStreamProps) => {
             if (Hls.isSupported()) {
                 hls = new Hls({
                     lowLatencyMode: true,
-                    backBufferLength: 90,
+                    // Buffer tuning for an always-on kiosk. These panels render a
+                    // ~120px live thumbnail 24/7, and hls.js defaults are sized for
+                    // a seekable full-size player: 90s of DECODED back-buffer, 30s
+                    // forward, up to 60MB. Those buffers live in the WebView's
+                    // native heap, which on a 3GB Fire tablet is the memory Android
+                    // eventually kills the app to reclaim. Nobody scrubs backwards
+                    // on a wall panel, so the back-buffer is pure cost.
+                    backBufferLength: 6,
+                    maxBufferLength: 8,
+                    maxMaxBufferLength: 20,
+                    maxBufferSize: 8 * 1000 * 1000,
                     manifestLoadRetry: 5,
                     manifestLoadRetryDelay: 1000,
                     fragLoadRetry: 5,
