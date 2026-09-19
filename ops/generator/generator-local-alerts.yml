@@ -166,23 +166,26 @@ groups:
       current_value: '{{ $value }}s uptime'
       action: Check bridge Wi-Fi signal and whether Home Assistant can reach it at all
   - alert: BridgeOverheating
-    expr: generator_local_esp_internal_temperature{site_id=~"$site_id"} > 85
+    expr: generator_local_esp_internal_temperature{site_id=~"$site_id"} > 185
     for: 30m
     labels:
       severity: warning
       source: binfohub
       alertgroup: infrastructure
     annotations:
-      summary: Generator {{ $labels.name }} bridge running hot ({{ $value }}C)
-      description: 'The ESP32 die temperature has been above 85C for half an hour. This board lives in
-        a sealed enclosure on a generator pad; in summer, with the set running, that enclosure is the
-        hottest place on the property.
+      summary: Generator {{ $labels.name }} bridge running hot ({{ $value }}F)
+      description: 'The ESP32 die temperature has been above 185F (85C) for half an hour. This board lives
+        in a sealed enclosure on a generator pad; in summer, with the set running, that is the hottest
+        place on the property. The ESP32 turns unstable near 212F (100C), so there is room to act.
 
 
-        Around 100C the ESP32 becomes unstable before it shuts down, so this is a warning with room to
-        act. Typical here is around 60C.'
-      current_value: '{{ $value }} C'
-      threshold: 85 C
+        THRESHOLD IS IN FAHRENHEIT, DELIBERATELY. Home Assistant converts temperatures to the instance''s
+        unit system before they are pushed, so what reaches Prometheus here is F, not the C the sensor
+        reports. Written as 85 this rule compared 85 against a normal reading of 144 and would have fired
+        immediately and never stopped -- caught by checking the live value before importing rather than
+        after. Typical here is 144F (62C).'
+      current_value: '{{ $value }} F'
+      threshold: 185 F (85 C)
       action: Shade or vent the enclosure
 - name: binfohub-warning
   interval: 60s

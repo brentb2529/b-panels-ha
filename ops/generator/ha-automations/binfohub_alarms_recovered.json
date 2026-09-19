@@ -1,0 +1,69 @@
+{
+  "id": "binfohub_alarms_recovered",
+  "alias": "B-Infohub: alarms recovered from the bridge's flash log",
+  "description": "Fires when the bridge replays alarms that happened while Home Assistant was down or disconnected -- the gap every other alarm automation has by construction, since they trigger on live entity changes and an alarm that occurred AND cleared during an outage produces no edge.\n\nWORDING IS DELIBERATELY NEUTRAL. An earlier version told the owner the generator 'will not carry an outage until this is cleared at the panel'. The drain cannot know that: it knows a bit was set and whether it is still set, not whether the condition is shutdown-class. Asserting it turned a routine weekly exercise into a critical page saying their standby power was gone.\n\nSeverity follows the payload: still-asserted is time-sensitive and worth looking at; all-cleared is history worth knowing and not worth waking anyone for. Neither is critical, because this automation reports the PAST. A condition that is still live and genuinely serious is caught by the shutdown automation, on the live entity, at the time it happens.",
+  "triggers": [
+    {
+      "trigger": "event",
+      "event_type": "energytrak_backlog_replayed"
+    }
+  ],
+  "actions": [
+    {
+      "choose": [
+        {
+          "conditions": [
+            {
+              "condition": "template",
+              "value_template": "{{ trigger.event.data.still_active | length > 0 }}"
+            }
+          ],
+          "sequence": [
+            {
+              "action": "notify.mobile_app_iphone_16",
+              "data": {
+                "title": "Missed alarm \u2014 still asserted",
+                "message": "{{ trigger.event.data.count }} alarm event(s) were recorded by the bridge while Home Assistant was not listening:\n\n{{ trigger.event.data.alarms | join(', ') }}\n\n{% if trigger.event.data.still_active %}Still asserted now: {{ trigger.event.data.still_active | join(', ') }}. Check the GC-1032 panel for what it means.{% else %}All have since cleared \u2014 this is history recovered from the bridge's flash log, not a current condition.{% endif %}\n\n{% if trigger.event.data.any_time_known %}First: {{ trigger.event.data.first_timestamp }}{% else %}Timing unknown \u2014 the bridge had no clock when these were logged.{% endif %}",
+                "data": {
+                  "push": {
+                    "interruption-level": "time-sensitive"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "default": [
+        {
+          "action": "notify.mobile_app_iphone_16",
+          "data": {
+            "title": "Missed alarm recovered from the generator",
+            "message": "{{ trigger.event.data.count }} alarm event(s) were recorded by the bridge while Home Assistant was not listening:\n\n{{ trigger.event.data.alarms | join(', ') }}\n\n{% if trigger.event.data.still_active %}Still asserted now: {{ trigger.event.data.still_active | join(', ') }}. Check the GC-1032 panel for what it means.{% else %}All have since cleared \u2014 this is history recovered from the bridge's flash log, not a current condition.{% endif %}\n\n{% if trigger.event.data.any_time_known %}First: {{ trigger.event.data.first_timestamp }}{% else %}Timing unknown \u2014 the bridge had no clock when these were logged.{% endif %}",
+            "data": {
+              "push": {
+                "interruption-level": "active"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "persistent_notification.create",
+      "data": {
+        "title": "Alarms recovered from the bridge",
+        "message": "{{ trigger.event.data.count }} alarm event(s) were recorded by the bridge while Home Assistant was not listening:\n\n{{ trigger.event.data.alarms | join(', ') }}\n\n{% if trigger.event.data.still_active %}Still asserted now: {{ trigger.event.data.still_active | join(', ') }}. Check the GC-1032 panel for what it means.{% else %}All have since cleared \u2014 this is history recovered from the bridge's flash log, not a current condition.{% endif %}\n\n{% if trigger.event.data.any_time_known %}First: {{ trigger.event.data.first_timestamp }}{% else %}Timing unknown \u2014 the bridge had no clock when these were logged.{% endif %}"
+      }
+    }
+  ],
+  "mode": "queued",
+  "max": 5,
+  "conditions": [
+    {
+      "condition": "template",
+      "alias": "Not already reported in the last 15 minutes",
+      "value_template": "{{ this.attributes.last_triggered is none or (now() - this.attributes.last_triggered).total_seconds() > 900 }}"
+    }
+  ]
+}

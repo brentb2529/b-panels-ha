@@ -168,6 +168,21 @@ const applyEntity = (target: Record<string, any>, entity: HassEntity): void => {
         if (port) target.bridgePort = port;
     }
 
+    // WHEN a state began, not just what it is.
+    //
+    // "Running" is almost useless on its own during an outage -- the question
+    // is how long, because that is what tells you whether to worry about fuel,
+    // and it is the first thing anyone asks. HA carries last_changed on every
+    // entity and it costs nothing to keep.
+    if (field === 'running' || field === 'engine_running') {
+        const on = String(entity.state ?? '').toLowerCase() === 'on';
+        target.runningSince = on ? (entity.last_changed || undefined) : undefined;
+    }
+    if (field === 'utility_power_failure') {
+        const lost = String(entity.state ?? '').toLowerCase() === 'on';
+        target.gridLostSince = lost ? (entity.last_changed || undefined) : undefined;
+    }
+
     // The tile tests `faultCondition === true`, but this field arrives as text
     // ("False" from the bridge, a fault string from the cloud), so that check
     // could never match. Publish a real boolean alongside the text.

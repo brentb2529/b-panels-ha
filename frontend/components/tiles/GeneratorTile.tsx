@@ -220,7 +220,25 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
  * `none`, which would stretch it. Anchored xMidYMax so it stands on the floor of
  * the tile and any spare room becomes headroom above.
  */
-const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean }) => {
+const GeneratorUnit = ({ running, fault, rpm, anchorTop }: { running: boolean; fault: boolean; rpm?: number; anchorTop?: boolean }) => {
+    // THE MACHINE ITSELF MOVES, AND IT MOVES AT THE REAL SPEED.
+    //
+    // A drawing with a puff of smoke bolted on is a cartoon: the smoke is the
+    // same whether the set is idling at 2800 during warm-up or at 3600 under
+    // full house load, so it carries no information at all.
+    //
+    // The cooling fan behind the intake mesh is driven from reported engine
+    // speed, and the cabinet shakes in time with it. That makes the slow
+    // warm-up VISIBLE -- the fan is plainly lazy for the first minutes of a
+    // weekly exercise and then steps up -- without anyone having to know that
+    // 2800 means warming and 3600 means ready.
+    //
+    // Clamped at both ends: a stale or absurd reading must not strobe the fan
+    // or freeze it in a way that reads as "stopped" on a running machine.
+    const fanPeriod = running && !fault && rpm && rpm > 50
+        ? Math.min(2.4, Math.max(0.18, 3600 / rpm * 0.42))
+        : 0;
+    const shake = running && !fault;
     // Perforated intake mesh. Generated rather than hand-placed so the grid
     // stays even at any size, and kept as small dots because that is what it is
     // -- punched perforations, not slats.
@@ -233,12 +251,23 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
     return (
         <svg
             viewBox="0 0 200 128"
-            preserveAspectRatio="xMidYMax meet"
+            // Bottom-anchored while idle, so the set stands on the floor of the
+            // tile. Top-anchored the moment the numbers appear, because they
+            // claim the lower half and the half worth keeping is the one with
+            // the crown, the turning fan and the status lamp in it.
+            preserveAspectRatio={anchorTop ? 'xMidYMin meet' : 'xMidYMax meet'}
             className="absolute inset-0 w-full h-full"
             aria-hidden="true"
         >
-            <style>{`@media (prefers-reduced-motion: reduce){
+            <style>{`@keyframes binfohubFan{to{transform:rotate(360deg)}}
+                @keyframes binfohubShake{
+                    0%,100%{transform:translate(0,0)}
+                    25%{transform:translate(0.22px,-0.2px)}
+                    50%{transform:translate(-0.18px,0.24px)}
+                    75%{transform:translate(0.2px,0.16px)}}
+                @media (prefers-reduced-motion: reduce){
                 .gen-anim{animation:none !important; display:none}
+                .gen-fan,.gen-shake{animation:none !important}
                 .gen-anim-keep{animation:none !important}}`}</style>
             <defs>
                 {/* Brushed aluminium: bright across the upper third, falling away
@@ -258,6 +287,7 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
                     <stop offset="0%" stopColor="#3a3f47" />
                     <stop offset="100%" stopColor="#15181c" />
                 </linearGradient>
+                <clipPath id="ppIntake"><rect x="22" y="38" width="17" height="60" rx="2" /></clipPath>
                 <radialGradient id="ppHalo" cx="50%" cy="58%" r="62%">
                     <stop offset="0%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity={fault ? 0.3 : 0.2} />
                     <stop offset="100%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity="0" />
@@ -265,6 +295,12 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
             </defs>
 
             {(running || fault) && <rect x="0" y="0" width="200" height="128" fill="url(#ppHalo)" />}
+
+            {/* Everything from here down is the machine, and the machine shakes
+                when it is running. Amplitude is a fifth of a viewBox unit --
+                at tile size that is well under a pixel, which is the point: it
+                should read as a running engine, never as a wobbling graphic. */}
+            <g className="gen-shake" style={shake ? { animation: 'binfohubShake 0.14s steps(2,end) infinite' } : undefined}>
 
             {/* Cabinet.
                 A BOX WITH A GENTLY ROUNDED TOP, not a dome. The first attempt
@@ -290,6 +326,20 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
                 louvres spread across the whole front. Getting this wrong is what
                 made the previous drawing read as a window air-conditioner. */}
             <rect x="22" y="38" width="17" height="60" rx="2" fill="#20262e" stroke="#7f8690" strokeWidth="0.9" />
+            {/* The cooling fan, seen THROUGH the perforations -- drawn before
+                the mesh so the dots sit in front of it, which is both correct
+                and what stops it reading as a sticker on the outside. */}
+            {fanPeriod > 0 && (
+                <g className="gen-anim" clipPath="url(#ppIntake)">
+                    <g className="gen-fan" style={{ animation: `binfohubFan ${fanPeriod}s linear infinite`, transformOrigin: '30.5px 68px' }}>
+                        {[0, 60, 120, 180, 240, 300].map(a => (
+                            <path key={a} d="M30.5 68 L33.6 53 Q30.5 50 27.4 53 Z" fill="#aeb6c0" opacity="0.5"
+                                  transform={`rotate(${a} 30.5 68)`} />
+                        ))}
+                        <circle cx="30.5" cy="68" r="3" fill="#8f97a2" opacity="0.65" />
+                    </g>
+                </g>
+            )}
             {mesh.map((d, i) => (
                 <circle key={i} cx={d.x} cy={d.y} r="0.85" fill="#767e89" opacity="0.7" />
             ))}
@@ -339,6 +389,7 @@ const GeneratorUnit = ({ running, fault }: { running: boolean; fault: boolean })
                     </circle>
                 </g>
             )}
+            </g>
         </svg>
     );
 };
@@ -568,6 +619,139 @@ const ModalHero = ({ state, alarms, hasError }: { state: Record<string, any>; al
     if (state.active === true || state.engineRunning === true) return <RunningHero state={state} />;
     if (state.bridgeReachable === false || state.busHealthy === false) return <DegradedHero state={state} />;
     return null;
+};
+
+
+/** "1h 04m" / "12m 30s" — elapsed, in the units a person would say it in. */
+const elapsedSince = (iso?: string, now: number = Date.now()): string | null => {
+    if (!iso) return null;
+    const t = Date.parse(iso);
+    if (Number.isNaN(t)) return null;
+    const s = Math.max(0, Math.floor((now - t) / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+    if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
+    return `${sec}s`;
+};
+
+/**
+ * WHAT THE TILE SHOWS WHILE SOMETHING IS HAPPENING.
+ *
+ * The drawing of the machine is the right thing to show when the generator is
+ * sitting there doing nothing: it is recognisable, it says which device this
+ * tile is, and there is no news to report.
+ *
+ * The moment the engine is turning, it is the wrong thing. Exhaust haze and a
+ * green lamp are decoration -- they say "running", which the badge already
+ * said, and nothing else. Standing in a dark house at 2am the questions are:
+ * how long has it been running, is it actually carrying the load, and is the
+ * output sane. None of those are answerable from a picture.
+ *
+ * So while the engine runs, or while there is a fault, the illustration gives
+ * way to the numbers. It comes back when there is nothing to say.
+ */
+const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'outage' | 'exercise' | 'running' | 'fault' }) => {
+    // Elapsed has to advance on its own; the underlying entity only changes
+    // when the engine starts or stops.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    const num = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+    const fmt = (v?: number, dp = 0) => (v === undefined || Number.isNaN(v) ? EM_DASH : v.toFixed(dp));
+
+    const kw = num(state.loadPower);
+    const pct = num(state.percentageLoad);
+    const volts = num(state.outputVoltage);
+    const hz = num(state.generatorFrequency);
+    const rpm = num(state.engineSpeed);
+    const batt = num(state.batteryVoltage);
+
+    const runFor = elapsedSince(state.runningSince, now);
+    const outFor = elapsedSince(state.gridLostSince, now);
+
+    const alarms: string[] = Array.isArray(state.activeAlarms) ? state.activeAlarms : [];
+
+    const tone = kind === 'fault' ? 'text-red-300'
+        : kind === 'outage' ? 'text-amber-300'
+        : kind === 'exercise' ? 'text-sky-300' : 'text-emerald-300';
+
+    // SHORT ENOUGH TO SURVIVE THE TILE. "CARRYING THE HOUSE" was the honest
+    // phrase and it truncated to "CARRYING THE HOU..." at tile width, next to
+    // an elapsed time it was competing with for the same line. The word that
+    // cannot be lost is OUTAGE; the reassurance goes on the line below, where
+    // there is room for it.
+    const headline = kind === 'fault' ? 'FAULT'
+        : kind === 'outage' ? 'OUTAGE'
+        : kind === 'exercise' ? 'EXERCISE' : 'RUNNING';
+
+    // At rated speed or still warming up. On this unit a weekly exercise sits
+    // near 2800 RPM for several minutes before it steps up, and that is normal
+    // -- so it is worth saying rather than leaving someone to wonder.
+    const atSpeed = rpm !== undefined && rpm >= 3400;
+
+    const Cell = ({ label, value, unit }: { label: string; value: string; unit?: string }) => (
+        <div className="flex flex-col items-center justify-center min-w-0">
+            <span className="uppercase font-bold tracking-wider text-gray-400 truncate"
+                  style={{ fontSize: 'clamp(0.42rem, 4cqmin, 0.58rem)' }}>{label}</span>
+            <span className="font-bold text-white tabular-nums leading-none truncate"
+                  style={{ fontSize: 'clamp(0.78rem, 8cqmin, 1.25rem)' }}>
+                {value}{unit && <span className="text-gray-400 font-normal ml-0.5"
+                    style={{ fontSize: 'clamp(0.4rem, 3.6cqmin, 0.6rem)' }}>{unit}</span>}
+            </span>
+        </div>
+    );
+
+    return (
+        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-2 pb-1 gap-0.5">
+            <div className="flex items-baseline justify-between gap-1.5 min-w-0">
+                <span className={`font-bold uppercase tracking-wider truncate ${tone}`}
+                      style={{ fontSize: 'clamp(0.5rem, 5cqmin, 0.72rem)' }}>{headline}</span>
+                {/* The number that is asked first and answered nowhere else. */}
+                {runFor && (
+                    <span className="font-bold text-white tabular-nums shrink-0"
+                          style={{ fontSize: 'clamp(0.68rem, 6.6cqmin, 1rem)' }}>{runFor}</span>
+                )}
+            </div>
+
+            {kind === 'fault' ? (
+                <div className="text-red-200 leading-snug overflow-hidden"
+                     style={{ fontSize: 'clamp(0.5rem, 5cqmin, 0.75rem)' }}>
+                    {alarms.length > 0
+                        ? alarms.slice(0, 3).join(' · ') + (alarms.length > 3 ? ` +${alarms.length - 3}` : '')
+                        : 'Controller reports a fault — check the panel'}
+                </div>
+            ) : (
+                <>
+                    <div className="grid grid-cols-3 gap-0.5">
+                        <Cell label="Load" value={kw !== undefined ? fmt(kw, 1) : fmt(pct)} unit={kw !== undefined ? 'kW' : '%'} />
+                        <Cell label="Output" value={fmt(volts)} unit="V" />
+                        <Cell label="Freq" value={fmt(hz, 1)} unit="Hz" />
+                    </div>
+                    {/* One line, and only when it has something to add. Battery
+                        and coolant already have permanent cells in the strip
+                        below; repeating them here would spend the tile's last
+                        row saying what is already on screen. */}
+                    <div className="flex items-center justify-between gap-1.5 text-gray-300 min-w-0"
+                         style={{ fontSize: 'clamp(0.4rem, 3.8cqmin, 0.56rem)' }}>
+                        <span className="truncate">
+                            {kind === 'outage' ? 'carrying the house' : (
+                                <>
+                                    {rpm !== undefined ? `${fmt(rpm)} RPM` : EM_DASH}
+                                    {rpm !== undefined && !atSpeed && ' · warming up'}
+                                </>
+                            )}
+                        </span>
+                        {kind === 'outage' && outFor && (
+                            <span className="shrink-0 tabular-nums text-amber-300">grid out {outFor}</span>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    );
 };
 
 const GeneratorDetailModal = ({ name, state, onClose }: { name: string, state: Record<string, any>, onClose: () => void }) => {
@@ -825,6 +1009,20 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
         badgeType = 'error';
         pulseAnimation = true;
         siteStatus = 'FAULT';
+    } else if (isActive && state.utilityPowerFailure === true) {
+        // OUTAGE OUTRANKS EXERCISE, and used to not.
+        // The exercise branch came first, so a grid failure that happened to
+        // land inside the weekly exercise window -- or an exercise the
+        // controller had not yet cleared -- would badge the tile EXERCISE
+        // while the house was actually running on the generator. That is the
+        // one moment this tile exists for, mislabelled as routine.
+        badgeType = 'active';
+        pulseAnimation = true;
+        // "ON GENERATOR" wrapped to two lines inside the pill at tile width
+        // and squeezed the device name to "Gener...". The headline below
+        // already says OUTAGE and the line under it says carrying the house,
+        // so the badge only has to be unmistakable, not complete.
+        siteStatus = 'ON GEN';
     } else if (isExercising) {
         badgeType = 'active';
         pulseAnimation = true;
@@ -832,13 +1030,20 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     } else if (isActive) {
         badgeType = 'active';
         pulseAnimation = true;
-        // Running while the grid is down is the real event; running otherwise
-        // is unscheduled and worth naming differently.
-        siteStatus = state.utilityPowerFailure === true ? 'ON GENERATOR' : 'RUNNING';
+        siteStatus = 'RUNNING';
     } else if (hasWarning) {
         badgeType = 'warning';
         siteStatus = 'CHECK';
     }
+
+    // Which live panel, if any. Standby shows the machine and nothing else --
+    // that is the state with no news, and the one the drawing suits.
+    const liveKind: 'outage' | 'exercise' | 'running' | 'fault' | null =
+        hasError ? 'fault'
+        : (isActive && state.utilityPowerFailure === true) ? 'outage'
+        : (isActive && isExercising) ? 'exercise'
+        : isActive ? 'running'
+        : null;
 
     const handleClick = () => {
         if (!isEditor && !isLocked && hasTelemetry) {
@@ -864,8 +1069,14 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     const gridVolts = (state.gridVoltage !== undefined && state.gridVoltage !== null) ? Number(state.gridVoltage).toFixed(0) : EM_DASH;
 
     // Show a setup caption when no endpoint is configured, or a fetch error.
+    // `useHaEntities` GATES THIS, and originally did not.
+    // The endpoint is the FALLBACK path: once the energytrak integration is
+    // installed, telemetry arrives as entities and no endpoint is needed or
+    // wanted. Keyed on `endpointUrl` alone, a fully working tile pulling live
+    // local data still nagged "set the endpoint URL" across its face forever,
+    // with no endpoint to set. Only ask for setup when nothing is feeding it.
     const setupReason: { severity: 'error' | 'warning' | 'info'; text: string } | null =
-        !endpointUrl ? { severity: 'info', text: 'Set the endpoint URL in tile settings' }
+        (!endpointUrl && !useHaEntities) ? { severity: 'info', text: 'Set the endpoint URL in tile settings' }
         : fetchError ? { severity: 'error', text: `Fetch failed: ${fetchError}` }
         : null;
     const captionReason = topReason || setupReason;
@@ -937,7 +1148,29 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                     <div className="relative w-full"
                          style={{ flex: '1 1 auto', minHeight: 0, aspectRatio: '200 / 112', maxHeight: '11rem',
                                   background: 'linear-gradient(to bottom, #0b1220 0%, #16202e 55%, #1c2733 100%)' }}>
-                        <GeneratorUnit running={isActive} fault={hasError} />
+                        <GeneratorUnit running={isActive} fault={hasError} anchorTop={!!liveKind}
+                                       rpm={Number(state.engineSpeed) || undefined} />
+                        {/* A GRADIENT, NOT A BLACK SHEET.
+                            The first version laid a flat 70% black over the
+                            whole tile to make the numbers legible, which worked
+                            and cost the machine entirely -- it went grey and
+                            dead behind a wash, and the animation it had just
+                            been given was invisible. The scrim now only exists
+                            where the text is, fading out by mid-height, so the
+                            top of the cabinet, the fan turning behind the
+                            intake and the status lamp all stay in the clear. */}
+                        {liveKind && (
+                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${liveKind === 'fault' ? 'h-full' : 'h-[62%]'}`}
+                                 style={{ background: liveKind === 'fault'
+                                     // A FAULTED SET IS NOT A SPECTACLE. The drawing
+                                     // is there to say "this is the generator", which
+                                     // a tile screaming FAULT has already established,
+                                     // and the alarm names need every pixel of the
+                                     // room it was occupying.
+                                     ? 'linear-gradient(to top, rgba(3,7,18,0.95) 0%, rgba(3,7,18,0.9) 70%, rgba(3,7,18,0.72) 100%)'
+                                     : 'linear-gradient(to top, rgba(3,7,18,0.94) 0%, rgba(3,7,18,0.88) 34%, rgba(3,7,18,0.5) 66%, rgba(3,7,18,0) 100%)' }} />
+                        )}
+                        {liveKind && <LiveStatePanel state={state} kind={liveKind} />}
 
                         {/* Identity and state, over the lid. A scrim rather than
                             a solid bar, so the machine reads through it. */}
