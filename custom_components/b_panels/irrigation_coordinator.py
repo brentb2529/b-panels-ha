@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -40,7 +41,7 @@ class IrrigationCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         service_account: dict[str, Any],
         probes: list[dict[str, Any]],
         store: IrrigationRunStore,
-        weather: dict[str, str] | None = None,
+        weather: dict[str, str] | Callable[[], dict[str, str]] | None = None,
         latitude: float | None = None,
         elevation_m: float | None = None,
     ) -> None:
@@ -53,7 +54,17 @@ class IrrigationCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self._client = GeoDropsClient(async_get_clientsession(hass), service_account)
         self._probes = probes
         self._store = store
-        self._weather = weather or {}
+        # Weather entity discovery is deferred, not resolved once at setup.
+        #
+        # Discovery scans hass.states, so resolving it during async_setup_entry
+        # is a race: if b_panels loads before the weather station's integration
+        # (Tempest here), the scan finds nothing and ET0/rain/deficit stay
+        # `unknown` until the next reload. That is exactly what happened across
+        # the 2026-09-19 restart - every water-balance field on every zone tile
+        # read `--` for hours. Re-resolving on demand costs one state scan per
+        # 30-minute poll and heals itself whenever the station shows up.
+        self._weather_factory = weather if callable(weather) else None
+        self._weather: dict[str, str] = {} if callable(weather) else (weather or {})
         self._lat = latitude if latitude is not None else hass.config.latitude
         self._elev = elevation_m if elevation_m is not None else float(hass.config.elevation or 0)
 
@@ -162,6 +173,33 @@ class IrrigationCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         return out
 
     # ------------------------------------------------------------- weather
+    #: inputs ET0 needs before it can be computed at all (dew_point is optional -
+    #: irrigation_math falls back to mean RH when it is absent).
+    _ET0_REQUIRED = ("air_temperature", "relative_humidity", "wind_speed",
+                     "solar_radiation", "precipitation")
+
+    def _refresh_weather_map(self) -> None:
+        """Re-resolve weather entities while any ET0 input is still missing.
+
+        Stops scanning once the map is complete, so the steady state costs
+        nothing. A station that disappears keeps its last-known ids rather than
+        being cleared - a momentarily unavailable entity should not blank the
+        water balance.
+        """
+        if self._weather_factory is None:
+            return
+        if all(self._weather.get(k) for k in self._ET0_REQUIRED):
+            return
+        try:
+            found = self._weather_factory() or {}
+        except Exception as err:  # noqa: BLE001 - discovery must never break a poll
+            _LOGGER.debug("weather discovery failed: %s", err)
+            return
+        added = {k: v for k, v in found.items() if v and not self._weather.get(k)}
+        if added:
+            self._weather.update(added)
+            _LOGGER.debug("weather entities resolved: %s", added)
+
     async def _async_weather_totals(self) -> tuple[float | None, float | None]:
         """7-day ET0 (in) and rainfall (in) from Tempest long-term statistics.
 
@@ -169,6 +207,7 @@ class IrrigationCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         them indefinitely - unlike Rachio's switches. That is why weather needs
         no separate persistence and irrigation runs do.
         """
+        self._refresh_weather_map()
         if not self._weather:
             return None, None
         try:

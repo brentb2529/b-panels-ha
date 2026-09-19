@@ -123,6 +123,13 @@ export function buildIrrigationZones(entities: HassEntities): IrrigationZoneStat
                 name = e.attributes.bp_irrigation_label;
             }
 
+            // Keep the moisture entity_id: the sparkline reads long-term
+            // statistics, which are addressed by entity_id, not by the
+            // zone/field attributes everything else here groups on. Recorded
+            // even when the entity is currently unusable - history outlives a
+            // momentary dropout, and a stale probe should still draw its trend.
+            if (field === 'moisture') state.moistureEntityId = e.entity_id;
+
             if (!usable) continue;
 
             const binKey = BINARY_FIELD_TO_KEY[field];

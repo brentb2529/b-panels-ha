@@ -465,7 +465,8 @@ async def _async_setup_irrigation(hass: HomeAssistant, entry: ConfigEntry) -> No
     from .irrigation_coordinator import IrrigationCoordinator
 
     coordinator = IrrigationCoordinator(
-        hass, sa, probes, run_store, weather=_discover_weather_entities(hass)
+        hass, sa, probes, run_store,
+        weather=lambda: _discover_weather_entities(hass),
     )
     hass.data[DOMAIN]["irrigation_coordinator"] = coordinator
     await coordinator.async_config_entry_first_refresh()
