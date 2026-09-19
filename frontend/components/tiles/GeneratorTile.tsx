@@ -220,176 +220,194 @@ const MetricItem = ({ label, value, unit }: { label: string, value: string | num
  * `none`, which would stretch it. Anchored xMidYMax so it stands on the floor of
  * the tile and any spare room becomes headroom above.
  */
-const GeneratorUnit = ({ running, fault, rpm, anchorTop }: { running: boolean; fault: boolean; rpm?: number; anchorTop?: boolean }) => {
-    // THE MACHINE ITSELF MOVES, AND IT MOVES AT THE REAL SPEED.
-    //
-    // A drawing with a puff of smoke bolted on is a cartoon: the smoke is the
-    // same whether the set is idling at 2800 during warm-up or at 3600 under
-    // full house load, so it carries no information at all.
-    //
-    // The cooling fan behind the intake mesh is driven from reported engine
-    // speed, and the cabinet shakes in time with it. That makes the slow
-    // warm-up VISIBLE -- the fan is plainly lazy for the first minutes of a
-    // weekly exercise and then steps up -- without anyone having to know that
-    // 2800 means warming and 3600 means ready.
-    //
-    // Clamped at both ends: a stale or absurd reading must not strobe the fan
-    // or freeze it in a way that reads as "stopped" on a running machine.
+/**
+ * THE SCENE. This is the whole face of the tile, and it loops.
+ *
+ * The brief was "look and operate like a gif", and the reason earlier versions
+ * did not is that the drawing was never given room to: a static data plate took
+ * a third of the tile, the machine got a 124px band, and the only motion in it
+ * was a fan turning behind a 17px perforated screen, which at tile size is
+ * invisible no matter how correct it is.
+ *
+ * So the composition changed rather than the details. The scene is full-bleed,
+ * the viewBox matches the tile's real aspect, and the motion is chosen for what
+ * survives at 226px:
+ *
+ *   VIBRATION   the whole set trembles while the engine turns. Sub-pixel, but
+ *               the eye picks up shimmer long before it picks up shape.
+ *   EXHAUST     a plume that rises and drifts. On its own it says nothing --
+ *               that was the old complaint and it was right -- but alongside
+ *               live numbers it is what makes the thing read as RUNNING at a
+ *               glance from across a room.
+ *   FAN         still driven by real RPM, but now through a grille sized to be
+ *               seen, so the lazy warm-up of a weekly exercise is legible.
+ *   POWER FLOW  during an outage, pulses travel from the set to the house and
+ *               the windows are lit. This is the state the tile exists for and
+ *               it should not look like any other state.
+ *
+ * Everything stops under prefers-reduced-motion; the numbers carry it alone.
+ */
+const GeneratorScene = ({ running, fault, outage, rpm, readout }: {
+    running: boolean; fault: boolean; outage: boolean; rpm?: number; readout: boolean;
+}) => {
+    // Real speed, clamped so a stale or absurd reading cannot strobe the fan or
+    // freeze it into looking stopped on a machine that is turning.
     const fanPeriod = running && !fault && rpm && rpm > 50
-        ? Math.min(2.4, Math.max(0.18, 3600 / rpm * 0.42))
+        ? Math.min(2.2, Math.max(0.16, (3600 / rpm) * 0.38))
         : 0;
-    const shake = running && !fault;
-    // Perforated intake mesh. Generated rather than hand-placed so the grid
-    // stays even at any size, and kept as small dots because that is what it is
-    // -- punched perforations, not slats.
+    const alive = running && !fault;
+
     const mesh: { x: number; y: number }[] = [];
-    for (let r = 0; r < 18; r++) {
-        for (let c = 0; c < 5; c++) {
-            mesh.push({ x: 25 + c * 2.8 + (r % 2 ? 1.4 : 0), y: 41 + r * 3.05 });
-        }
+    for (let r = 0; r < 11; r++) {
+        for (let c = 0; c < 4; c++) mesh.push({ x: 37 + c * 4.4 + (r % 2 ? 2.2 : 0), y: 44 + r * 4.2 });
     }
+
     return (
-        <svg
-            viewBox="0 0 200 128"
-            // Bottom-anchored while idle, so the set stands on the floor of the
-            // tile. Top-anchored the moment the numbers appear, because they
-            // claim the lower half and the half worth keeping is the one with
-            // the crown, the turning fan and the status lamp in it.
-            preserveAspectRatio={anchorTop ? 'xMidYMin meet' : 'xMidYMax meet'}
-            className="absolute inset-0 w-full h-full"
-            aria-hidden="true"
-        >
-            <style>{`@keyframes binfohubFan{to{transform:rotate(360deg)}}
-                @keyframes binfohubShake{
-                    0%,100%{transform:translate(0,0)}
-                    25%{transform:translate(0.22px,-0.2px)}
-                    50%{transform:translate(-0.18px,0.24px)}
-                    75%{transform:translate(0.2px,0.16px)}}
+        // `meet`, not `slice`. With slice the frame crops to fill, and what it
+        // cropped was the control end of the cabinet and half the house -- the
+        // two things on the right that carry meaning. The scene is composed to
+        // the frame instead, with the machine in the upper two thirds so the
+        // readout below never lands on it.
+        // THE FRAME TIGHTENS WHEN THERE IS NOTHING TO READ.
+        // With a readout below, the scene needs the full 190 of headroom so the
+        // machine clears the numbers. In standby there are no numbers, and the
+        // same framing left the bottom half of the tile as empty pad. Cropping
+        // to 140 pulls the set up to fill its own tile.
+        <svg viewBox={readout ? '0 0 226 190' : '0 0 226 158'} preserveAspectRatio="xMidYMid slice"
+             className="absolute inset-0 w-full h-full" aria-hidden="true">
+            <style>{`@keyframes bhFan{to{transform:rotate(360deg)}}
+                @keyframes bhShake{0%,100%{transform:translate(0,0)}25%{transform:translate(.3px,-.25px)}50%{transform:translate(-.25px,.3px)}75%{transform:translate(.28px,.2px)}}
+                @keyframes bhFlow{to{stroke-dashoffset:-24}}
                 @media (prefers-reduced-motion: reduce){
-                .gen-anim{animation:none !important; display:none}
-                .gen-fan,.gen-shake{animation:none !important}
-                .gen-anim-keep{animation:none !important}}`}</style>
+                  .bh-anim{display:none}
+                  .bh-fan,.bh-shake,.bh-flow{animation:none !important}}`}</style>
             <defs>
-                {/* Brushed aluminium: bright across the upper third, falling away
-                    below, which is what gives the panels their sheen. */}
-                <linearGradient id="ppSkin" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f2f4f7" />
-                    <stop offset="22%" stopColor="#dfe3e9" />
-                    <stop offset="60%" stopColor="#c3c9d1" />
-                    <stop offset="100%" stopColor="#a4abb5" />
+                <linearGradient id="bhSky" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#0a1322" />
+                    <stop offset="62%" stopColor="#141f30" />
+                    <stop offset="100%" stopColor="#1b2737" />
                 </linearGradient>
-                <linearGradient id="ppLid" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#fbfcfd" />
-                    <stop offset="45%" stopColor="#e3e7ec" />
-                    <stop offset="100%" stopColor="#b9c0c9" />
+                <linearGradient id="bhSkin" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#eef1f5" />
+                    <stop offset="26%" stopColor="#d7dce3" />
+                    <stop offset="70%" stopColor="#b3bac4" />
+                    <stop offset="100%" stopColor="#8f97a2" />
                 </linearGradient>
-                <linearGradient id="ppBase" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3a3f47" />
-                    <stop offset="100%" stopColor="#15181c" />
+                <linearGradient id="bhLid" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#fdfdfe" />
+                    <stop offset="55%" stopColor="#dfe4ea" />
+                    <stop offset="100%" stopColor="#aab1bb" />
                 </linearGradient>
-                <clipPath id="ppIntake"><rect x="22" y="38" width="17" height="60" rx="2" /></clipPath>
-                <radialGradient id="ppHalo" cx="50%" cy="58%" r="62%">
-                    <stop offset="0%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity={fault ? 0.3 : 0.2} />
-                    <stop offset="100%" stopColor={fault ? '#ef4444' : '#fbbf24'} stopOpacity="0" />
+                <radialGradient id="bhGlow" cx="42%" cy="62%" r="58%">
+                    <stop offset="0%" stopColor={fault ? '#ef4444' : outage ? '#f59e0b' : '#22c55e'}
+                          stopOpacity={fault ? 0.34 : alive ? 0.22 : 0} />
+                    <stop offset="100%" stopOpacity="0" stopColor={fault ? '#ef4444' : outage ? '#f59e0b' : '#22c55e'} />
                 </radialGradient>
+                <filter id="bhSoft" x="-60%" y="-60%" width="220%" height="220%">
+                    <feGaussianBlur stdDeviation="2.2" />
+                </filter>
+                <clipPath id="bhIntake"><rect x="34" y="40" width="22" height="50" rx="2.5" /></clipPath>
             </defs>
 
-            {(running || fault) && <rect x="0" y="0" width="200" height="128" fill="url(#ppHalo)" />}
+            <rect width="226" height="190" fill="url(#bhSky)" />
+            <rect width="226" height="190" fill="url(#bhGlow)" />
 
-            {/* Everything from here down is the machine, and the machine shakes
-                when it is running. Amplitude is a fifth of a viewBox unit --
-                at tile size that is well under a pixel, which is the point: it
-                should read as a running engine, never as a wobbling graphic. */}
-            <g className="gen-shake" style={shake ? { animation: 'binfohubShake 0.14s steps(2,end) infinite' } : undefined}>
+            {/* Pad. Gives the set something to stand on, and a horizon to sit
+                against -- without it the cabinet floats and reads as an icon. */}
+            <path d="M0 104 L226 99 L226 190 L0 190 Z" fill="#0d1520" />
+            <path d="M0 104 L226 99 L226 103 L0 108 Z" fill="#2a3543" opacity="0.7" />
+            <ellipse cx="92" cy="104" rx="70" ry="6" fill="#000" opacity="0.45" />
 
-            {/* Cabinet.
-                A BOX WITH A GENTLY ROUNDED TOP, not a dome. The first attempt
-                curved the roof up over a third of the height and came out
-                looking like a bread bin; on the real unit the sides run straight
-                for most of the cabinet and only the top corners are radiused,
-                with a shallow crown between them. Silhouette is the whole job
-                here, so this is the proportion that matters most. */}
-            <path d="M14 104 L14 40 Q14 27 30 26 L170 26 Q186 27 186 40 L186 104 Z"
-                  fill="url(#ppSkin)" stroke="#8d949e" strokeWidth="1.2" />
-            {/* Shallow crown along the top, catching the light. */}
-            <path d="M16 38 Q16 29 31 28 L169 28 Q184 29 184 38 Q100 33 16 38 Z"
-                  fill="url(#ppLid)" opacity="0.95" />
-            {/* Soft shoulder shadow just under the crown. */}
-            <path d="M14 41 Q100 37 186 41 L186 44 Q100 40 14 44 Z" fill="#9aa1ab" opacity="0.3" />
+            <g className="bh-shake" style={alive ? { animation: 'bhShake .13s steps(2,end) infinite' } : undefined}>
+                {/* Cabinet: straight sides, radiused top corners, shallow crown.
+                    Not a dome -- the earlier bread-bin roof is what made this
+                    read as an appliance instead of a generator. */}
+                <path d="M24 102 L24 34 Q24 20 42 19 L142 19 Q160 20 160 34 L160 102 Z"
+                      fill="url(#bhSkin)" stroke="#767d88" strokeWidth="1.4" />
+                <path d="M26 32 Q26 23 43 22 L141 22 Q158 23 158 32 Q92 27 26 32 Z"
+                      fill="url(#bhLid)" opacity="0.96" />
+                <path d="M24 36 Q92 31 160 36 L160 39 Q92 34 24 39 Z" fill="#8d949f" opacity="0.32" />
 
-            {/* Panel seams. The real cabinet is three panels: a narrow intake
-                bay, the main access door, then the control end. */}
-            <line x1="44" y1="34" x2="44" y2="104" stroke="#9aa1ab" strokeWidth="0.9" opacity="0.9" />
-            <line x1="150" y1="32" x2="150" y2="104" stroke="#9aa1ab" strokeWidth="0.9" opacity="0.9" />
+                <line x1="60" y1="28" x2="60" y2="102" stroke="#8d949f" strokeWidth="1" opacity="0.85" />
+                <line x1="130" y1="26" x2="130" y2="102" stroke="#8d949f" strokeWidth="1" opacity="0.85" />
 
-            {/* Intake bay: perforated mesh, recessed, LEFT OF THE DOOR — not
-                louvres spread across the whole front. Getting this wrong is what
-                made the previous drawing read as a window air-conditioner. */}
-            <rect x="22" y="38" width="17" height="60" rx="2" fill="#20262e" stroke="#7f8690" strokeWidth="0.9" />
-            {/* The cooling fan, seen THROUGH the perforations -- drawn before
-                the mesh so the dots sit in front of it, which is both correct
-                and what stops it reading as a sticker on the outside. */}
-            {fanPeriod > 0 && (
-                <g className="gen-anim" clipPath="url(#ppIntake)">
-                    <g className="gen-fan" style={{ animation: `binfohubFan ${fanPeriod}s linear infinite`, transformOrigin: '30.5px 68px' }}>
-                        {[0, 60, 120, 180, 240, 300].map(a => (
-                            <path key={a} d="M30.5 68 L33.6 53 Q30.5 50 27.4 53 Z" fill="#aeb6c0" opacity="0.5"
-                                  transform={`rotate(${a} 30.5 68)`} />
-                        ))}
-                        <circle cx="30.5" cy="68" r="3" fill="#8f97a2" opacity="0.65" />
+                {/* Intake bay, with the cooling fan behind it. Bigger than life
+                    on purpose: this is the one part of the machine whose motion
+                    carries information, and it has to be visible to do that. */}
+                <rect x="34" y="40" width="22" height="50" rx="2.5" fill="#1a2028" stroke="#6f7680" strokeWidth="1" />
+                {fanPeriod > 0 && (
+                    <g clipPath="url(#bhIntake)">
+                        <g className="bh-fan" style={{ animation: `bhFan ${fanPeriod}s linear infinite`, transformOrigin: '45px 65px' }}>
+                            {[0, 51, 102, 153, 204, 255, 306].map(a => (
+                                <path key={a} d="M45 65 L49 45 Q45 41 41 45 Z" fill="#c2cad4" opacity="0.55"
+                                      transform={`rotate(${a} 45 65)`} />
+                            ))}
+                            <circle cx="45" cy="65" r="3.8" fill="#9aa2ad" opacity="0.8" />
+                        </g>
                     </g>
-                </g>
-            )}
-            {mesh.map((d, i) => (
-                <circle key={i} cx={d.x} cy={d.y} r="0.85" fill="#767e89" opacity="0.7" />
-            ))}
-
-            {/* Access door with its embossed emblem. Deliberately an emblem
-                rather than the manufacturer's wordmark: this repo is public, and
-                a soft embossed badge reads correctly at tile size anyway. */}
-            <ellipse cx="97" cy="60" rx="21" ry="10.5" fill="none" stroke="#aeb5bf" strokeWidth="1.4" opacity="0.7" />
-            <ellipse cx="97" cy="59" rx="21" ry="10.5" fill="none" stroke="#ffffff" strokeWidth="0.6" opacity="0.45" />
-            <rect x="83" y="58" width="28" height="4" rx="2" fill="#b6bdc6" opacity="0.55" />
-            {/* Door latch, top centre, as on the real cabinet. */}
-            <circle cx="97" cy="40" r="2.4" fill="#8a919b" stroke="#6d747e" strokeWidth="0.7" />
-
-            {/* Control end: the black enclosure high on the right, and the
-                status lamp below it. */}
-            <rect x="157" y="38" width="21" height="23" rx="3" fill="#23272d" stroke="#14171b" strokeWidth="0.9" />
-            <rect x="160" y="41" width="15" height="9" rx="1.5" fill="#30353c" />
-            <circle cx="167.5" cy="70" r="4.6"
-                fill={fault ? '#ef4444' : running ? '#22c55e' : '#39414f'}
-                stroke="#23272d" strokeWidth="0.9"
-                style={(running || fault) ? { filter: `drop-shadow(0 0 6px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
-                {(running && !fault) && (
-                    <animate className="gen-anim-keep" attributeName="opacity" values="1;0.45;1" dur="1.6s" repeatCount="indefinite" />
                 )}
-            </circle>
+                {mesh.map((d, i) => <circle key={i} cx={d.x} cy={d.y} r="1" fill="#79818c" opacity="0.62" />)}
 
-            {/* Black base plinth, with the two pad bolts. */}
-            <rect x="10" y="100" width="180" height="16" rx="2.5" fill="url(#ppBase)" />
-            <rect x="10" y="100" width="180" height="2.5" fill="#575d66" opacity="0.6" />
-            <circle cx="52" cy="108" r="2" fill="#4a5058" />
-            <circle cx="148" cy="108" r="2" fill="#4a5058" />
-            <path d="M6 116 L194 116 L194 120 L6 120 Z" fill="#000" opacity="0.45" />
+                {/* Access door and its embossed emblem. */}
+                <ellipse cx="95" cy="66" rx="23" ry="11" fill="none" stroke="#a9b1bb" strokeWidth="1.5" opacity="0.62" />
+                <ellipse cx="95" cy="64.8" rx="23" ry="11" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.4" />
+                <rect x="81" y="64" width="28" height="4.2" rx="2.1" fill="#b4bbc5" opacity="0.5" />
+                <circle cx="95" cy="40" r="2.6" fill="#858c96" stroke="#697079" strokeWidth="0.8" />
 
-            {/* Exhaust haze, low on the right, only while the engine is actually
-                turning and not faulted — a faulted set is not moving air. */}
-            {running && !fault && (
-                <g className="gen-anim">
-                    <circle cx="190" cy="98" r="3.4" fill="#cbd5e1" opacity="0.3">
-                        <animate attributeName="cy" values="98;82;72" dur="2.4s" repeatCount="indefinite" />
-                        <animate attributeName="r" values="2.4;5.6;7.8" dur="2.4s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" values="0.32;0.15;0" dur="2.4s" repeatCount="indefinite" />
-                    </circle>
-                    <circle cx="188" cy="98" r="2.6" fill="#cbd5e1" opacity="0.24">
-                        <animate attributeName="cy" values="98;84;75" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                        <animate attributeName="r" values="1.8;4.4;6.2" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" values="0.26;0.12;0" dur="2.4s" begin="1.2s" repeatCount="indefinite" />
-                    </circle>
+                {/* Control end. */}
+                <rect x="134" y="36" width="21" height="24" rx="3" fill="#20242a" stroke="#12151a" strokeWidth="1" />
+                <rect x="137" y="39" width="15" height="9" rx="1.6" fill={alive ? '#1f3a2a' : '#2d3239'} />
+                <circle cx="144.5" cy="74" r="4.4"
+                        fill={fault ? '#ef4444' : alive ? '#22c55e' : '#39414f'}
+                        stroke="#20242a" strokeWidth="1"
+                        style={(alive || fault) ? { filter: `drop-shadow(0 0 7px ${fault ? '#ef4444' : '#22c55e'})` } : undefined}>
+                    {(alive || fault) && (
+                        <animate attributeName="opacity" values={fault ? '1;0.25;1' : '1;0.5;1'}
+                                 dur={fault ? '0.7s' : '1.8s'} repeatCount="indefinite" />
+                    )}
+                </circle>
+
+                <rect x="20" y="98" width="144" height="8" rx="2" fill="#191d23" />
+                <circle cx="48" cy="102" r="1.8" fill="#3c424a" />
+                <circle cx="136" cy="102" r="1.8" fill="#3c424a" />
+            </g>
+
+            {/* Exhaust. Small, soft and close to the stack rather than the
+                big round puffs the first pass drew -- at tile size those read
+                as bubbles leaving the cabinet, which is both wrong and comic.
+                Three offset releases so the loop never visibly restarts. */}
+            {alive && (
+                <g className="bh-anim" filter="url(#bhSoft)">
+                    {[0, 1, 2].map(i => (
+                        <ellipse key={i} cx={163} cy="74" rx="3.2" ry="2.6" fill="#c3cede" opacity="0.32">
+                            <animate attributeName="cy" values="74;46;22" dur="3.2s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
+                            <animate attributeName="cx" values="163;171;181" dur="3.2s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
+                            <animate attributeName="rx" values="2.6;6;9.5" dur="3.2s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
+                            <animate attributeName="ry" values="2.2;4.8;7.6" dur="3.2s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
+                            <animate attributeName="opacity" values="0.34;0.17;0" dur="3.2s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
+                        </ellipse>
+                    ))}
                 </g>
             )}
-            </g>
+
+            {/* OUTAGE ONLY: the set is carrying the house, and the tile says so
+                in the one way that needs no label -- power visibly moving from
+                the machine to a lit house. Every other state leaves this out. */}
+            {outage && (
+                <g>
+                    <path d="M172 96 L172 80 L186 69 L200 80 L200 96 Z"
+                          fill="#1d2937" stroke="#f59e0b" strokeWidth="1.1" opacity="0.9" />
+                    <rect x="178" y="84" width="6" height="6" fill="#fbbf24" opacity="0.92">
+                        <animate className="bh-anim" attributeName="opacity" values="0.92;0.72;0.92" dur="2.6s" repeatCount="indefinite" />
+                    </rect>
+                    <rect x="187" y="84" width="6" height="6" fill="#fbbf24" opacity="0.8">
+                        <animate className="bh-anim" attributeName="opacity" values="0.8;0.6;0.8" dur="2.6s" begin="1.3s" repeatCount="indefinite" />
+                    </rect>
+                    <path d="M160 96 L172 96" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round"
+                          strokeDasharray="4 4" className="bh-flow"
+                          style={{ animation: 'bhFlow 0.9s linear infinite' }} />
+                </g>
+            )}
         </svg>
     );
 };
@@ -1104,7 +1122,7 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                     and the two can never collide. It still reads as part of the
                     unit — a plinth under the set, which is where a real plate
                     lives. */}
-                <div className="gen-on-dark flex flex-col w-full overflow-hidden rounded-[inherit]">
+                <div className="gen-on-dark flex flex-col w-full flex-1 min-h-0 overflow-hidden rounded-[inherit]">
                     {/* DAY MODE WAS UNREADABLE, AND THIS IS WHY.
                         App.tsx remaps text globally for light mode --
                         `.light-mode .text-white { color: #111827 }`, and the
@@ -1146,10 +1164,24 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         wash so that headroom reads as space the set is standing
                         in rather than a gap the layout failed to fill. */}
                     <div className="relative w-full"
-                         style={{ flex: '1 1 auto', minHeight: 0, aspectRatio: '200 / 112', maxHeight: '11rem',
+                         // THE SCENE TAKES THE WHOLE FACE NOW.
+                         // It used to be pinned to a 200:112 box capped at 11rem
+                         // so it could share the tile with the data plate. With
+                         // the plate gone there is nothing to share with, and an
+                         // aspect ratio would just reintroduce the letterboxing
+                         // it was there to manage.
+                         //
+                         // minHeight stays, and matters: TileWrapper's content
+                         // slot is sized BY its content, so an area whose only
+                         // children are absolutely positioned has no natural
+                         // height at all and collapses to nothing. The scene is
+                         // exactly that shape, so it carries its own floor.
+                         style={{ flex: '1 1 auto', minHeight: '9.5rem',
                                   background: 'linear-gradient(to bottom, #0b1220 0%, #16202e 55%, #1c2733 100%)' }}>
-                        <GeneratorUnit running={isActive} fault={hasError} anchorTop={!!liveKind}
-                                       rpm={Number(state.engineSpeed) || undefined} />
+                        <GeneratorScene running={isActive} fault={hasError}
+                                        outage={liveKind === 'outage'}
+                                        rpm={Number(state.engineSpeed) || undefined}
+                                        readout={!!liveKind} />
                         {/* A GRADIENT, NOT A BLACK SHEET.
                             The first version laid a flat 70% black over the
                             whole tile to make the numbers legible, which worked
@@ -1160,15 +1192,15 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                             top of the cabinet, the fan turning behind the
                             intake and the status lamp all stay in the clear. */}
                         {liveKind && (
-                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${liveKind === 'fault' ? 'h-full' : 'h-[62%]'}`}
+                            <div className={`absolute inset-x-0 bottom-0 pointer-events-none ${liveKind === 'fault' ? 'h-full' : 'h-[46%]'}`}
                                  style={{ background: liveKind === 'fault'
                                      // A FAULTED SET IS NOT A SPECTACLE. The drawing
                                      // is there to say "this is the generator", which
                                      // a tile screaming FAULT has already established,
                                      // and the alarm names need every pixel of the
                                      // room it was occupying.
-                                     ? 'linear-gradient(to top, rgba(3,7,18,0.95) 0%, rgba(3,7,18,0.9) 70%, rgba(3,7,18,0.72) 100%)'
-                                     : 'linear-gradient(to top, rgba(3,7,18,0.94) 0%, rgba(3,7,18,0.88) 34%, rgba(3,7,18,0.5) 66%, rgba(3,7,18,0) 100%)' }} />
+                                     ? 'linear-gradient(to top, rgba(3,7,18,0.93) 0%, rgba(3,7,18,0.84) 62%, rgba(3,7,18,0.55) 100%)'
+                                     : 'linear-gradient(to top, rgba(3,7,18,0.92) 0%, rgba(3,7,18,0.74) 45%, rgba(3,7,18,0) 100%)' }} />
                         )}
                         {liveKind && <LiveStatePanel state={state} kind={liveKind} />}
 
@@ -1206,19 +1238,17 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         )}
                     </div>
 
-                    {/* Data plate. The fourth cell is local-only and appears
-                        exactly when a bridge is feeding the tile: coolant while
-                        the engine is turning (the reading that actually moves
-                        during a run), load the rest of the time. */}
-                    <div className="shrink-0 flex items-stretch px-2 py-1.5 border-t border-white/10"
-                         style={{ ...fluidGap(0.375), background: '#111a24' }}>
-                        <MetricItem label="Batt" value={battVolts} unit="V" />
-                        <MetricItem label="Grid" value={gridVolts} unit="V" />
-                        <MetricItem label="Hrs" value={engineHours} />
-                        {onLocal && (isActive
-                            ? <MetricItem label="Cool" value={coolant} />
-                            : <MetricItem label="Load" value={loadPct} />)}
-                    </div>
+                    {/* THE DATA PLATE IS GONE, and it is why this tile was
+                        cramped for so long. Four static cells took 59px of the
+                        183px the tile actually has -- a third of the face -- to
+                        show battery volts, grid volts and engine hours, none of
+                        which change on any timescale a glance cares about, and
+                        all of which are one tap away in the modal. What it cost
+                        was the whole tile: the machine was squeezed into 124px
+                        with the live numbers fighting it for the same band.
+
+                        The scene now owns the full height, and the only numbers
+                        on it are the ones that move. */}
                 </div>
             </TileWrapper>
             {showDetails && hasTelemetry && <GeneratorDetailModal name={device.name || 'Generator'} state={state} onClose={() => setShowDetails(false)} />}
