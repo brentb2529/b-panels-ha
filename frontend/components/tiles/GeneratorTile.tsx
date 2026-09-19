@@ -1150,7 +1150,19 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                 label=""
                 isLocked={isLocked}
                 isEditor={isEditor}
-                className={`!p-0 !block overflow-hidden ${cornerClassName || ''}`}
+                // `!block` USED TO BE HERE AND IT IS WHY THE TILE NEVER FILLED.
+                // TileWrapper's root is `flex flex-col justify-between h-full`;
+                // forcing display:block overrode that, so the root stopped
+                // being a flex container, its content slot fell back to being
+                // sized by its content, and the tile rendered ~129px tall
+                // inside a 375px cell with the rest left blank. Every height
+                // workaround in this file -- the old aspect-ratio, the minHeight
+                // floors -- existed to paper over that one class.
+                //
+                // Dropped. The wrapper lays out as intended and the scene gets
+                // the real cell height. `!p-0` stays: the tile does want to
+                // paint edge to edge.
+                className={`!p-0 overflow-hidden ${cornerClassName || ''}`}
                 isActive={pulseAnimation}
                 accent="warn"
                 animation={animationConfig as any}
@@ -1289,7 +1301,20 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                          // whole at any tile shape instead of cropped to fit
                          // around overlays. It also retires the scrim: text on
                          // the tile surface needs no wash to be legible.
-                         style={{ flex: '1 1 auto', minHeight: 0 }}>
+                         //
+                         // THE FLOOR IS LOad-BEARING. DO NOT SET IT TO ZERO.
+                         // TileWrapper's content slot is sized BY its content,
+                         // so in a column of rows this scene is the only child
+                         // with no intrinsic height -- its children are all
+                         // absolutely positioned. With minHeight:0 it collapses
+                         // to nothing, the SVG renders at 10x10, and the tile
+                         // shows a badge on an empty card. That is exactly what
+                         // shipped in v0.1.84 and reached the wall panel.
+                         //
+                         // `flex: 1 1 auto` still lets it take the whole cell
+                         // when a parent does impose a height; the floor only
+                         // decides what happens when nothing does.
+                         style={{ flex: '1 1 auto', minHeight: '6rem' }}>
                         <GeneratorScene running={isActive} fault={hasError}
                                         outage={liveKind === 'outage'}
                                         rpm={Number(state.engineSpeed) || undefined}
