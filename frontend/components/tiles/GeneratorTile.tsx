@@ -91,12 +91,30 @@ function deriveReasons(state: Record<string, any>): { severity: 'error' | 'warni
         reasons.push({ severity: 'warning', text: 'Falling back to cloud data — bridge not in use' });
     }
 
-    // 3. Site / generator / grid health — escalating by worst level
+    // 3. Site / generator / grid health — escalating by worst level.
+    //
+    // `notice` IS NOT A WARNING, and treating it as one put the tile into
+    // CHECK with a red badge over a generator that was off, in AUTO, with the
+    // bridge reporting no fault and zero active alarms.
+    //
+    // These three fields come from the CLOUD, not the bridge. Observed live:
+    // site_health flipped to `notice` at the exact second a manual run began
+    // and stayed there after it ended -- EnergyTrak raising an advisory about
+    // an unscheduled start. That is worth saying quietly; it is not worth
+    // overriding the health of a machine we have direct, local, register-level
+    // truth about. The bridge is the better witness, and it said fine.
+    //
+    // So `notice` is informational: it appears in the modal's reason list and
+    // never escalates the badge. `warning`, `error` and `critical` still do --
+    // those are the cloud asserting something is actually wrong, not noting
+    // that something happened.
     for (const [label, h] of [['Site', siteHealth], ['Generator', generatorHealth], ['Grid', gridHealth]] as const) {
         if (h === 'critical' || h === 'error') {
             reasons.push({ severity: 'error', text: `${label} health: ${h}` });
-        } else if (h === 'warning' || h === 'notice') {
+        } else if (h === 'warning') {
             reasons.push({ severity: 'warning', text: `${label} health: ${h}` });
+        } else if (h === 'notice') {
+            reasons.push({ severity: 'info', text: `${label} health: ${h}` });
         }
     }
 
@@ -1064,7 +1082,6 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
     // Derive warning reasons once per render — feeds both the inline caption
     // and the change-notification tracker below.
     const reasons = useMemo(() => deriveReasons(state), [details, haGenerator]);
-    const topReason = reasons[0] || null;
 
     // State tracking for notifications: fire on reason-set transitions (so the
     // user sees exactly what changed), and on generator status / running state.
@@ -1202,7 +1219,14 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
         (!endpointUrl && !useHaEntities) ? { severity: 'info', text: 'Set the endpoint URL in tile settings' }
         : fetchError ? { severity: 'error', text: `Fetch failed: ${fetchError}` }
         : null;
-    const captionReason = topReason || setupReason;
+    // THE TILE FACE IS FOR THINGS THAT NEED ACTION.
+    // It used to caption reasons[0] whatever its severity, so a purely
+    // informational note -- a cloud advisory that a manual run happened --
+    // was stamped across the machine on a healthy, idle, in-AUTO generator.
+    // Info-level reasons still appear in the modal's reason list, where
+    // someone has gone looking; they no longer occupy the glanceable face.
+    const actionable = reasons.find(r => r.severity === 'error' || r.severity === 'warning') || null;
+    const captionReason = actionable || setupReason;
 
     return (
         <>
