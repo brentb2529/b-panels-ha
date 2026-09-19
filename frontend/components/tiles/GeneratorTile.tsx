@@ -866,7 +866,26 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                     and the two can never collide. It still reads as part of the
                     unit — a plinth under the set, which is where a real plate
                     lives. */}
-                <div className="flex flex-col w-full overflow-hidden rounded-[inherit]">
+                <div className="gen-on-dark flex flex-col w-full overflow-hidden rounded-[inherit]">
+                    {/* DAY MODE WAS UNREADABLE, AND THIS IS WHY.
+                        App.tsx remaps text globally for light mode --
+                        `.light-mode .text-white { color: #111827 }`, and the
+                        same for the grays. That is right for a tile that
+                        follows the theme and wrong for this one: the machine,
+                        the header scrim and the data plate are deliberately
+                        dark in BOTH themes, because a silver enclosure drawn on
+                        a white tile has no contrast and stops reading as a
+                        generator at all.
+                        So in day mode every label turned near-black on top of a
+                        near-black bar. Rather than fight the remap at each call
+                        site, the dark region is named and the remap is undone
+                        inside it. */}
+                    <style>{`
+                        .light-mode .gen-on-dark .text-white { color: #ffffff; }
+                        .light-mode .gen-on-dark .text-gray-200 { color: #e5e7eb; }
+                        .light-mode .gen-on-dark .text-gray-300 { color: #d1d5db; }
+                        .light-mode .gen-on-dark .text-gray-400 { color: #9ca3af; }
+                    `}</style>
                     {/* THE MACHINE AREA NEEDS INTRINSIC HEIGHT, NOT JUST flex-1.
                         TileWrapper's content slot is sized BY its content rather
                         than stretched to the tile: measured on the wall panel it
@@ -888,14 +907,15 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         a tall tile the spare room lands above it, with a soft
                         wash so that headroom reads as space the set is standing
                         in rather than a gap the layout failed to fill. */}
-                    <div className="relative w-full bg-gradient-to-b from-black/35 via-transparent to-transparent"
-                         style={{ flex: '1 1 auto', minHeight: 0, aspectRatio: '200 / 112', maxHeight: '11rem' }}>
+                    <div className="relative w-full"
+                         style={{ flex: '1 1 auto', minHeight: 0, aspectRatio: '200 / 112', maxHeight: '11rem',
+                                  background: 'linear-gradient(to bottom, #0b1220 0%, #16202e 55%, #1c2733 100%)' }}>
                         <GeneratorUnit running={isActive} fault={hasError} />
 
                         {/* Identity and state, over the lid. A scrim rather than
                             a solid bar, so the machine reads through it. */}
                         <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2
-                                        bg-gradient-to-b from-black/70 via-black/25 to-transparent">
+                                        bg-gradient-to-b from-black/80 via-black/40 to-transparent">
                             <h2 className="font-bold text-white leading-none truncate drop-shadow" style={fluidTextLg}>
                                 {device.name || 'Generator'}
                             </h2>
@@ -930,8 +950,8 @@ const GeneratorTile = ({ device, tile, isEditor, cornerClassName }: { device: De
                         exactly when a bridge is feeding the tile: coolant while
                         the engine is turning (the reading that actually moves
                         during a run), load the rest of the time. */}
-                    <div className="shrink-0 flex items-stretch px-2 py-1.5 bg-black/55 border-t border-white/10"
-                         style={fluidGap(0.375)}>
+                    <div className="shrink-0 flex items-stretch px-2 py-1.5 border-t border-white/10"
+                         style={{ ...fluidGap(0.375), background: '#111a24' }}>
                         <MetricItem label="Batt" value={battVolts} unit="V" />
                         <MetricItem label="Grid" value={gridVolts} unit="V" />
                         <MetricItem label="Hrs" value={engineHours} />
