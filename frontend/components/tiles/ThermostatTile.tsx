@@ -43,7 +43,9 @@ const ThermostatTile = ({ device, tile, isEditor, cornerClassName }: { device: D
 
     const isUnavailable = device.isOnline === false;
 
-    const ModeIcon = () => {
+    // Plain function, not a component: declared per render it would be a new
+    // component type each time and React would remount the icon on every render.
+    const modeIcon = () => {
         // Active modes glow in their hue (heat orange, cool cyan); off stays flat.
         switch (state.mode) {
             case 'heat': return <IconFlame className="text-orange-400" style={{ ...fluidIcon(1.25), filter: !isUnavailable ? 'drop-shadow(0 0 5px #fb923c)' : undefined }} />;
@@ -74,7 +76,7 @@ const ThermostatTile = ({ device, tile, isEditor, cornerClassName }: { device: D
                  <div className="flex items-center justify-center gap-2 w-full px-1">
                     <button onClick={() => handleSetpointChange(-0.5)} className={`p-2 rounded-full hover:bg-gray-600 active:scale-90 transition-transform ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : ''}`} style={fluidTextLg} disabled={isEditor || isLocked}>-</button>
                     <button onClick={handleModeChange} className={`p-2 rounded-full hover:bg-gray-600 ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isEditor || isLocked}>
-                        <ModeIcon />
+                        {modeIcon()}
                     </button>
                      <button onClick={() => handleSetpointChange(0.5)} className={`p-2 rounded-full hover:bg-gray-600 active:scale-90 transition-transform ${(isEditor || isLocked) ? 'opacity-50 cursor-not-allowed' : ''}`} style={fluidTextLg} disabled={isEditor || isLocked}>+</button>
                 </div>

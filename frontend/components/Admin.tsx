@@ -1658,6 +1658,15 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
 // DeviceType.Generic via capability inference) so a newly-installed HA/HACS
 // integration can be found and placed without code edits. No mutations here —
 // placement still happens in the panel editor.
+const FilterPill = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+        onClick={onClick}
+        className={`px-3 py-1.5 rounded-md text-sm transition-colors ${active ? 'bg-brand-blue text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+    >
+        {children}
+    </button>
+);
+
 const DiscoveredDevicesManager = () => {
     const { devices, addNotification } = useDashboard();
     const [search, setSearch] = useState('');
@@ -1705,15 +1714,6 @@ const DiscoveredDevicesManager = () => {
             addNotification('Could not copy to clipboard', 'error');
         }
     };
-
-    const FilterPill = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
-        <button
-            onClick={onClick}
-            className={`px-3 py-1.5 rounded-md text-sm transition-colors ${active ? 'bg-brand-blue text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
-        >
-            {children}
-        </button>
-    );
 
     return (
         <div className="space-y-6">

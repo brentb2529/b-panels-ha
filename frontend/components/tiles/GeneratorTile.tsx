@@ -492,6 +492,38 @@ const GeneratorScene = ({ running, fault, outage, rpm, readout, loadPct }: {
  * prefers-reduced-motion holds the rotor still; the numbers carry the whole
  * message on their own, which they can.
  */
+// Module-scope on purpose. These used to be declared inside their parents'
+// render functions, which gives React a brand-new component type on every
+// render: it cannot reconcile the old subtree against the new one, so it
+// unmounted and re-created every cell (three DOM subtrees) on each render.
+// LiveStatePanel re-renders once a second, so the standby readout -- on screen
+// ~99% of the time on the wall panels -- was remounting three subtrees and
+// repainting the tile every second, forever. That was the only thing painting
+// on an otherwise idle dashboard (CDP LayerTree trace: ~1.5 paints/s, all this
+// tile), and on the Fire tablets every paint is a GPU frame.
+const Reading = ({ label, value, unit }: { label: string; value?: number; unit?: string }) => (
+    <div className="flex flex-col items-center justify-center px-1">
+        <span className="text-[10px] uppercase tracking-wider text-gray-400">{label}</span>
+        <span className="font-bold text-white tabular-nums leading-tight" style={{ fontSize: 'clamp(0.95rem, 4.2vw, 1.4rem)' }}>
+            {value === undefined || Number.isNaN(value) ? EM_DASH : value.toFixed(unit === 'V' || unit === 'RPM' ? 0 : 1)}
+            {value !== undefined && !Number.isNaN(value) && unit
+                ? <span className="text-[11px] font-medium text-gray-400 ml-0.5">{unit}</span> : null}
+        </span>
+    </div>
+);
+
+const Cell = ({ label, value, unit }: { label: string; value: string; unit?: string }) => (
+    <div className="flex flex-col items-center justify-center min-w-0">
+        <span className="uppercase font-bold tracking-wider text-gray-400 truncate"
+              style={{ fontSize: 'clamp(0.42rem, 4cqmin, 0.58rem)' }}>{label}</span>
+        <span className="font-bold text-white tabular-nums leading-none truncate"
+              style={{ fontSize: 'clamp(0.78rem, 8cqmin, 1.25rem)' }}>
+            {value}{unit && <span className="text-gray-400 font-normal ml-0.5"
+                style={{ fontSize: 'clamp(0.4rem, 3.6cqmin, 0.6rem)' }}>{unit}</span>}
+        </span>
+    </div>
+);
+
 const RunningHero = ({ state }: { state: Record<string, any> }) => {
     const num = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
     const rpm = num(state.engineSpeed);
@@ -508,17 +540,6 @@ const RunningHero = ({ state }: { state: Record<string, any> }) => {
     // Below ~3400 the machine is warming up rather than ready to carry load.
     // Naming that beats showing a bare number.
     const atSpeed = rpm !== undefined && rpm >= 3400;
-
-    const Reading = ({ label, value, unit }: { label: string; value?: number; unit?: string }) => (
-        <div className="flex flex-col items-center justify-center px-1">
-            <span className="text-[10px] uppercase tracking-wider text-gray-400">{label}</span>
-            <span className="font-bold text-white tabular-nums leading-tight" style={{ fontSize: 'clamp(0.95rem, 4.2vw, 1.4rem)' }}>
-                {value === undefined || Number.isNaN(value) ? EM_DASH : value.toFixed(unit === 'V' || unit === 'RPM' ? 0 : 1)}
-                {value !== undefined && !Number.isNaN(value) && unit
-                    ? <span className="text-[11px] font-medium text-gray-400 ml-0.5">{unit}</span> : null}
-            </span>
-        </div>
-    );
 
     return (
         <div className="p-4 border-b border-amber-500/30 bg-gradient-to-b from-amber-900/25 to-transparent">
@@ -733,12 +754,14 @@ const elapsedSince = (iso?: string, now: number = Date.now()): string | null => 
  */
 const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'outage' | 'exercise' | 'running' | 'fault' | 'standby' }) => {
     // Elapsed has to advance on its own; the underlying entity only changes
-    // when the engine starts or stops.
+    // when the engine starts or stops. Standby shows day-granularity dates
+    // only, so it does not need (and the wall panels should not pay for) a
+    // re-render every second.
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => {
-        const id = setInterval(() => setNow(Date.now()), 1000);
+        const id = setInterval(() => setNow(Date.now()), kind === 'standby' ? 60_000 : 1000);
         return () => clearInterval(id);
-    }, []);
+    }, [kind]);
 
     const num = (v: any) => (v === undefined || v === null || v === '' ? undefined : Number(v));
     const fmt = (v?: number, dp = 0) => (v === undefined || Number.isNaN(v) ? EM_DASH : v.toFixed(dp));
@@ -767,18 +790,6 @@ const LiveStatePanel = ({ state, kind }: { state: Record<string, any>; kind: 'ou
     // near 2800 RPM for several minutes before it steps up, and that is normal
     // -- so it is worth saying rather than leaving someone to wonder.
     const atSpeed = rpm !== undefined && rpm >= 3400;
-
-    const Cell = ({ label, value, unit }: { label: string; value: string; unit?: string }) => (
-        <div className="flex flex-col items-center justify-center min-w-0">
-            <span className="uppercase font-bold tracking-wider text-gray-400 truncate"
-                  style={{ fontSize: 'clamp(0.42rem, 4cqmin, 0.58rem)' }}>{label}</span>
-            <span className="font-bold text-white tabular-nums leading-none truncate"
-                  style={{ fontSize: 'clamp(0.78rem, 8cqmin, 1.25rem)' }}>
-                {value}{unit && <span className="text-gray-400 font-normal ml-0.5"
-                    style={{ fontSize: 'clamp(0.4rem, 3.6cqmin, 0.6rem)' }}>{unit}</span>}
-            </span>
-        </div>
-    );
 
     // STANDBY IS NOT A BLANK STATE.
     //

@@ -21,6 +21,28 @@ const formatTimeAgo = (isoString: string): string => {
     return `${days}d`;
 };
 
+// A dimensional disc behind a row icon — soft tinted glass keyed to the
+// event's color, brighter and ringed for a triggered (intrusion) event.
+// Module-scope on purpose: declared inside the tile's render it was a new
+// component type every render, so React tore down and re-created every row's
+// disc each time the dashboard context changed (~5 remounts/s on the wall
+// panels, each a gradient + box-shadow repaint).
+const RowDisc = ({ color, alert, children }: { color: string; alert?: boolean; children: React.ReactNode }) => (
+    <div
+        className="relative flex items-center justify-center rounded-full shrink-0"
+        style={{
+            width: 'clamp(1.5rem, 16cqmin, 2.25rem)',
+            aspectRatio: '1 / 1',
+            background: `radial-gradient(circle at 38% 30%, color-mix(in srgb, ${color} ${alert ? 55 : 32}%, transparent), color-mix(in srgb, ${color} 10%, transparent) 70%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${color} ${alert ? 70 : 40}%, transparent)`,
+            boxShadow: `inset 0 1px 0 rgb(255 255 255 / 0.12), 0 0 ${alert ? 16 : 8}px -4px ${color}`,
+        }}
+    >
+        {children}
+    </div>
+);
+
+
 const AlarmHistoryTile = ({ device, tile, isEditor, cornerClassName }: { device: Device; tile: TileConfig; isEditor?: boolean; cornerClassName?: string }) => {
     // The alarm event history (arm/disarm/triggered) recorded from the HA/Alarmo
     // alarm state transitions. (Renamed from the legacy `sthmHistory`.)
@@ -48,23 +70,6 @@ const AlarmHistoryTile = ({ device, tile, isEditor, cornerClassName }: { device:
                 return { text: 'Unknown', color: '#9ca3af', icon: <IconInfo className="text-gray-400" style={rowIconStyle} /> };
         }
     };
-
-    // A dimensional disc behind a row icon — soft tinted glass keyed to the
-    // event's color, brighter and ringed for a triggered (intrusion) event.
-    const RowDisc = ({ color, alert, children }: { color: string; alert?: boolean; children: React.ReactNode }) => (
-        <div
-            className="relative flex items-center justify-center rounded-full shrink-0"
-            style={{
-                width: 'clamp(1.5rem, 16cqmin, 2.25rem)',
-                aspectRatio: '1 / 1',
-                background: `radial-gradient(circle at 38% 30%, color-mix(in srgb, ${color} ${alert ? 55 : 32}%, transparent), color-mix(in srgb, ${color} 10%, transparent) 70%, transparent)`,
-                border: `1px solid color-mix(in srgb, ${color} ${alert ? 70 : 40}%, transparent)`,
-                boxShadow: `inset 0 1px 0 rgb(255 255 255 / 0.12), 0 0 ${alert ? 16 : 8}px -4px ${color}`,
-            }}
-        >
-            {children}
-        </div>
-    );
 
     const history = alarmHistory || [];
 
