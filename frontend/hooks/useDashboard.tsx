@@ -1064,6 +1064,12 @@ export const useDashboardActions = () => {
 
 export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
   const [serviceDevices, setServiceDevices] = useState<Device[]>([]);
+  // Buffer for batched HA device writes; drained by flushDeviceUpdates() inside
+  // connectHaWebSocket. Declared HERE, in the component body, because that
+  // function lives inside a useCallback and a useRef there is an invalid hook
+  // call (React error #321 - which is exactly what happened on the first cut).
+  const pendingDeviceUpdatesRef = useRef<Map<string, { device: Device; unavailable: boolean }>>(new Map());
+  const flushScheduledRef = useRef(false);
   // entity_id -> HA device_id, used to group an integration's split entities
   // (e.g. a Litter-Robot's vacuum + sensors) back into one composite tile.
   const [entityDeviceMap, setEntityDeviceMap] = useState<Record<string, string>>({});
@@ -2848,6 +2854,67 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
     };
 
     // Process an HA event payload that mirrors the legacy raw-socket shape.
+    // Device writes from the HA entity subscription are BATCHED.
+    //
+    // The subscription emits the whole entity collection and we call
+    // handleEvent once per CHANGED entity. Each of those used to do its own
+    // `setServiceDevices(current => produce(...))`, which is an O(N) findIndex
+    // plus a structural clone of the ~1000-element device array, PER ENTITY.
+    //
+    // That ran continuously: this house pushes ~4500 entity state changes an
+    // hour around the clock (measured over 3 days - 3am is only 20% quieter
+    // than 3pm), i.e. more than one per second forever. Worse, an HA restart
+    // changes every entity's last_updated at once, so N sequential produces
+    // made it O(N^2) - seconds of main-thread jank on the wall tablets every
+    // restart.
+    //
+    // Collect into a map, apply in ONE produce at the end of the subscription
+    // callback. Same mutations in the same order with the same immer
+    // structural sharing - once instead of N times - and the id->index map
+    // makes the lookup O(1) instead of a findIndex per entity.
+    // (the two refs backing this live in the component body - declaring them
+    // here would be a hook call inside connectHaWebSocket's useCallback)
+    const flushDeviceUpdates = () => {
+        flushScheduledRef.current = false;
+        const pending = pendingDeviceUpdatesRef.current;
+        if (pending.size === 0) return;
+        const updates = Array.from(pending.entries());
+        pending.clear();
+
+        setServiceDevices(current => {
+            const indexById = new Map<string, number>();
+            for (let i = 0; i < current.length; i++) indexById.set(current[i].id, i);
+
+            return produce(current, draft => {
+                for (const [entityId, { device, unavailable }] of updates) {
+                    const idx = indexById.get(entityId);
+                    if (idx !== undefined) {
+                        // A transient unavailable/unknown must NOT overwrite the
+                        // tile - keep the last-known state through the blip.
+                        if (unavailable) continue;
+                        draft[idx].state = device.state;
+                        draft[idx].battery = device.battery;
+                        draft[idx].capabilities = device.capabilities;
+                        draft[idx].capabilityData = device.capabilityData;
+                    } else if (!unavailable) {
+                        // New entity appeared in HA after initial load. Record the
+                        // index so a second update for it in the same batch finds
+                        // it rather than pushing a duplicate.
+                        indexById.set(entityId, draft.length);
+                        draft.push(device);
+                    }
+                }
+            });
+        });
+    };
+
+    /** Safety net: guarantees delivery even if a caller forgets to flush. */
+    const scheduleDeviceFlush = () => {
+        if (flushScheduledRef.current) return;
+        flushScheduledRef.current = true;
+        queueMicrotask(flushDeviceUpdates);
+    };
+
     const handleEvent = (eventType: string | undefined, eventData: any, opts: { announce?: boolean } = {}) => {
         // `announce` gates audible output (sensor TTS, arm-state TTS). It's false
         // for non-transition updates (restart re-sync, recovery from unavailable,
@@ -3005,27 +3072,20 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     // which would show the WRONG state (esp. SmartThings virtual devices
                     // that flap constantly). Keep the last-known state; the next real
                     // value (or the reconcile poll) refreshes it.
+                    // Queued, not written immediately - see flushDeviceUpdates.
+                    // The semantics are unchanged: an unavailable entity that
+                    // already exists preserves its last-known state through the
+                    // blip, and a new entity is only added once it has a real
+                    // value so it never first paints in a wrong state. A later
+                    // update for the same entity in the same batch simply
+                    // overwrites the earlier one, which is the same result as
+                    // applying them in order.
                     const entUnavailable = isUnavailableRawState(new_state.state);
-                    setServiceDevices(current => produce(current, draft => {
-                        const deviceIndex = draft.findIndex(d => d.id === entity_id);
-                        if (deviceIndex !== -1) {
-                            if (entUnavailable) return; // preserve last-known state through the blip
-                            // Refresh state/battery, and keep inferred capabilities
-                            // current (an entity can gain/lose features in HA).
-                            draft[deviceIndex].state = updatedDevice.state;
-                            draft[deviceIndex].battery = updatedDevice.battery;
-                            draft[deviceIndex].capabilities = updatedDevice.capabilities;
-                            draft[deviceIndex].capabilityData = updatedDevice.capabilityData;
-                        } else if (!entUnavailable) {
-                            // A new entity appeared in HA after initial load (e.g. a
-                            // freshly-added integration like Whisker/Litter-Robot).
-                            // Add it live so it shows on panels and in the Panel
-                            // Builder without a reload. (devices is re-sorted by name.)
-                            // Skip while unavailable — wait for a real value so it
-                            // never first paints in a wrong state.
-                            draft.push(updatedDevice);
-                        }
-                    }));
+                    pendingDeviceUpdatesRef.current.set(entity_id, {
+                        device: updatedDevice,
+                        unavailable: entUnavailable,
+                    });
+                    scheduleDeviceFlush();
                 }
 
             } else if (eventType === 'alarmo_failed_to_arm') {
@@ -3089,6 +3149,11 @@ export const DashboardProvider = ({ children }: { children?: ReactNode }) => {
                     }
                 }
                 prevEntities = entities;
+                // One produce for the whole push, rather than one per entity.
+                // Flushing synchronously here (instead of leaving it to the
+                // microtask) keeps the write in the same task as the diff, so
+                // React still batches it into a single render.
+                flushDeviceUpdates();
             });
             haUnsubsRef.current.push(unsubEntities);
             setHaWsState('connected');
