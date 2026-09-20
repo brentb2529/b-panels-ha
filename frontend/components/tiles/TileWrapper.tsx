@@ -93,8 +93,27 @@ const TileWrapper = ({
     // dimensional card.
     backgroundImage: 'linear-gradient(180deg, rgb(255 255 255 / 0.06) 0%, rgb(255 255 255 / 0) 40%, rgb(0 0 0 / 0.13) 100%)',
     border: `1px solid ${activeGlow ? `rgb(${triplet} / 0.85)` : 'var(--tile-border)'}`,
-    backdropFilter: 'blur(var(--tile-blur))',
-    WebkitBackdropFilter: 'blur(var(--tile-blur))',
+    // NO backdrop-filter here, deliberately. It used to be
+    // `blur(var(--tile-blur))` on every tile, unconditionally.
+    //
+    // The effect was invisible and the cost was not. --tile-alpha is 0.94 (0.97
+    // light, 0.92 ambient), so the fill above covers nearly all of what the blur
+    // produces: rendering the full dashboard with and without it differs by
+    // 0.134/255 mean channel value, with 1.6% of pixels differing at all - tile
+    // edges and antialiasing. Nothing a person can see.
+    //
+    // What it cost: one backdrop render surface PER TILE (20 on the main
+    // dashboard), each of which must snapshot and re-blur its backdrop whenever
+    // invalidated - nested inside `contain: size` grid cells
+    // (Dashboard.tsx), inside a fractional scale transform (FitToWindow.tsx),
+    // over a `background-attachment: fixed` gradient (index.html). Free on a
+    // desktop GPU; not free on the Fire tablets the wall panels run on, whose
+    // Amazon WebView bled ~40-90 MB/hour until Android killed the app overnight.
+    // Disabling backdrop-filter at runtime on a panel stopped the bleed and let
+    // free memory recover for the first time in that investigation.
+    //
+    // --tile-blur is left defined in index.html for the header, which is a
+    // single element over real content and where the blur genuinely reads.
     boxShadow: activeGlow
       ? `inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -3px 7px rgb(0 0 0 / 0.22), inset 0 0 18px -2px ${accentColor}, var(--elev-1)`
       : `inset 0 1px 0 rgb(255 255 255 / 0.13), inset 0 -3px 7px rgb(0 0 0 / 0.22), var(--elev-1)`,
