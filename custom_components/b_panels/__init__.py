@@ -401,6 +401,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     await _async_setup_irrigation(hass, entry)
+    await _async_setup_wyze_motion(hass, entry)
 
     return True
 
@@ -432,6 +433,36 @@ def _discover_weather_entities(hass: HomeAssistant) -> dict[str, str]:
             if eid.endswith(suffix):
                 found[key] = eid
     return found
+
+
+async def _async_setup_wyze_motion(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Publish a motion binary_sensor per Wyze camera, if `wyzeapi` is loaded.
+
+    Optional and silent when absent. `wyzeapi` is declared an after_dependency so
+    it is set up first when installed.
+    """
+    from .wyze_motion import WyzeMotionCoordinator, find_wyze_client
+
+    client = find_wyze_client(hass)
+    if client is None:
+        _LOGGER.debug("wyze motion: no loaded wyzeapi client; skipping")
+        return
+    try:
+        camera_service = await client.camera_service
+        cameras = await camera_service.get_cameras()
+    except Exception:  # noqa: BLE001 - Wyze being down must not break B-Panels setup
+        _LOGGER.warning("wyze motion: could not list cameras; skipping", exc_info=True)
+        return
+    if not cameras:
+        return
+
+    coordinator = WyzeMotionCoordinator(hass, camera_service, cameras)
+    # Not first_refresh: a failed poll leaves the sensors unavailable and retries,
+    # it must not fail B-Panels' own setup.
+    await coordinator.async_refresh()
+    hass.data.setdefault(DOMAIN, {})["wyze_motion"] = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, ["binary_sensor"])
+    _LOGGER.info("wyze motion: watching %d cameras", len(cameras))
 
 
 async def _async_setup_irrigation(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -480,6 +511,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[f"{DOMAIN}_panels"].discard(PANEL_URL_PATH)
 
     data = hass.data.get(DOMAIN, {})
+    if data.pop("wyze_motion", None):
+        await hass.config_entries.async_unload_platforms(entry, ["binary_sensor"])
     if data.get("irrigation_coordinator"):
         await hass.config_entries.async_unload_platforms(entry, ["sensor"])
         data.pop("irrigation_coordinator", None)

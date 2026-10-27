@@ -1,7 +1,7 @@
 {
   "domain": "b_panels",
   "name": "B-Panels",
-  "after_dependencies": ["recorder"],
+  "after_dependencies": ["recorder", "wyzeapi"],
   "codeowners": ["@brentb2529"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "websocket_api"],

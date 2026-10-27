@@ -53,3 +53,23 @@ ATTR_IRR_FIELD = "bp_irrigation_field"
 ATTR_IRR_LABEL = "bp_irrigation_label"
 ATTR_IRR_SCHEDULE_ENTITY = "bp_irrigation_schedule_entity"
 ATTR_IRR_ZONE_ENTITIES = "bp_irrigation_zone_entities"
+
+# ---------------------------------------------------------------- wyze motion
+# The HACS `wyzeapi` integration never loads its camera motion sensor (upstream
+# dropped `binary_sensor` from PLATFORMS in 2021, and the sensor's pulse logic is
+# broken: ha-wyzeapi #942). The data is fine - Wyze's get_event_list reports
+# motion within ~10 s - so we poll it ourselves, reusing wyzeapi's logged-in
+# client, and publish one level-style motion sensor per camera.
+WYZE_DOMAIN = "wyzeapi"
+WYZE_CLIENT_KEY = "wyzeapi_client"
+# Cloud events are cheap (one call covers every camera) and latency is bounded by
+# this interval, so poll fast.
+WYZE_SCAN_INTERVAL_SECONDS = 10
+# Newest N events across ALL cameras. A new event is always at the top of the
+# list, so a busy camera can only push OLD events out, never hide a fresh one.
+WYZE_EVENT_COUNT = 20
+# How long a camera reads "motion" after its newest event. Short on purpose: the
+# consuming automations add their own off-delay.
+WYZE_MOTION_HOLD_SECONDS = 60
+# Fired once per NEW Wyze event, for automations that want an edge, not a level.
+WYZE_EVENT_NAME = "b_panels_wyze_motion"
