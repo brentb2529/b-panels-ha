@@ -49,12 +49,14 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
 
     const s = diffuser.state;
     const err = hasError(s);
+    // Cloud may report no fragrance level; fall back to mode as the headline.
     const frag = s.fragrance;
+    const hasFrag = typeof frag === 'number';
     const tone = err || !s.online || (frag !== undefined && frag <= EMPTY) ? 'rgb(var(--accent-alert))'
         : frag !== undefined && frag <= LOW ? 'rgb(var(--accent-warn))'
         : 'rgb(var(--accent-water))';
     const running = s.mode === '24/7' || s.mode === 'Run';
-    const chip = err ? `Error ${s.errorCode}` : !s.online ? 'offline' : (s.mode ?? '--');
+    const chip = err ? `Error ${s.errorCode}` : !s.online ? 'offline' : hasFrag ? (s.mode ?? '--') : (s.cycle?.split(' (')[0] ?? 'on');
 
     return (
         <>
@@ -67,11 +69,19 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
         >
             <div className="flex-1 flex flex-col justify-between min-h-0 w-full" style={fluidGap(0.3)}>
                 <div className="flex items-start justify-between gap-2 min-w-0">
-                    <div className="flex items-baseline gap-1">
-                        <span className="font-semibold tabular-nums" style={{ ...fluidText2xl, color: tone }}>
-                            {typeof frag === 'number' ? Math.round(frag) : '--'}
-                        </span>
-                        <span className="text-white/40" style={fluidTextSm}>%</span>
+                    <div className="flex items-baseline gap-1 min-w-0">
+                        {hasFrag ? (
+                            <>
+                                <span className="font-semibold tabular-nums" style={{ ...fluidText2xl, color: tone }}>
+                                    {Math.round(frag as number)}
+                                </span>
+                                <span className="text-white/40" style={fluidTextSm}>%</span>
+                            </>
+                        ) : (
+                            <span className="font-semibold truncate" style={{ ...fluidText2xl, color: tone }}>
+                                {s.mode ?? '--'}
+                            </span>
+                        )}
                     </div>
                     <span
                         className="shrink-0 px-1.5 py-[1px] rounded-full"
@@ -85,7 +95,9 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
                     </span>
                 </div>
                 <div className="text-white/45 truncate" style={fluidTextXs}>
-                    fragrance left{typeof s.intensity === 'number' ? ` · intensity ${s.intensity}` : ''}
+                    {hasFrag ? 'fragrance left · ' : ''}
+                    {typeof s.intensity === 'number' ? `intensity ${s.intensity}` : ''}
+                    {typeof s.fan === 'number' ? ` · fan ${s.fan}` : ''}
                 </div>
             </div>
         </TileWrapper>

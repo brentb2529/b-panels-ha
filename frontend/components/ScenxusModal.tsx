@@ -7,21 +7,28 @@ import { hasError, type ScenxusDevice } from '../services/scenxusEntities';
 // the parent each render; writes go straight to HA services on the entities the
 // integration created, then the 30s coordinator refresh confirms them.
 
+// The cloud reports life values either as a percentage (<=100) or, on this
+// firmware, as a raw usage counter (e.g. 16037). Draw a bar only for the former
+// and show the counter as-is for the latter rather than clipping it to 100%.
 const Bar: React.FC<{ label: string; value?: number }> = ({ label, value }) => {
-    const pct = typeof value === 'number' ? Math.max(0, Math.min(100, value)) : undefined;
-    const color = pct === undefined ? 'transparent'
-        : pct <= 10 ? 'rgb(var(--accent-alert))'
-        : pct <= 25 ? 'rgb(var(--accent-warn))'
+    const isPct = typeof value === 'number' && value >= 0 && value <= 100;
+    const color = !isPct ? 'transparent'
+        : value! <= 10 ? 'rgb(var(--accent-alert))'
+        : value! <= 25 ? 'rgb(var(--accent-warn))'
         : 'rgb(var(--accent-water))';
     return (
         <div>
             <div className="flex justify-between text-sm">
                 <span className="text-white/60">{label}</span>
-                <span className="text-white tabular-nums">{pct === undefined ? '--' : `${Math.round(pct)}%`}</span>
+                <span className="text-white tabular-nums">
+                    {typeof value !== 'number' ? '--' : isPct ? `${Math.round(value)}%` : value.toLocaleString()}
+                </span>
             </div>
-            <div className="h-2 rounded-full bg-white/10 mt-1 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct ?? 0}%`, background: color }} />
-            </div>
+            {isPct && (
+                <div className="h-2 rounded-full bg-white/10 mt-1 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
+                </div>
+            )}
         </div>
     );
 };
@@ -101,9 +108,9 @@ const ScenxusModal: React.FC<{ device: ScenxusDevice; onClose: () => void }> = (
 
                 <div className="flex flex-col gap-3">
                     <Bar label="Fragrance remaining" value={s.fragrance} />
-                    <Bar label="Cartridge life" value={s.cartridge} />
-                    <Bar label="Pump life" value={s.pump} />
-                    <Bar label="Appliance life" value={s.appliance} />
+                    <Bar label="Cartridge usage" value={s.cartridge} />
+                    <Bar label="Pump usage" value={s.pump} />
+                    <Bar label="Appliance usage" value={s.appliance} />
                 </div>
 
                 <div className="flex flex-col gap-3">
