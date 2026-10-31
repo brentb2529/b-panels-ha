@@ -1985,6 +1985,13 @@ const VirtualDeviceManager = () => {
                         <AdminInput label="Refresh Interval (seconds, 0 = never)" id="vd-ha-refresh" type="number" value={(deviceState as any).refresh || 0} onChange={e => handleStateChange({ refresh: parseInt(e.target.value, 10) || 0 })} />
                     </>
                 );
+            case DeviceType.Scenxus:
+                return (
+                    <>
+                        <AdminInput label="Fragrance name" id="vd-scenxus-frag" type="text" value={(deviceState as any).fragrance || ''} onChange={e => handleStateChange({ fragrance: e.target.value })} placeholder="Velvet Wood Fig" />
+                        <AdminInput label="Diffuser serial (blank = first found)" id="vd-scenxus-dsn" type="text" value={(deviceState as any).dsn || ''} onChange={e => handleStateChange({ dsn: e.target.value })} />
+                    </>
+                );
             case DeviceType.Camera:
                 return (
                      <AdminInput label="RTSP Stream URL" id="vd-rtsp" type="text" value={(deviceState as any).rtspStreamUrl || ''} onChange={e => handleStateChange({ rtspStreamUrl: e.target.value })} required placeholder="rtsp://..." />

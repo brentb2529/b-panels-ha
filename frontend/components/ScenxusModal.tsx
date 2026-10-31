@@ -75,7 +75,7 @@ const Stepper: React.FC<{
     </div>
 );
 
-const ScenxusModal: React.FC<{ device: ScenxusDevice; onClose: () => void }> = ({ device, onClose }) => {
+const ScenxusModal: React.FC<{ device: ScenxusDevice; fragrance?: string; onClose: () => void }> = ({ device, fragrance, onClose }) => {
     const s = device.state;
     const [err, setErr] = useState<string | null>(null);
 
@@ -94,8 +94,9 @@ const ScenxusModal: React.FC<{ device: ScenxusDevice; onClose: () => void }> = (
     const tempF = s.coreTempF;
 
     return (
-        <Modal onClose={onClose} size="md" title={`${device.name} — Scent`}>
+        <Modal onClose={onClose} size="md" title={fragrance ? `${fragrance}` : `${device.name} — Scent`}>
             <div className="flex flex-col gap-5">
+                {fragrance && <div className="text-white/40 text-sm -mt-3">{device.name}</div>}
                 <div className="flex items-center gap-2 text-sm">
                     <span
                         className="inline-block w-2.5 h-2.5 rounded-full"
