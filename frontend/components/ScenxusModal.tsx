@@ -91,7 +91,7 @@ const ScenxusModal: React.FC<{ device: ScenxusDevice; onClose: () => void }> = (
         if (id) run(callService('number', 'set_value', { value }, { entity_id: id }));
     };
 
-    const tempF = typeof s.coreTempC === 'number' ? s.coreTempC * 9 / 5 + 32 : undefined;
+    const tempF = s.coreTempF;
 
     return (
         <Modal onClose={onClose} size="md" title={`${device.name} — Scent`}>

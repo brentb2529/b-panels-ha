@@ -29,7 +29,7 @@ export interface ScenxusState {
     cartridge?: number;       // % life
     pump?: number;
     appliance?: number;
-    coreTempC?: number;
+    coreTempF?: number;
     errorCode?: string;
     schedule?: string;
     modeOptions: string[];
@@ -95,11 +95,19 @@ export function buildScenxusDevices(entities: HassEntities): ScenxusDevice[] {
                     if (typeof e.attributes.max === 'number') s.intensityMax = e.attributes.max;
                     break;
                 case 'fan_in': s.fan = num(e); break;
-                case 'fragrance_remaining': s.fragrance = num(e); break;
+                // Integration >= 0.1.2 renamed the key to *_pct; accept both.
+                case 'fragrance_remaining':
+                case 'fragrance_remaining_pct': s.fragrance = num(e); break;
                 case 'cartridge_life': s.cartridge = num(e); break;
                 case 'pump_life': s.pump = num(e); break;
                 case 'appliance_life': s.appliance = num(e); break;
-                case 'esp32_core_temp': s.coreTempC = num(e); break;
+                case 'esp32_core_temp': {
+                    // Unit follows the entity (HA converts to the user's system).
+                    const v = num(e);
+                    const unit = String(e.attributes.unit_of_measurement ?? '');
+                    s.coreTempF = v === undefined ? undefined : unit.includes('C') ? v * 9 / 5 + 32 : v;
+                    break;
+                }
                 case 'error_code': s.errorCode = str(e); break;
                 case 'current_schedule_running': s.schedule = str(e); break;
             }
