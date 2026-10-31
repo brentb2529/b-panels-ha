@@ -346,6 +346,7 @@ const getInitialStateForType = (type: DeviceType): Device['state'] => {
         case DeviceType.AlarmHistory:
         case DeviceType.RSSFeed:
         case DeviceType.Generator:
+        case DeviceType.Scenxus:
         case DeviceType.LitterRobot:
             return {};
 

@@ -1838,6 +1838,7 @@ const VirtualDeviceManager = () => {
         { value: DeviceType.PanicButton, label: 'Panic Button' },
         { value: DeviceType.AlarmHistory, label: 'Alarm History' },
         { value: DeviceType.RSSFeed, label: 'RSS Feed' },
+        { value: DeviceType.Scenxus, label: 'ScenXus Scent Diffuser' },
         { value: DeviceType.InternetMonitor, label: 'Internet Monitor' },
         { value: DeviceType.FishingReport, label: 'Fishing Report' },
     ];
