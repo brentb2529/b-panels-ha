@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { TileProps } from '../tileRegistry';
 import TileWrapper from './TileWrapper';
 import ScenxusModal from '../ScenxusModal';
-import { fluidTextXs, fluidTextSm, fluidTextBase, fluidText2xl, fluidGap } from './tileScale';
+import { fluidTextXs, fluidTextSm, fluidText2xl, fluidText3xl, fluidGap } from './tileScale';
 import { useScenxus } from '../../hooks/useScenxus';
 import { hasError } from '../../services/scenxusEntities';
 
@@ -10,8 +10,6 @@ import { hasError } from '../../services/scenxusEntities';
 // mode, online/error); tapping opens ScenxusModal with every detail + controls.
 // Optional device.state.dsn pins the tile to one diffuser; otherwise the first.
 
-const RING_R = 15;
-const RING_C = 2 * Math.PI * RING_R;
 const LOW = 20;   // fragrance % that reads as "running low"
 const EMPTY = 8;
 
@@ -57,6 +55,11 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
     const tone = err || !s.online || (frag !== undefined && frag <= EMPTY) ? 'rgb(var(--accent-alert))'
         : frag !== undefined && frag <= LOW ? 'rgb(var(--accent-warn))'
         : 'rgb(var(--accent-water))';
+    // Fragrance level drives the whole tile: it tints amber at LOW and red at
+    // EMPTY (and on error/offline) so it reads from across the room.
+    const level: 'ok' | 'low' | 'empty' = err || !s.online ? 'empty'
+        : hasFrag && (frag as number) <= EMPTY ? 'empty'
+        : hasFrag && (frag as number) <= LOW ? 'low' : 'ok';
     const running = s.mode === '24/7' || s.mode === 'Run';
 
     const subtitle = [
@@ -69,8 +72,8 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
         <>
         <TileWrapper
             label={label}
-            accent={err || !s.online ? 'alert' : 'water'}
-            isActive={running && s.online && !err}
+            accent={level === 'empty' ? 'alert' : level === 'low' ? 'warn' : 'water'}
+            isActive={level !== 'ok' || (running && s.online)}
             isUnavailable={!s.reachable}
             onClick={() => setOpen(true)}
         >
@@ -94,35 +97,21 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
                     )}
                 </div>
 
-                {/* gauge: remaining fragrance, or the mode when no level is reported */}
+                {/* headline: remaining fragrance, or the mode when no level is reported */}
                 <div className="flex-1 min-h-0 grid place-items-center">
-                    <div className="relative h-full aspect-square max-w-full">
-                        <svg viewBox="0 0 36 36" className="absolute inset-0 w-full h-full -rotate-90">
-                            <circle cx="18" cy="18" r={RING_R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-                            <circle
-                                cx="18" cy="18" r={RING_R} fill="none" stroke={tone} strokeWidth="3"
-                                strokeLinecap="round"
-                                strokeDasharray={RING_C}
-                                strokeDashoffset={RING_C * (1 - (hasFrag ? Math.max(0, Math.min(100, frag as number)) / 100 : 1))}
-                                style={{ opacity: hasFrag ? 1 : 0.35, transition: 'stroke-dashoffset 600ms ease' }}
-                            />
-                        </svg>
-                        <div className="absolute inset-0 grid place-items-center">
-                            {hasFrag ? (
-                                <span className="font-semibold tabular-nums leading-none" style={{ ...fluidText2xl, color: tone }}>
-                                    {Math.round(frag as number)}
-                                    <span className="text-white/40" style={fluidTextXs}>%</span>
-                                </span>
-                            ) : (
-                                <span className="font-semibold leading-none" style={{ ...fluidTextBase, color: tone }}>
-                                    {s.mode ?? '--'}
-                                </span>
-                            )}
-                        </div>
-                    </div>
+                    {hasFrag ? (
+                        <span className="font-semibold tabular-nums leading-none" style={{ ...fluidText3xl, color: tone }}>
+                            {Math.round(frag as number)}
+                            <span className="text-white/40" style={fluidTextSm}>%</span>
+                        </span>
+                    ) : (
+                        <span className="font-semibold leading-none" style={{ ...fluidText2xl, color: tone }}>
+                            {s.mode ?? '--'}
+                        </span>
+                    )}
                 </div>
 
-                <div className="text-white/45 truncate text-center" style={fluidTextXs}>{subtitle}</div>
+                <div className="text-white/45 truncate text-center" style={fluidTextXs}>{level === 'low' ? 'running low' : level === 'empty' && hasFrag && !err && s.online ? 'replace now' : subtitle}</div>
             </div>
         </TileWrapper>
         {/* Sibling, not child: portal events bubble through the React tree, so a
