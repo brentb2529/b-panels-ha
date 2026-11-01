@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { TileProps } from '../tileRegistry';
 import TileWrapper from './TileWrapper';
 import ScenxusModal from '../ScenxusModal';
-import { fluidTextXs, fluidTextSm, fluidText2xl, fluidText3xl, fluidGap } from './tileScale';
+import { fluidTextXs, fluidTextSm, fluidTextLg, fluidText2xl, fluidText3xl, fluidGap } from './tileScale';
 import { useScenxus } from '../../hooks/useScenxus';
 import { hasError } from '../../services/scenxusEntities';
 
@@ -10,8 +10,8 @@ import { hasError } from '../../services/scenxusEntities';
 // mode, online/error); tapping opens ScenxusModal with every detail + controls.
 // Optional device.state.dsn pins the tile to one diffuser; otherwise the first.
 
-const LOW = 20;   // fragrance % that reads as "running low"
-const EMPTY = 8;
+const LOW = 30;   // fragrance % where the tile starts showing the level ("getting low")
+const EMPTY = 10; // ... and turns red ("replace now")
 
 const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
     const cfg = (device.state || {}) as { dsn?: string; fragrance?: string };
@@ -81,7 +81,7 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
                 {/* scent name + status */}
                 <div className="flex items-center justify-between gap-2 min-w-0">
                     <span className="text-white/85 font-medium truncate" style={fluidTextSm}>
-                        {cfg.fragrance || 'Fragrance'}
+                        {level === 'ok' ? (running ? 'Diffusing' : 'Idle') : (cfg.fragrance || 'Fragrance')}
                     </span>
                     {(err || !s.online) && (
                         <span
@@ -97,21 +97,25 @@ const ScenxusTile: React.FC<TileProps> = ({ tile, device, isEditor }) => {
                     )}
                 </div>
 
-                {/* headline: remaining fragrance, or the mode when no level is reported */}
+                {/* Headline. Healthy: the scent name (the level is noise until it
+                    matters). Getting low / empty: the percentage takes over. */}
                 <div className="flex-1 min-h-0 grid place-items-center">
-                    {hasFrag ? (
+                    {hasFrag && level !== 'ok' ? (
                         <span className="font-semibold tabular-nums leading-none" style={{ ...fluidText3xl, color: tone }}>
                             {Math.round(frag as number)}
                             <span className="text-white/40" style={fluidTextSm}>%</span>
                         </span>
                     ) : (
-                        <span className="font-semibold leading-none" style={{ ...fluidText2xl, color: tone }}>
-                            {s.mode ?? '--'}
+                        <span
+                            className="font-semibold text-center leading-tight line-clamp-2 break-words"
+                            style={{ ...fluidTextLg, color: level === 'ok' ? '#fff' : tone }}
+                        >
+                            {level === 'ok' ? (cfg.fragrance || s.mode || '--') : (s.mode ?? '--')}
                         </span>
                     )}
                 </div>
 
-                <div className="text-white/45 truncate text-center" style={fluidTextXs}>{level === 'low' ? 'running low' : level === 'empty' && hasFrag && !err && s.online ? 'replace now' : subtitle}</div>
+                <div className="text-white/45 truncate text-center" style={fluidTextXs}>{level === 'low' ? 'getting low' : level === 'empty' && hasFrag && !err && s.online ? 'replace now' : subtitle}</div>
             </div>
         </TileWrapper>
         {/* Sibling, not child: portal events bubble through the React tree, so a
