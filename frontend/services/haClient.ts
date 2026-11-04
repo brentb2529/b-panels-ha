@@ -17,6 +17,7 @@ import {
     type Connection,
     type HassEntities,
 } from 'home-assistant-js-websocket';
+import { hasExternalAuth, createExternalAuth } from './externalAuth';
 
 // HA stores the signed-in user's session (full AuthData) under 'hassTokens'.
 // When the SPA runs as an HA sidebar panel it is a same-origin iframe, so we
@@ -123,6 +124,18 @@ async function connect(): Promise<Connection> {
         }
     } catch {
         /* parent is cross-origin or has no hassConnection — use getAuth below */
+    }
+
+    // Inside an HA Companion app / VACA web view: the app owns the login and
+    // hands us tokens on request (no localStorage session exists there).
+    if (hasExternalAuth()) {
+        try {
+            const auth = await createExternalAuth(hassUrl());
+            currentAuth = auth;
+            return await createConnection({ auth });
+        } catch (e) {
+            console.warn('[HA] External-app auth failed; falling back.', e);
+        }
     }
 
     // Headless/kiosk: a provisioned Long-Lived Access Token connects with no

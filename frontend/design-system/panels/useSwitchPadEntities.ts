@@ -84,7 +84,9 @@ export const projectSwitchPad = (
     const entityId = resolveEntityId(t);
     const domain = entityId.split('.')[0] || '';
     const e = ents[entityId];
-    const available = !!e && !UNAVAILABLE.has(String(e.state).toLowerCase());
+    // Scenes/scripts that have never run report 'unknown' — that's still usable.
+    const st = String(e?.state ?? '').toLowerCase();
+    const available = !!e && (MOMENTARY_DOMAINS.has(domain) ? st !== 'unavailable' : !UNAVAILABLE.has(st));
     const name = (t.label && t.label.trim()) || String(e?.attributes?.friendly_name || entityId);
     const gated = !!t.isLocked;
     const requirePin = !!t.requirePin;

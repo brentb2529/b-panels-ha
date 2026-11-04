@@ -226,6 +226,10 @@ export interface DashboardPanel {
   // showing this panel's first 6 tiles as big switch cards. Absent => the
   // normal tile grid (every existing panel) — additive/non-breaking.
   compilationKind?: 'switches';
+  // OPTIONAL: the voice satellite on this panel's device (e.g.
+  // 'assist_satellite.vaca_kitchen_small_panel'). When set, the Switch Pad
+  // shows a display-only voice overlay (listening / thinking / reply).
+  voiceSatelliteId?: string;
 }
 
 export interface ServiceConnection {

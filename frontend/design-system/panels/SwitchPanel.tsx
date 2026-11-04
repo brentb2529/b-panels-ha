@@ -5,6 +5,7 @@ import { useDashboard } from '../../hooks/useDashboard';
 import {
   useSwitchPadEntities, type SwitchView, type SwitchIcon, type SwitchPadView, MAX_SWITCHES,
 } from './useSwitchPadEntities';
+import { useVoiceSatellite, type VoiceView } from './useVoiceSatellite';
 import './switchPanel.css';
 
 // ---------------------------------------------------------------------------
@@ -49,7 +50,32 @@ interface ViewProps {
   fired?: string | null;              // momentary just-fired entityId
   onActivate: (s: SwitchView) => void;
   onAllOff: () => void;
+  voice?: VoiceView;                  // live voice-satellite state (overlay)
 }
+
+const VOICE_LABEL: Record<VoiceView['phase'], string> = {
+  idle: 'Done', listening: 'Listening…', processing: 'Thinking…', responding: 'Speaking…',
+};
+
+// Voice overlay — slides up over the bottom of the pad while the panel's
+// satellite is active, and lingers briefly with the reply. Display-only.
+const VoiceOverlay = ({ v }: { v: VoiceView }) => (
+  <div className={`swp-voice${v.visible ? ' swp-voice-on' : ''} swp-voice-${v.phase}`} aria-live="polite" aria-hidden={!v.visible}>
+    <div className="swp-voice-card">
+      <div className="swp-voice-mark" aria-hidden>
+        <span className="swp-vm-ring" /><span className="swp-vm-ring swp-vm-ring2" />
+        <span className="swp-vm-arc" />
+        <span className="swp-vm-bars"><i /><i /><i /><i /></span>
+        <span className="swp-vm-core" />
+      </div>
+      <div className="swp-voice-text">
+        <div className="swp-voice-state">{VOICE_LABEL[v.phase]}</div>
+        {v.heard && <div className="swp-voice-heard">“{v.heard}”</div>}
+        {v.reply && <div className="swp-voice-reply">{v.reply}</div>}
+      </div>
+    </div>
+  </div>
+);
 
 const SwitchCard = ({
   s, optimisticOn, fired, onActivate,
@@ -96,7 +122,7 @@ const SwitchCard = ({
   );
 };
 
-export const SwitchPanelView = ({ title, eyebrow, view, now, pending = {}, fired = null, onActivate, onAllOff }: ViewProps) => {
+export const SwitchPanelView = ({ title, eyebrow, view, now, pending = {}, fired = null, onActivate, onAllOff, voice }: ViewProps) => {
   const { hm, ampm } = fmtTime(now);
   const n = view.switches.length;
   const anyOn = view.switches.some((s) => s.kind === 'toggle' && (pending[s.entityId] ?? s.on));
@@ -154,6 +180,8 @@ export const SwitchPanelView = ({ title, eyebrow, view, now, pending = {}, fired
           </button>
         </footer>
       )}
+
+      {voice && <VoiceOverlay v={voice} />}
     </div>
   );
 };
@@ -161,6 +189,7 @@ export const SwitchPanelView = ({ title, eyebrow, view, now, pending = {}, fired
 const SwitchPanel = ({ panel }: { panel: DashboardPanel }) => {
   const { requestPin } = useDashboard();
   const pad = useSwitchPadEntities(panel.tiles);
+  const voice = useVoiceSatellite(panel.voiceSatelliteId);
   const [now, setNow] = useState(() => new Date());
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [fired, setFired] = useState<string | null>(null);
@@ -220,6 +249,7 @@ const SwitchPanel = ({ panel }: { panel: DashboardPanel }) => {
       fired={fired}
       onActivate={onActivate}
       onAllOff={pad.actions.allOff}
+      voice={panel.voiceSatelliteId ? voice : undefined}
     />
   );
 };

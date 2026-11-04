@@ -1488,6 +1488,18 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                                                  Uses the first 6 light / switch / fan / scene tiles on this panel, in tile order.{panel.tiles.length > 6 ? ` ${panel.tiles.length - 6} extra tile(s) are ignored.` : ''}
                                              </p>
                                          )}
+                                         {panel.compilationKind === 'switches' && (
+                                             <div className="mt-3">
+                                                 <AdminInput
+                                                     label="Voice satellite (optional)"
+                                                     id="voiceSatelliteId"
+                                                     placeholder="assist_satellite.vaca_kitchen_small_panel"
+                                                     value={panel.voiceSatelliteId || ''}
+                                                     onChange={(e) => updatePanelConfig(panelId, { voiceSatelliteId: e.target.value.trim() || undefined })}
+                                                 />
+                                                 <p className="mt-1 text-xs text-gray-400">Shows a listening / thinking / reply overlay when this panel's voice assistant is active.</p>
+                                             </div>
+                                         )}
                                      </div>
                                      <AdminInput label="Grid Columns" type="number" id="gridCols" min="1" max="20" value={panel.columns} onChange={(e) => updatePanelLayoutConfig(panelId, { columns: parseInt(e.target.value, 10) })} />
                                      <AdminInput label="Row Height (px)" type="number" id="rowHeight" min="20" max="300" step="10" value={panel.rowHeight} onChange={(e) => updatePanelLayoutConfig(panelId, { rowHeight: parseInt(e.target.value, 10) })} />

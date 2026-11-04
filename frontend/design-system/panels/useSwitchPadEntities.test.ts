@@ -12,6 +12,7 @@ const ents: HassEntities = {
   'fan.bath_fan': ent('fan.bath_fan', 'on', { friendly_name: 'Bath Fan' }),
   'switch.pool_pump': ent('switch.pool_pump', 'on', { friendly_name: 'Pool Pump' }),
   'scene.goodnight': ent('scene.goodnight', '2026-11-04T20:00:00Z', { friendly_name: 'Goodnight' }),
+  'scene.never_run': ent('scene.never_run', 'unknown', { friendly_name: 'Never Run' }),
   'sensor.temp': ent('sensor.temp', '71', { friendly_name: 'Temp' }),
   'light.dead': ent('light.dead', 'unavailable', { friendly_name: 'Dead' }),
 } as unknown as HassEntities;
@@ -63,5 +64,10 @@ describe('projectSwitchPad', () => {
     expect(v.switches[0]).toMatchObject({ available: false, detail: 'Not found' });
     expect(v.switches[1]).toMatchObject({ available: false, detail: 'Unavailable' });
     expect(v.toggleCount).toBe(0);
+  });
+
+  it('treats a never-run scene (state unknown) as available', () => {
+    const v = projectSwitchPad(ents, [tile('s', 'scene.never_run')]);
+    expect(v.switches[0]).toMatchObject({ kind: 'momentary', available: true, detail: 'Tap to set' });
   });
 });
