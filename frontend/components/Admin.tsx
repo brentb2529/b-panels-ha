@@ -1471,6 +1471,24 @@ const PanelEditor: React.FC<{ panelId: string, onBack: () => void }> = ({ panelI
                             <div>
                                 <h4 className="font-medium mb-3 text-lg">Panel Settings</h4>
                                 <div className="space-y-3">
+                                     {/* Layout — the tile grid, or the compact Switch Pad for
+                                         small portrait wall panels (uses this panel's first 6 tiles). */}
+                                     <div>
+                                         <AdminSelect
+                                             label="Layout"
+                                             id="panelLayout"
+                                             value={panel.compilationKind === 'switches' ? 'switches' : 'grid'}
+                                             onChange={(e) => updatePanelConfig(panelId, { compilationKind: e.target.value === 'switches' ? 'switches' : undefined })}
+                                         >
+                                             <option value="grid">Tile Grid (Default)</option>
+                                             <option value="switches">Switch Pad — small wall panel (4–6 switches)</option>
+                                         </AdminSelect>
+                                         {panel.compilationKind === 'switches' && (
+                                             <p className="mt-1 text-xs text-gray-400">
+                                                 Uses the first 6 light / switch / fan / scene tiles on this panel, in tile order.{panel.tiles.length > 6 ? ` ${panel.tiles.length - 6} extra tile(s) are ignored.` : ''}
+                                             </p>
+                                         )}
+                                     </div>
                                      <AdminInput label="Grid Columns" type="number" id="gridCols" min="1" max="20" value={panel.columns} onChange={(e) => updatePanelLayoutConfig(panelId, { columns: parseInt(e.target.value, 10) })} />
                                      <AdminInput label="Row Height (px)" type="number" id="rowHeight" min="20" max="300" step="10" value={panel.rowHeight} onChange={(e) => updatePanelLayoutConfig(panelId, { rowHeight: parseInt(e.target.value, 10) })} />
                                      

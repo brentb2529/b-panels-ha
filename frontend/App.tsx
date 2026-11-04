@@ -333,7 +333,7 @@ const ThemeManager = ({ activePanelId }: { activePanelId: string | null }) => {
 };
 
 const AppContent = () => {
-  const { isAudioUnlocked, unlockAudio, ipFilterEnabled, allowedIPs, activePanelId } = useDashboard();
+  const { isAudioUnlocked, unlockAudio, ipFilterEnabled, allowedIPs, activePanelId, panels } = useDashboard();
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthorized, setAuthorized] = useState<boolean | null>(null);
@@ -505,7 +505,13 @@ const AppContent = () => {
   // (News, etc.) stay constrained and scroll internally instead of ballooning.
   const chromeClass = "flex flex-col h-screen antialiased";
 
-  const mainContainerClass = fillScreen
+  // The Switch Pad layout is a full-bleed surface with its own hero, so the
+  // global Header + grid padding would double up the chrome on a 5" screen.
+  const isSwitchPad = isDashboardRoute && panels.find(p => p.id === activePanelId)?.compilationKind === 'switches';
+
+  const mainContainerClass = isSwitchPad
+    ? "flex-1 overflow-hidden relative"
+    : fillScreen
     ? "flex-1 overflow-hidden p-2" // fill the viewport; grid stretches, no scroll
     : (isNativeShell
         ? "flex-1 overflow-y-auto p-2" // native iPad kiosk: native scaling handles fit
@@ -521,7 +527,7 @@ const AppContent = () => {
           (z-100) and silently swallow the first click on every control. */}
       {!isAudioUnlocked && isDashboardRoute && <AudioUnlockModal onUnlock={unlockAudio} />}
        <div className={chromeClass}>
-          <Header />
+          {!isSwitchPad && <Header />}
           <main className={mainContainerClass}>
               <AppRoutes />
           </main>

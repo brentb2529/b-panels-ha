@@ -15,6 +15,10 @@ import ExitDelayModal from './ExitDelayModal';
 import TileErrorBoundary from './TileErrorBoundary';
 import { startSiren, stopSiren } from '../services/alarmTones';
 
+// Compact Switch Pad layout (compilationKind 'switches') — lazy so the grid
+// bundle doesn't carry it.
+const SwitchPanel = React.lazy(() => import('../design-system/panels/SwitchPanel'));
+
 // Helper to convert hex to rgba for glow effects
 const hexToRgba = (hex: string, alpha: number) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -265,17 +269,8 @@ const Dashboard = () => {
       }
   }, []);
 
-  if (activePanel.tiles.length === 0 && !parentPanel) {
-    return (
-        <div className="text-center text-gray-400 p-8 bg-gray-800 rounded-lg max-w-md mx-auto mt-20">
-            <h2 className="text-xl font-bold mb-2">Welcome to {activePanel.name}!</h2>
-            <p>This panel is empty. Go to the <Link to="/admin" className="text-brand-blue underline">Admin page</Link> to add your first tile.</p>
-        </div>
-    );
-  }
-
-  return (
-    <div className="relative h-full flex flex-col">
+  const alarmModals = (
+    <>
       {/* Alarm flow — driven by the panel phase, shown on every panel. */}
       {phase === 'arming' && alarmState && (
           <ExitDelayModal alarmState={alarmState} onCancel={cancelArming} />
@@ -291,6 +286,33 @@ const Dashboard = () => {
       {phase === 'triggered' && alarmState && (
           <IntrusionModal alarmState={alarmState} onDisarm={handleDisarmAttempt} />
       )}
+
+    </>
+  );
+
+  if (activePanel.compilationKind === 'switches') {
+    return (
+      <div className="relative h-full">
+        {alarmModals}
+        <React.Suspense fallback={<div className="text-center text-gray-400 pt-20">Loading {activePanel.name}…</div>}>
+          <SwitchPanel panel={activePanel} />
+        </React.Suspense>
+      </div>
+    );
+  }
+
+  if (activePanel.tiles.length === 0 && !parentPanel) {
+    return (
+        <div className="text-center text-gray-400 p-8 bg-gray-800 rounded-lg max-w-md mx-auto mt-20">
+            <h2 className="text-xl font-bold mb-2">Welcome to {activePanel.name}!</h2>
+            <p>This panel is empty. Go to the <Link to="/admin" className="text-brand-blue underline">Admin page</Link> to add your first tile.</p>
+        </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full flex flex-col">
+      {alarmModals}
 
       {/* Connection Status Banner - shows after sustained disconnection or on error */}
       {(showReconnecting || serviceError) && (

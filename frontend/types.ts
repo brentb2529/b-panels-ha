@@ -221,6 +221,11 @@ export interface DashboardPanel {
   themeMode?: ThemeMode;
   showTileBorders?: boolean;
   idleConfig?: PanelIdleConfig;
+  // OPTIONAL bespoke layout. 'switches' = the compact Switch Pad for small
+  // portrait wall panels (YC-SM55P 5.5"): a full-bleed liquid-glass surface
+  // showing this panel's first 6 tiles as big switch cards. Absent => the
+  // normal tile grid (every existing panel) — additive/non-breaking.
+  compilationKind?: 'switches';
 }
 
 export interface ServiceConnection {
